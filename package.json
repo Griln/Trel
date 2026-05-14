@@ -48,7 +48,7 @@
     "publish": [
       {
         "provider": "github",
-        "owner": "YOUR_GITHUB_USERNAME",
+        "owner": "mkrlord1000-sketch",
         "repo": "aurora-launcher",
         "releaseType": "release"
       }
