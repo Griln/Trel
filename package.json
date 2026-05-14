@@ -1,0 +1,86 @@
+{
+  "name": "aurora-launcher",
+  "version": "1.0.0",
+  "description": "Modern Minecraft launcher built with Electron + React",
+  "main": "dist-electron/main/main.js",
+  "author": "you",
+  "license": "MIT",
+  "scripts": {
+    "dev": "vite",
+    "build:renderer": "vite build",
+    "build:electron": "tsc -p tsconfig.electron.json",
+    "build": "npm run build:renderer && npm run build:electron",
+    "start": "electron .",
+    "dist": "npm run build && electron-builder --win"
+  },
+  "dependencies": {
+    "@types/adm-zip": "^0.5.8",
+    "@xmcl/core": "^2.12.0",
+    "@xmcl/installer": "^5.2.0",
+    "adm-zip": "^0.5.17",
+    "axios": "^1.7.7",
+    "electron-updater": "^6.8.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.9.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.3",
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.11"
+  },
+  "build": {
+    "appId": "com.aurora.launcher",
+    "productName": "AuroraLauncher",
+    "asar": true,
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "package.json"
+    ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "YOUR_GITHUB_USERNAME",
+        "repo": "aurora-launcher",
+        "releaseType": "release"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "AuroraLauncher-${version}-${arch}.${ext}",
+      "publisherName": "Aurora"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false,
+      "differentialPackage": true,
+      "deleteAppDataOnUninstall": false,
+      "shortcutName": "Aurora Launcher"
+    },
+    "portable": {
+      "artifactName": "AuroraLauncher.exe"
+    }
+  }
+}
