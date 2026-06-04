@@ -5,6 +5,11 @@
   "main": "dist-electron/main/main.js",
   "author": "you",
   "license": "MIT",
+  "overrides": {
+    "esbuild": {
+      "optionalDependencies": {}
+    }
+  },
   "scripts": {
     "dev": "vite",
     "icon": "node scripts/build-icon.js",
