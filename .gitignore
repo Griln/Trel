@@ -6,5 +6,8 @@ release/
 *.log
 .DS_Store
 .env
+# package-lock.json — платформо-зависимый (esbuild нативные биндинги).
+# CI использует npm install, локально тоже используем npm install.
+package-lock.json
 # Временные артефакты при компиляции standalone скриптов через tsc --outDir
 scripts/.tmp/
