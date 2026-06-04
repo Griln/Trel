@@ -1,0 +1,150 @@
+// AUTO-GENERATED. Не редактируй вручную — правь scripts/generate-skins.ts
+export interface SkinPreset {
+  id: string;
+  name: string;
+  category: 'male' | 'female' | 'neutral';
+  style: 'cyber' | 'fantasy' | 'pastel';
+  description: string;
+  /** PNG-data-URL, готов к сохранению в accounts.json. */
+  dataUrl: string;
+  /** Какую модель скина рекомендуем для этого пресета. */
+  model: 'classic' | 'slim';
+}
+
+export const SKIN_PRESETS: SkinPreset[] = [
+  {
+    id: "m-cyber-soldier",
+    name: "Кибер-солдат",
+    category: "male",
+    description: "Тактическая броня с циан-визором и подсветкой нагрудника",
+    model: 'classic',
+    style: "cyber",
+    dataUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAACpklEQVR4Ae3BQWsTaRzA4d+8+3a2hMVLJxRymF3Igr0oSBEpKLoHL+phA4W99DDsMdCvk/N8gAoePAnFQxEqHgIVgoUMhJGi1YTdlSVkpzPOEjz4t7Svox1j9J3ncfiI1sZmjsGg38Oku7vtcAY3W3/+jsHBYB+TXvfRPQwUllNYTmE5heUUllNYTmE558atP3IMXHcRkySZYOK6i5j88/dfLQwW3B8xOUr+wyTLUkwUltMUEMcRJ/H9JkXFcYTvN5mK4wjfbzIPNAX4fpPvlaaAWifkJON2wLdOU8C4HRA3f0HyowHfA01BfjTgc9U6ISu8t8I743bA16aZgXE7YF45HLN2/XaO8Orlc6Rof8/BoLWxmWMw6Pcw6e5uOxi0NjZzhEG/h9Td3Xb4BArLKSynsJxzcfVqjqD1AlKaHiG9zTIkr+EjvXnzL1Oe5yENh0Omzp37CSlLU0x+0BrJdReRkmSClKUp0s6Duw4Gii+s1gkp6vXwkNfDQ2ZJUzLP8ziJ53lMJcmE06zc32FqFKwzK5o58uzONabq3jKzorCcwnKaObJyf4epUbDOrGjmyLM715iqe8vMiuIbVOuE1Dohp1kKt1gKtyhCc8yLOEKqN3yk0eEBktfwKUvdW6aIcTvAZBSsU5SmZE8fP+QDqz8jnb+0htR/+gST85fW+JI0Jbtw5TdMkmSC9OuFy1QqlUqlUqlUKpVKpVKpzJJDydau384RXr18jhTt7zkYtDY2c4RBv4fU3d12KJHCcgrLKSzncEYXV6/mCFovIKXpEdLbLEPyGj6S6y4iJckEKUtTpJ0Hdx3OQGE5heUUllNYTmE5heUUllPMoVonpNYJOc1SuMVSuEUZNCV7EUdI9YaPNDo8QPIaPseN2wEmo2Cdsigsp7Dc/0skvETxaS7ZAAAAAElFTkSuQmCC",
+  },
+  {
+    id: "m-techno-pilot",
+    name: "Техно-пилот",
+    category: "male",
+    description: "Лётный комбинезон с фиолетовой нашивкой и наушниками",
+    model: 'classic',
+    style: "cyber",
+    dataUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAACZElEQVR4Ae3BMUhbURiA0e/9PsU6SevUahYRO1SpQnHuoBlcKhTpEKgBK3TRwTd0aCAgFEGXOkoWFwudXAomQ52KiYQuASeDIMbFGsRBxZjcIihchV5jjRq97xyHSzwPBBQG0c+jmLwb8RyqmGA5wXKC5QTLCZYTLCdYzs2uLCoM+t+OYPLq5QtM+t68V5yKD2c4EYx1cCaxMOdwhwTLuVwi+fM7Jjv5Xe4zocpNRZTiH6YiSnFNQpmGGno4M9TQw/8IxjoIxjqoJk52ZVFh8ORxIyY7+V1MPn75hkliYc7hDglXMOl5THoeD4nLFXyanuaqNjayVDOHCzpbxxWa/F4G3eZ2wsEg1LulMFjLzWOSXPUcDEK9WwrNWm4eXXLVc7gCwXKC5QTLOW3NIYWmRurRFUuH6EqlArr2ljC6131BTJYScXTHxQNM3JpH6OpqG9EdFXbRHRcP0CXSAw4GLhX2aymFbni0h9hMinLEoxOcCEYj3BbBcsIDFI9OUC6XKvLj9x8qIRiNUC6hivR3N9Hf3cRtEiwnWE6wnMsFge4CuvU05+yrZc4Lc5tS2UF0XYFZrsPljmVyY5x5+oFTY5zpCsxyk1xuWGwmhUnHs6/4fD6fz+fz+Xw+n8/n890mhwrrbB1XaPJ7GXSb2wkHg1DvlkKzlptHl1z1HCpIsJxgOcFyDtfU1hxSaGqkHl2xdIiuVCqga28Jo6urbUR3VNhFd1w8QJdIDzhcg2A5wXLCPRWPTlAJwj0VjEaoBMFyguUEywmWc6mwQHcB3Xqac/bVMueF0aWyg+i6ArPcJMFyguX+ArCAo3c06xsJAAAAAElFTkSuQmCC",
+  },
+  {
+    id: "m-ranger",
+    name: "Рейнджер пустошей",
+    category: "male",
+    description: "Плащ, броня, янтарный визор",
+    model: 'classic',
+    style: "cyber",
+    dataUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAACbklEQVR4Ae3Bz0obQQDA4d/OzmQxRL1EaC45CIJQ2GvqqV7Su3ffzDfxCSJIPTWkYECXhBQJoZEibHZnt1RQRgnThPwxOvt9Hv/RPApzLPp3I2za3Z7HAk6+hi0sbn6NsLn62fuChcBxAscJHCdwnMBxAscJHOc1woMcCyV9bJJUYzP+HWPzaS+4wKIkfWwmqcZG6wwbgeMEjpPMIBoMmaZeq/LeCWZ0e1bnye1ZnY/Ca4QHORZK+kSDIdPUa1WSVGOjs4wnf+4T/qnsKJ5UAnGBRUn62ExSjY3WGTaSGXxrHDJNJxoyj8qOYtNIZtCJhnxUHq+cNI9yDDf9O0xX7a6HxWkzzLG47o+wabV7HhanzTDHcN0fYWq1ex5zEDhO4DiB47zjRphjKCmJaZKkmLTOMG37MaaS8rGZJBpTqjNspC8wlZSPaZJoTKnOMJ1fdj0sJCtQr1eZJoqGTFP+XGOahx8DVk2yAR6+RxAoXogTCBSrJtgEgYI44VmcQKBYB8mmCBTECY8CxboIHCdZgSgaMrc4gUDxKE4gUKyDZMk60Rib/VqFqQLFs0CxLpJXhoMBpp3qHvM4rO/SicYc1neZZpJoFtGJxpj2axUWIZnTVnzPC+WA90zy1uIEq3LAKkneWqAoFAqFQqFQKBQKhUKhUFgnjyU7aR7lGG76d5iu2l0Pi9NmmGO47o8wtdo9jyUSOE7gOIHjPBZ03AhzDCUlMU2SFJPWGaZtP8ZUUj6mSaIxpTrDdH7Z9ViAwHECxwkcJ3CcwHECxwkcJ1my4WCAaae6xzw60RjTfq3CKknWbCu+54VywFsSOE7guL8yqrsKGfgzTwAAAABJRU5ErkJggg==",
+  },
+  {
+    id: "f-neon-hacker",
+    name: "Неон-хакер",
+    category: "female",
+    description: "Розовые волосы, толстовка, киберпанк-граффити",
+    model: 'classic',
+    style: "cyber",
+    dataUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAACiElEQVR4Ae3BMWgTURjA8f99PRU6NCIBHdosOujwMuigAVFwFQcXkdKxODhkyuTYudMNDtLBRUGXLk4OXayYDrq8Qh2agqWIpCE0QSuWeCcdDj6KviQkqW3f/X4BXSRz1QSHVxeWcXn4qBIwgOTp1yoOb96/xOXei8oNHATPCZ4TPCd4TvCc4DnBc0EyV00YoSsLD0itXX3KviufHpN6N/1sBYf8+FlcGrs7uHzf+4mL4LmQHrSm+avcS449oYvWNP/UmubYE3qUqzRI5SoNTgqhR635PKnWfJ6TIqQPy5UF9t2cn6VXa7OvOWjt6mtSjd0d/qeQPtycn+WkCTjg4lQpQWn/qKNtN2sBDqXiTIJDvbmOS22rGuBQKs4kKPXmOlptqxrQB8FzgucEzwWT54sJikiIFscdtDiJ0fK5AtqFc5dw+dZcR5v41calfWYCLRw7jdb5vYcWxx201drbAIeQIWu0NtE+Xp7l2ucF/mXn1DguwmgJnhOOCGvKpKwpc1hCjghjI6wps8/YiEFYU2afsRHdCCNSWFokVVhapBtryhgbYWyENWUGYWyEsRG9EEZk8859Upt37tONsREpYyMOi+A5wXMhfUrG2vxPhaVFtI3bdxlEyAFfrs+hTX14wlHyfHcF7RaDEUbs2ucFMplMJpPJZDKZTCaTyWSOkoAhuzhVSlDaP+po281agEOpOJOg1JvraLWtasAQCZ4TPCd4LmBAk+eLCYpIiBbHHbQ4idHyuQJaOHYarfN7Dy2OO2irtbcBAxA8J3hO8JxwDFlTxpoywxByDBkbMSyC5wTPCZ4LOWTJWBuXwtIi2sbtu4xSyJB9uT6HNvXhCf14vruCdovREjz3B5FbueZqTZLcAAAAAElFTkSuQmCC",
+  },
+  {
+    id: "f-quantum-mage",
+    name: "Квантовый маг",
+    category: "female",
+    description: "Капюшон со звёздами, накидка, голограммы",
+    model: 'classic',
+    style: "cyber",
+    dataUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAC0ElEQVR4Ae3BP0iUYRzA8e/73KNkQg5JEYhBl1CLDQnZ0HJhgi0tgYFSINcUNNRwF3RDQd4QhFt0RIJDQkOCkw4uNegQEoU1nIHHidCVg3CvoXf3hkPwS+Txzvvr+76fj8U+uoNDDgbrG0lM0pl5izL09cSSGKxmFjFZWpk+i4HigD4nJ3ADRZHOfJhAunB2GDdQFOnHlWHcSOFxigN4NjqBWygO4FF0GLdQeJzV1THgYBBQzZjkC1uYBNRXTNpa+5cxaNItmGznNjHJF7YxURwCkcdjQapEcQjEn95fZpf2mbEgFaApwvxchL30huLUy6/++8tUgKJId45e4p87Ry/hFooijdsL/DNuL+AWmiL0huLseH7tHDsezn6nFJ3cYC8ppqg3TQkezn7HbSx26Q4OOQjrG0mkdGbewuBy9wMHg5/rXzBZTs9aGPT1xByE1cwi0tLKtEUJFB6n8DiFx1ldHQMOQkA1I+ULW0iFQg6ptfUEkg4cwSSX/4N05uQ9TNZ+v0Zq0i1I27lNpFPHR5CmPvZaGGjqLLn2ApPW5mNUk6aKbt1MsOPtuzD7iY9OEokOUq505iWl0FRJ51yCt6EwxYpEB6kHRZWkQmEOKj46Sa0oGlAkOkitKGrgyZMEjUpRA7FYmGLERyepNU0VfPqW4OL5MKWKRAfZT/vMGNLa1buUQ1EiO5vCzqawsynsbIq9XDwfZrfOuQSNSFMjqVCYShi3F5D6KY9ml5Hb75FevbmOz+fz+Xw+n8/n8/l8Pp+bWFRYd3DIQVjfSCKlM/MWBn09MQdhNbOItLQybVFBCo9TeJzC4yzK1NUx4CAEVDNSvrCFVCjkkNrbTiM16Rak7dwm0qnjI0hTH3styqDwOM0hk868pJIUHqfwOIXHKTxO4XGaBtM+M4a0dvUu1aSpMTub4j9tp6knTYMZtxeQ+qkuTYWN3H6P9OrNdRrZX0fYwe4yWp+zAAAAAElFTkSuQmCC",
+  },
+  {
+    id: "f-mecha-pilot",
+    name: "Меха-пилот",
+    category: "female",
+    description: "Облегающий технокостюм с магента-схемами",
+    model: 'classic',
+    style: "cyber",
+    dataUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAACgklEQVR4Ae3BMWgTUQCA4f8et7Sdck4ilA6CXQ7klm6SrQUXMxTsFAolWxZ5HZJ2LHY5V3EwCLdYCWI7WHBsxw6HcB0UOoi7FzIkmcKTDAevtTwbctGEd9/n8BfdoVIYRK0Ik3qt6jCBoVLPMGhFHzCpVZ8fYyCwnGDOiMrnT+RIMGcqr5+SJ8Gc+XifCjkSWE5gOYHlnLOLS4VByfMw6aQpJg9e7JN5+/MbIzvLq2TSN68qGHjePUzS9Bcm/V4PE4HlBJZzuQNfxtwmCQPmncByLneQhAF52FleZdYILCewnMMN3aFSaKJWhK5eqzoYdIdKYRC1IkzqtaqDQXeoFJqoFaGr16oOYxBYTmA5geWcs4tLhebJyx8kYUCmk6boBv0euoXFJXQlz8Okk6boBv0eJguLS+hKnoeuk6boBv0euo3ymoOBy5T5MiYJA+5i/fEjRr58/Y6JL2OSMOA2D/cPGYfAcgLLuUyJL2OSMGDElzFJGPAvXB00uKZ8jIlgSpIwIJOEAbNKYDnBlPgyJuPLmFklmJIkDMgkYcCscrlhnTbINpm95i667a1NdEcnp8wzl5xJ2eAPsk1mr7mLbntrE5Ojk1OmySVnYXiISSdN0b1732YcvowZ8WXMyHlzhUKhUCgUCoVCoVAoFAqFcTjkrDtUCk3UitDVa1UHg+5QKTRRK0JXr1UdciSwnMByAss5TOjs4lKhKXkeGV/GnDdX0A36PXQLi0voSp6HrpOm6Ab9HrqN8prDBFxmlC9jkjDgpof7h+RJYDmB5VzmzNVBg2vKx0xCYDmB5QSWE1jOJWdSNtDtsYtue2sT3dHJKf+TwHIuM8aXMRlfxpw3V5im3/l2uzjCt2CHAAAAAElFTkSuQmCC",
+  },
+  {
+    id: "n-android",
+    name: "Андроид",
+    category: "neutral",
+    description: "Хромированный корпус с фиолетовой подсветкой",
+    model: 'classic',
+    style: "cyber",
+    dataUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAC6UlEQVR4Ae3BMWgbVwCA4f8eB/Jim7q9IRDQVHEZtGhuV2WQNHQrB4q3LKGbFi9ajUCDIGs6xIKDBgSFqnBxp6JOHbyoIocWIy8xXOtyEm51Q7lyBcFDJM9SJEtq3n2fwR3Cf+IYhbNvz1D55umxwQriOP4ChbPvvkfl+OuvfkFBoDmB5gSaE2hOoDmB5gSaM37+9bcYhU+Ojpip1U5INJunzPx5c4PK5w8fonLz919fonD06Weo3PzxOyq3t7eoCDRnsgEXFz7vUijYbJvJBhQKNrtKsKDXLx8w8/rlAz4WJgt6fPyWn2r85/HxW5ZxceHzLoWCzbaZLKhWO2GmVjuh2TxlUYWCza4SLKjZPGWm2TzlY2Ewx+sNYiRet4Os1agbKHi9QYyC1+2g0mrUDRS83iBG4nU7yFqNusESBJoTaE6gOeP5i1cxkv2DQ2STcYgsiqbIMpk9ZD90f0SlUi4hi6IpKpnMHrL9g0Nkk3GILIqmyGrPnhgomKyZ4zioTMYhu0SwI2yrSsK2qmyS4B4F/SJBv8gi/KBNwg/abJLgngT9Io/y8CgPQb/IImyrSsK2qmyKyQ7xgzYJP2jzPq7rIquUS6zCZI7rusgq5RIfwsqf86ZfJGHlz7mLbVXxgza2VcUP2ryP4zjIJuOQeXY2R8IfDbmLyRzHcZBNxiEfysqfsyg/aJPwgzar8kdDFiXQnMmS7GwO2eX1Ff9nJltmZ3OoXF5fcZ9MtswfDVHJZPaYF/SLJKz8OalUKpVKpVKpVCqVSqVSyzJYM683iJF43Q6yVqNuoOD1BjESr9tB1mrUDdZIoDmB5gSaM1jR8xevYiT7B4fIJuMQWRRNkWUye8j2Dw6RTcYhsiiaIqs9e2KwAoHmBJoTaE6gOZMd47ouskq5xH0yWTPXdZFVyiWW4TgOssk4ZJ6dzZHwR0NWZbJmjuMgm4xD1s0fDVkXgeZMNszO5pBdXl+xTQLNCXZQ0C8S9Itswr9jSuFiBPB4JAAAAABJRU5ErkJggg==",
+  },
+  {
+    id: "n-void-traveler",
+    name: "Странник пустоты",
+    category: "neutral",
+    description: "Тёмный плащ с галактическими узорами",
+    model: 'classic',
+    style: "cyber",
+    dataUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAC6ElEQVR4Ae3BoW8bVxzA8e/72fFVigpsrbJkyVOAwUpCDKJKNSgIKygaCQmIwUIqley/qFQS4oKQkKGC8QKHRKpJQUru4HmSI3s66yzrlN69ZSDSU5S92LHP9nr3+SgeUK3+orGYTgNsxuO/FBtMyDgh44SMEzJOyDgh44SMU5XKjsZCpIBNksTYxHEBmyDwFBZv+lp/qinFjT//0Jobr39Vihtv+lp/qinFAlSlsqOxEClgkyQxNnFcwCYIPMUaCTO6unJZxFnHZROpSmVHYyFS4K6XX13Odxv8K0libOK4gE0QeIo1EmZ0euJy6+icH4Ywg9MTl8PjBrcOjxss4tU3l00hzODwuMFdV1cuj/X5eYNNIczh999cbj171uBHoLijWn2hMUynA0zjsaewqNf3NRaTiY/NaHSpsKjX9zWGycTHNBpdKuYgZJyQcULGqUplV2MQKWJKku+YtE4wlUrbmES2sEmSa0xax9goVcAksoUpSa4xaR1jGgy+KCyKrFkU/Y3Nkyc/kSYhBe+OuszjrOOyLkIK3n9s0fnQZVYH7Qams47Lqggpab9t8VgH7QY2nQ9dlkW4x+lJj/8SRUOiaEgUDYmiIbPa63V5yKtvLrNov22xLMI9Do+bLFO/3+Wi2eIhn583WDVhBWq1FvM667g8Rhj6hKFPGPqEoc9DhBXp97vM46DdYBWEFLw76nJXrdZiEwkpeP+xxa29XhcbxynjOGUcp4zjlHGcMo5TxnHKOE6Zu4LAIwg8gsAjCDwWJaTsotkil8vlcrlcLpfL5XK5XG6TKJasWn2hMUynA0zjsaewqNf3NYbJxMc0Gl0qlkjIOCHjhIxTLKhS2dUYRIqYkuQ7Jq0TTKXSNiaRLUxJco1J6xjTYPBFsQAh44SMEzJOyLgiKxZFQ0yl0jbrJGScsKH2el3uE4Y+YegThj5h6LMoISUvv/ZYxEWzxSoIKTnfbfJ/UGTDBIGH6enTn0mTkHH/ANVC8slpGRgEAAAAAElFTkSuQmCC",
+  },
+  {
+    id: "n-circuit-ghost",
+    name: "Цифровой призрак",
+    category: "neutral",
+    description: "Полупрозрачный силуэт с лаймовыми схемами",
+    model: 'classic',
+    style: "cyber",
+    dataUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAEM0lEQVR4Ae3BwWobRxzA4d/8o1puMZ7KiC4IvCaI2k8QlubgZ7CvvvS8GAQmL9DeGwKCsG+Qq3PutRC6NNBDbyYi9ZYKZITddazYke2dokLKtGxGcrRyXbTfpxijtuoZHIaDc1wGx6eKKXz1aHsLh6NffsWl8/3Pz3EQ5pww54Q5J8w5Yc4Jc06Yc2rZWzE4fP7lF6SdPrpZJ+300c06aaePbtZJO31MluGiqlVc1jY3tnGoLC7gcnUxxCW7vMZFGCPt9Am7LdJOn5G002ck7fSZVHgYclcJY+hmnajRRjfrjOhmnRHdrDOpaC3ivfAw5C5Ry96KwUGJ4GKyDBdVreKytrmxjUNlcQGXq4shLtnlNS7CGLpZZyTsthjRzTpht4Vu1rmJ8DDkLlLL3orBQYngYrIMF1Wtkic8DInWItY2N7ZxqCwu4HJ1McQlu7zGRRhDN+uM6GadEd2sMxJ2W9xUeBjyXrQWcReoZW/F4KBEcDFZhouqVnFZ29zYxqGyuIDL1cUQl+zyGhfFv9RWPYNlODjHNjg+VTjUVj2Dw3Bwjsvg+FThUFv1DJbh4Bzb4PhUcQPCnBPmnDDn1LK3YrAoEXTgk8YJIybLsBljsCmlsCkRXEyWYTPG4KKUwqZEsJksw2aMwfbm6EThIORI44Rp6MBHBz468NGBjw58dOAzTu3hfWoP7zNO2G1RFCGHDnymsbO/RRonpHHCzv4WaZyQxgnj7OxvMYmo0aYoQo40TphG1GjzMZ5tP6cIu709JiXk0IFP0cJuizxL6x5L6x5L6x6X/bdc9t+ytO6xtO6xtO6RJ+y2cHnqPWFSQo40Tiha1GiT5+ygx9lBj7ODHp/UP+PrH3Y4O+hxdtDj7KBHnqjRpihCDh34/FeebT/nNgk50jjhLgu7LYoi5NCBz7TCboub2tnfYhJRo804u709JnGvuvTpN1iUUrz7PeVvxmC7XryHqQimIpiKINcGm1KKkZePY0YePAp48Cjg5eOYvxjDh7x60WPk4rc/eE8phU0pxT8YQ56fvvuRkeHg4lschBw68ClS1GgziZMXrzl58Zpxwm6Loqhlb8VgUSLYTJZhu6oKtsq7DJsSQQc+edI4wWQZNmMMLkopbEoEm8kybMYYbG+OThSlUqlUKpVKpVKpVCqVShZFwWqrnsEyHJxjGxyfKhxqq57BMhycYxscnyoKJMw5Yc4Jc04xpWVvxWBRIozowCeNE0yWYTPGYFNKYVMi2EyWYTPGYHtzdKKYgjAjaZwwjbDb4jYIM6IDn2lEjTa3QZiRNE6Yld3eHkURZkQHPtMIuy0+5Kn3hKIIM5LGCdOIGm1ugzAjOvD5PxBmJI0TphF2W9wGYUZ04DONqNHGZbe3RxEqzEgaJ+S5XryHrfIu42M89Z5QBGFGdOAzjbDb4jYIM5LGCdOIGm1uw5/G1W/qD+nKOQAAAABJRU5ErkJggg==",
+  },
+  {
+    id: "m-paladin",
+    name: "Паладин",
+    category: "male",
+    description: "Рыцарь в синих латах с золотыми наплечниками",
+    model: 'classic',
+    style: "fantasy",
+    dataUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAADOUlEQVR4Ae3BQWhTdxzA8e/7753Eg5AOF9DAYGwvwhpQGAhRWA89eCuYUMrYbTvkkBUWaAKdYCdLDhbkHXKYl+xgQMOYvQheHkgj8zAPUiHv0F4CsqGt5LAGJqVve0i73wvuJWnSpel7n49GF+tW1sHHb+sx/Mx+ndM4whQBpwg4RcApAk4RcIqAUwSctm5lHUbooylTY4QUAafTxURsDj+bzSrjTNdOXmEQ2skr+HH+fMC72HYTw4gxaooexS+l2RO/lKYftt1kj203cRlGjKNAp0eN1Xvsaazeo1dt9Tmxc9Dmrdg5aCOZjJKiD6VcjlIux3Gi04f8zZscNxodzl4sOwjbLx8jvd64o+HD+Qc+7t79GT+zs1c1fLSezDkIFxbOI208ymn0QRFwioBTBJx2ejLvICj9BNLuThvJ2X2D9OvKN0ip737HT+37KFIy9ROuRtkmnjFolG1c8YyB6/0PP0NaTMwj3Xh2C2kxMY+UvmZr+FAcIitrYmVNehHPGDTKNq54xuD/ojNmSnYFrxbS0tMiXjP40TkEVtZEsrImrikzy7s0yjZSo2zjimcMDptOh6gxjfTi+X2kM5Npupkys7isrIlrysziJ54xcDXKNq54xmAQ9UKNZDFFLxTHULKYolc6Q2aVP+Vft3FZZfZtbW0iPaxcZU+Ttx5W2PfF9SaHSWdAt7+d4b/k8wauUsnmwN77gYOoF2okiym60RnQV8u/IEUiE3TKV9i3tbWJtL29jZ8H15scRLKYohd6wqnisVZFmqDDWhWvVcaZzpixlvC4vIBHfTmKdGoFXzoDirwq4PEKXxG8InTzJaFQKBQKhUKhUCgUCoVCw6QxZGcvlh2E7ZePkV5v3NHw0Xoy5yBcWDiPtPEopzFEioBTBJwi4DQGdHoy7yAo/QTS7k4bydl9g/TBJ9NIi4l5pBvPbiEtJuaR0tdsjQEoAk7niCnZFbxaSEtPi3jNMAhFwOkMWdSYRnrx/D7Smck00s5fLfpVL9RIFlMMg2IMJYsphkURcIoxVS/UGAbFmEoWUwyDzoASThWPtSrSBB3Wqkh/fPwjo6RzxFhLeFxewKO+HEU6tcJAFAH3N0TW4IoOa5pVAAAAAElFTkSuQmCC",
+  },
+  {
+    id: "f-druid",
+    name: "Друид",
+    category: "female",
+    description: "Хранительница леса в зелёном капюшоне с листьями",
+    model: 'classic',
+    style: "fantasy",
+    dataUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAADh0lEQVR4Ae3BMUgbCxzA4d8dh8NRRMotFXzLOdzSDreJV5BWpJQWYsEiIsbS1LHD8w1dujiJVNcOTcF0cLIY6FKKtUNvsA7X4S0ZvA4+aEGO8F4IVxpT88iDlP8LGmNNNPbu+xSO4DwZqdDAVMGkkZm5pwodTCXiVCJOJeJUIk4l4lQiTiXiFOfJSIUz5P7xRuEMqZwCZ9ahascL2PECOonGIZxZB3fRpWrZSnCQ6VyWZriLLvWcWQd30eWsqRzCXXRxZh2WrQSHWbYS/Cx30aUTqDTgLrrUXH0wT83VB/P8KrSl3mGa8f7ZI2reP3tEzVLvMI38/nmdTqZxDOn0ClWp1ATN2vEC6u14AZ1C4xhSqQl+NQp1FiYHKghb27tIq5u+QgMLkwMVGtja3qWR1U1foYHvH19WEJ6vrSPNzD1VOAaViFOJOJWIUx7evFJB0Ls0pLBURtor7yP9OdLLYfRMjqowadEMxw2och2DmqXeYaSL3ReQ8oUiUvj1G9LQ/ccKDai0UZi0CJMWzdAzObJeQJWeyXFaVNpIz+TQMzmaESYtErZBVZi0OC0abRQmLZqlZ3JgGmS9gN/8gDBpcRo02kjP5KgKkxZHCZMWuAEJ28B1DA5zbSWNtHprHGnq7RrHoVHH8wMkq68Hyf9SQLI3VCS9S+MH0+A/bkBNWCoj7ZX3qcnmCiRsg8tvPvPDNG2lcQDbNPD8gNOWsA2OsjGRQsoXikgvro8iDa14NKJxAM8PaFbur785zzQOYZsGnh9wFKuvB0nv0mgkLJWR9C6Ns6RRxzYNamzTICyVkcxL3bTSP2GJs6RxzqTTaaQ7d8eRXr9a4zg06mTe5ZDGBvuRsh8+IY0N9nOaUqkUUr5QRLpxexRpPusRi8VisVgsFovFYrFYLCYptNjC5EAFYWt7F2l101do4PvHlxWE52vrSDNzTxVaSCXiVCJOJeIUTujhzSsVBL1LQwpLZaS98j7SvekppIvdF5DyhSJS+PUb0tD9xwonoBJxKhGnEnEaHebaShpp9dY40tTbNVpJo8U8P0Cy+nqQ/C8FOolGG9imgecH/IyNiRRSvlBEenF9FGloxeMkVNrA8wPOC5U2sU2D80CjxWzToMY2DcJSGcm81E0n0egw6XQa6c7dcaTXr9ZoJY0Wy7zLIY0N9iNlP3xCujfN/6RSKaR8oYh04/Yo0nzW4yT+BYTIFiRei77kAAAAAElFTkSuQmCC",
+  },
+  {
+    id: "n-mage",
+    name: "Странствующий маг",
+    category: "neutral",
+    description: "Фиолетовая мантия со звёздами и островерхая шляпа",
+    model: 'classic',
+    style: "fantasy",
+    dataUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAACyElEQVR4Ae3BsWsbZxjA4d/3WRX4BhFaTRWIBFNIBoPiSYsg03nxEGkwoYIODXTQoKlQefGgRUHe5b/AGoKQl2RQwZMXocEaOmQICVrULE1JHHoGCXFFw8F7pj1LlXyS+93zKG5gb1VcAvz4S5Igz376WbHGNIbTGE5jOI3hNIbTGE5jOGVvVVxC0ula7GYdOl2L3azD1K/vXihWSDOHTtei07X4r3azDp2uxW7WYV2oT93vXVboXrapWKHYR/0DQb75+h5BPv75iSB/OVcEa7JKmhk9yu3jeZTb5/9CM6M35y/xvDl/yTzSGRtPOmMzlc7YrIMYs0hu84/++I2bpDM2U+mMjSedsZlKZ2xWTXOT5Db/KrnNXae4Jv+w7iIMPveQ+h9aigD1fN8lQG9wSpBWv6oIUM/3XYTe4BSp1a8q5qAxnMZwGsOpJ/fLLkJ8w0IaTRykiTtGevwgh2TFEwRxRpdI48kVnne/v2Vq69vv8Hy1sYlkxRNIzugSaTy5Qjo+f64IoFkTjfaQVdDcgtrJBfMqFVJ4Gu0hYdHcgoPiDlLt5IJ5lAopwqIJwUFxhzA12kNmpVkDjfaQZSoVUsxKc4tqJxfMolRIcV2jPSQMmlt0UNzBUzu5YB6lQoowaEJyUNxhHcW4YyrVJtJhZQ+pdnSGdJwlUIzrrCY+X54ibSZe45cjVMkyfu/xSZbxaxIkxoKqL16xLPvFNFO1ozM8h5U9IpFIJBKJRCKRSCQSiUSWSbFk+Yd1F2HwuYfU/9BSBKjn+y5Cb3CK1OpXFUukMZzGcBrDKRb05H7ZRYhvWEijiYM0ccdIjx/kkKx4AskZXSKNJ1dIx+fPFQvQGE5jOI3hNHdUoz1kGTR3VKmQYhk0htMYTmO4GGumUm0iHVb2kGpHZ0jHWRYSY9msJj5fniJtJl7jl8MnWcbvPT7JMn5NFqEx3N+/e7P8mLyHDAAAAABJRU5ErkJggg==",
+  },
+  {
+    id: "m-hoodie",
+    name: "Худи-кид",
+    category: "male",
+    description: "Мятная толстовка, джинсы, белые кеды",
+    model: 'classic',
+    style: "pastel",
+    dataUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAACvklEQVR4Ae3BP0iUYRzA8e/78EJYIEgcJwe+i8vr8kJtwgkN4RIEoYhDNCRKLrU4OFSEgxi4uEqBuHkoDqVDQouv2NRBQ70SLe/BcRFmXHiHKLzxEge//vB2L3d6l8/7+Rj8g21ZARGePLxPlNGJKYM2ptCcQnMKzSk0p9CcQnMKzRm2ZQUIG6uLSDeGJ4hjY3UR6cbwBFE83zdoIYXmzI3VRaK8eZ0jyv7Xb/zPFJpT1KlvYISavoERzgtFnT5s56j5sJ3jvDCJYW5qitD0/Dz1yi0vUDNy5wGh3PICNc61W7SSSQzT8/M0Ire8QLsx+M3dx9sBwl7+JdLOi6cGEfJBNSDC+soSUWZGJw0i5INqgLC+soQ0MzppEINCcwrNKTRn3Bx/FiBc6Ojkk/eWXvsqoaNqGenk+IhQqVigO9ODcy+DlLVtarJYhFx8alzPIw4nlUbqvNyFVN4/QKoeVpDGnOsGERSaM4mpVCxQLxefZstiIW1ygDRk9SONEc2kQU4qTRxOKo1UPawQh4tPlDV/lzgUmjOJqTvTQ6hULNBMQ1Y/0pq/y1kwOQWu5/E3Wdsmypz3itC0PchZMTklWdtGcj2PdmRySlzPI65pe5CzZnIKsrZNXGv+Lq1gPp8d5k+D1Gur/J6z5HoekpNKI32sfCcOkwa9+/KZX3z5TDM5ly6SSCQSiUQikUgkEolEItFMBk129/F2gLCXf4m08+KpQYR8UA0Q1leWkGZGJw2aSKE5heYUmjNo0M3xZwHChY5OQp+8t/TaVzmqlpFOjo8oFQt0Z3oI3X50BanzchdSef8AqXpYQRpzrhs0QKE5kxYpFQv8dAUpi4W0yQHSkNWPNEZjTNqMi0+UNX+XZlJozqRFujM9tAOF5hSaU2hOoTmTBj2fHebvBqnHVvk9kut5SE4qjfSx8p1mUmjuB48CwkWDTm/8AAAAAElFTkSuQmCC",
+  },
+  {
+    id: "f-student",
+    name: "Студентка",
+    category: "female",
+    description: "Розовый свитер, джинсовая юбка, длинный хвост",
+    model: 'classic',
+    style: "pastel",
+    dataUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAACrklEQVR4Ae3BP0gbURzA8e+93tBKISS6tIMgbzmHLje1g0NLF1uFDkWkHQoOghmcQhHs0DGDk4NDB5EOhUbH+Geyg4NONwkG8S1FMkWDYIwOcm2GwK+lPRNNNPru83G4gNfbGxLh86dJooyOZxw6mMJyCsspLKewnMJyCsspLOd4vb0h1yQ/OUfN0GyausLPnw43SHFN8pNz1OUn5+gULg3YWs/xL09fjNCoodk0nUhxga31HP+ztZ7jtnOXl77QiP6BEXY2ctT0D4yws5GjZnnpC1Fevx2nkykatLORo25nI8ddoWhCNpMhm8lwl7g0YWpmhrvG4S/hbwjfv35DGv3w3iFCuFsNiZBfXCDK8PSEQ4Rwtxoi5BcXkIanJxyaoLCcwnIKyzlmuxAidKe6kQ4OD5AqlQrSo+IZUk8iSZTSURnpuHpC3XnxlJp7j+9T9/BBF1JPIolUOiojHVdPkPrevXSIoOggQ7NphmbTXCdFhxicGuMmKNrEBAYTGExgMIHhIqvZeW6Coo20r9G+plmDU2NcF5c20b7GBIYa7WuasZqd57KSr57RDJc20r6mUYNTY7RCeWWTZig6xGp2npvgckXpH/v8aZ/LevJmhpqPW4fUzT3vop0UlnPDtT2kEntE6aIxphCgPZ8aUwjQnk8UUwjQnk+NKQRoz+dfTGCQEjqFdF48pRmKNtGeT532fC6iPZ867fnEYrFYLBaLxWKxWCwWi7WLQ4uFvyF8//oNafTDe4cI4W41RMgvLiANT084tJDCcgrLKSzncEVmuxAidKe6kQ4OD5AqlQrSo+IZUk8iiVQ6KiMdV0+Q+t69dLgCheUUllNYTmE5l1sm+eoZreRyy5RXNmklheUUllNYzuWKwrU9pBJ7ROniLzqFZAKDlNAppPPiKa2ksNwvVMHFUg71xVoAAAAASUVORK5CYII=",
+  },
+  {
+    id: "n-cat-fan",
+    name: "Любитель котов",
+    category: "neutral",
+    description: "Лавандовая толстовка с кошачьими ушками и силуэтом кота",
+    model: 'classic',
+    style: "pastel",
+    dataUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAC3klEQVR4Ae3BMWgTawDA8f99XK9UQcJ7He4KTaAOVcd7w023ZlIXQ3EWfHPBQJ0cRcH9LXXrUh+ddMp6CN7gJ7hUEaG5Qu+GPIlCGhKFe2QIfPjKvUuTNme/+/0M/sfboJeS4dP+X2S5+2fToMAEOcgwRoYxYzKMkWHMRWCSg+s5qFzP4aIQaE6gOYHmBJoTaM54G/RS5ugP/7LBHAk0Z1YWA7L8/luFLP986ZKlO/ApMsE5kmGMDGOKRJDTdX+Dsev+BpOSYYzrObiegwxjisIkp/3gBWP7wQsm5XoOMowZcT2HohBM4EmzyZNmk4vEZAIPnz1jGq7nUDQGP7n3KEhRfHz3CtXrl08NMnQO0pQMO7t7ZNncahhk6BykKYqd3T1Um1sNgwkINCfQnEBzxu372ymKxaUrjHz+ILl6zWXQ/4bqx/cBydEh9soqIw/u3ERVqSyTpdvtoDru98hyaekyqkplGVW320F13O+hurVxwyCDoCCSyGIsiSzOi+CUkqNDssgwZkyGMXkkkUUSWZwnkzMkw5iiE2hOcEr2yipF5ddr5CU4I67n4HoOrucwIsOYLHZ1iF0dYleH2NUhSWRxWkGrjV+vkYegoOzqkCSyOK2g1SYPQQH49RrzYnIOXM8hS9Bq87MksrCrQ2CBs2Q+f9zgZHXyeP/mK9Py6zWCVhuVXR1yEhnGqNbWF1AlkcUkTGZMhjFZ1tYXUCWRxd/bMWBxkrV1SqVSqVQqlUqlUqlUKpVmymDG7j0KUhQf371C9frlU4MMnYM0RbGzu4dqc6thMEMCzQk0J9CcwZRu399OUSwuXeHzB8nVay4jg/43VD++DxhJjg6xV1Z5cOcmqkplGVW320F13O+hurVxw2AKAs0J5iA5OqQoBJoTaE4wB/bKKtPw6zVmRfALClpt/HqNWRD8ooJWm1kQaE6gOZMpPX/c4L/q5PX+zVdUMoxRra0voEoii1kSaO5fBQ7cv6x5GhoAAAAASUVORK5CYII=",
+  },
+];

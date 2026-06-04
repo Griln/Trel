@@ -1,0 +1,43 @@
+name: ci
+
+# Простой CI-чек: проверяем что проект собирается. Релизы публикуются
+# вручную через scripts/publish.ps1 — ничего автоматически на GitHub не
+# заливается, чтобы не ломать существующие release-артефакты.
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - '.gitignore'
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate icon
+        run: npm run icon
+
+      - name: Build renderer + main
+        run: npm run build

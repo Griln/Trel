@@ -1,0 +1,117 @@
+{
+  "name": "trel-launcher",
+  "version": "0.3.0",
+  "description": "Trel",
+  "main": "dist-electron/main/main.js",
+  "author": "you",
+  "license": "MIT",
+  "scripts": {
+    "dev": "vite",
+    "icon": "node scripts/build-icon.js",
+    "skins": "tsc --module commonjs --target es2020 --esModuleInterop --skipLibCheck scripts/generate-skins.ts --outDir scripts/.tmp && node scripts/.tmp/generate-skins.js && node -e \"require('fs').rmSync('scripts/.tmp',{recursive:true,force:true})\"",
+    "build:renderer": "vite build",
+    "build:electron": "tsc -p tsconfig.electron.json",
+    "build": "npm run build:renderer && npm run build:electron",
+    "start": "electron .",
+    "test": "vitest run",
+    "dist": "npm run icon && npm run build && electron-builder --win",
+    "dist:publish": "npm run dist -- --publish always",
+    "smartscreen": "node scripts/smartscreen-hashes.js"
+  },
+  "dependencies": {
+    "@xmcl/core": "^2.12.0",
+    "adm-zip": "^0.5.17",
+    "axios": "^1.7.7",
+    "electron-updater": "^6.8.3",
+    "prismarine-nbt": "^2.8.0"
+  },
+  "devDependencies": {
+    "@types/adm-zip": "^0.5.8",
+    "@types/node": "^22.9.0",
+    "@types/pngjs": "^6.0.5",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@types/three": "^0.171.0",
+    "@vitejs/plugin-react": "^4.3.3",
+    "@vitest/ui": "^4.1.8",
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8",
+    "pngjs": "^7.0.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "three": "^0.171.0",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.11",
+    "vitest": "^4.1.8"
+  },
+  "build": {
+    "appId": "com.trel.launcher",
+    "productName": "Trel",
+    "asar": true,
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "build/icon.ico",
+      "build/icon.png",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "dist-electron/preload/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "resources/legacy",
+        "to": "legacy",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "mkrlord1000-sketch",
+        "repo": "Trel",
+        "releaseType": "release"
+      }
+    ],
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "Trel-${version}-${arch}.${ext}",
+      "publisherName": "Trel"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false,
+      "differentialPackage": true,
+      "deleteAppDataOnUninstall": false,
+      "shortcutName": "Trel",
+      "createDesktopShortcut": "always",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "include": "build/installer.nsh"
+    },
+    "portable": {
+      "artifactName": "Trel.exe"
+    }
+  }
+}
