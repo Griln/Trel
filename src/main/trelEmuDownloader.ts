@@ -112,8 +112,11 @@ export class TrelEmuDownloader extends EventEmitter {
     if (process.env.PORTABLE_EXECUTABLE_FILE) {
       return path.join(path.dirname(process.env.PORTABLE_EXECUTABLE_FILE), 'trel-emu');
     }
+    if (process.env.APPDATA) {
+      return path.join(process.env.APPDATA, 'Trel', 'trel-emu');
+    }
     if (process.platform === 'win32') {
-      return path.join(process.env.APPDATA || os.homedir(), 'Trel', 'trel-emu');
+      return path.join(os.homedir(), 'Trel', 'trel-emu');
     }
     if (process.platform === 'darwin') {
       return path.join(os.homedir(), 'Library', 'Application Support', 'Trel', 'trel-emu');
@@ -139,8 +142,11 @@ export class TrelEmuDownloader extends EventEmitter {
     if (process.env.PORTABLE_EXECUTABLE_FILE) {
       add(path.join(path.dirname(process.env.PORTABLE_EXECUTABLE_FILE), 'trel-emu'));
     }
+    if (process.env.APPDATA) {
+      add(path.join(process.env.APPDATA, 'Trel', 'trel-emu'));
+    }
     if (process.platform === 'win32') {
-      add(path.join(process.env.APPDATA || os.homedir(), 'Trel', 'trel-emu'));
+      add(path.join(os.homedir(), 'Trel', 'trel-emu'));
     } else if (process.platform === 'darwin') {
       add(path.join(os.homedir(), 'Library', 'Application Support', 'Trel', 'trel-emu'));
     } else {
