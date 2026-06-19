@@ -118,7 +118,7 @@ export class TrelEmuDownloader extends EventEmitter {
     if (process.platform === 'darwin') {
       return path.join(os.homedir(), 'Library', 'Application Support', 'Trel', 'trel-emu');
     }
-    return path.join(os.homedir(), '.config', 'Trel', 'trel-emu');
+    return path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), 'Trel', 'trel-emu');
   }
 
   /**
@@ -144,7 +144,7 @@ export class TrelEmuDownloader extends EventEmitter {
     } else if (process.platform === 'darwin') {
       add(path.join(os.homedir(), 'Library', 'Application Support', 'Trel', 'trel-emu'));
     } else {
-      add(path.join(os.homedir(), '.config', 'Trel', 'trel-emu'));
+      add(path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), 'Trel', 'trel-emu'));
     }
 
     if (process.resourcesPath) {
