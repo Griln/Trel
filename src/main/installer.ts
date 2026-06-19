@@ -7,27 +7,13 @@ import { BrowserWindow } from 'electron';
 import AdmZip from 'adm-zip';
 import { DownloadProgress } from '../shared/types';
 import { isSafeVersionId } from './safeIds';
+import { isUrlAllowed, scanDownloadedFileAsync, verifyDownloadSource } from './download-security';
 
 const MANIFEST_URL = 'https://launchermeta.mojang.com/mc/game/version_manifest_v2.json';
 const RESOURCES_HOST = 'https://resources.download.minecraft.net';
 const S3_LEGACY_HOST = 'https://s3.amazonaws.com/Minecraft.Download';
 
-const ALLOWED_DOWNLOAD_HOSTS = new Set([
-  'launchermeta.mojang.com', 'resources.download.minecraft.net',
-  'libraries.minecraft.net', 's3.amazonaws.com',
-  'files.minecraftforge.net', 'maven.neoforged.net',
-  'meta.fabricmc.net', 'meta.quiltmc.org',
-  'bmclapi2.bangbang93.com',
-]);
-
-export function isUrlAllowed(url: string): boolean {
-  try {
-    const u = new URL(url);
-    // HTTP removed from whitelist — enforce HTTPS only for download integrity
-    if (u.protocol !== 'https:') return false;
-    return ALLOWED_DOWNLOAD_HOSTS.has(u.hostname);
-  } catch { return false; }
-}
+export { isUrlAllowed } from './download-security';
 
 interface MojangDownload { url: string; sha1: string; size: number; }
 interface MojangLibraryArtifact extends MojangDownload { path: string; }
@@ -122,6 +108,7 @@ function atomicWriteJson(filePath: string, data: unknown): void {
 async function downloadWithRetry(
   url: string, dest: string, expectedSha1: string | undefined,
   attempts = 5, expectedSize?: number,
+  onProgress?: (bytesDownloadedForFile: number, deltaBytes: number) => void,
 ): Promise<void> {
   await ensureDir(path.dirname(dest));
 
@@ -142,8 +129,10 @@ async function downloadWithRetry(
   }
 
   let lastErr: unknown;
-  // Validate initial URL
-  if (!isUrlAllowed(url)) throw new Error(`URL not allowed: ${url}`);
+  // Validate initial URL. Trusted Minecraft/Mojang/Microsoft/CDN sources are
+  // auto-confirmed; unknown hosts stay blocked.
+  const initialTrust = verifyDownloadSource(url);
+  if (!initialTrust.allowed) throw new Error(`${initialTrust.reason}: ${url}`);
   let currentUrl = url;
   const CHAIN_DEADLINE_MS = 300000; // 5 minutes max for entire redirect chain + download
   for (let i = 0; i < attempts; i++) {
@@ -164,7 +153,8 @@ async function downloadWithRetry(
         const loc = resp.headers.location;
         // Resolve relative URLs
         const nextUrl = new URL(loc, currentUrl).toString();
-        if (!isUrlAllowed(nextUrl)) throw new Error(`Redirect to disallowed host: ${nextUrl}`);
+        const redirectTrust = verifyDownloadSource(nextUrl);
+        if (!redirectTrust.allowed) throw new Error(`${redirectTrust.reason}: ${nextUrl}`);
         currentUrl = nextUrl;
         redirectHops++;
         resp = await axios.get(currentUrl, {
@@ -172,8 +162,15 @@ async function downloadWithRetry(
           validateStatus: (s) => s >= 200 && s < 400,
         });
       }
+      let currentFileBytes = 0;
       await new Promise<void>((resolve, reject) => {
         const out = fs.createWriteStream(tmp);
+        resp.data.on('data', (chunk: Buffer) => {
+          currentFileBytes += chunk.length;
+          if (onProgress) {
+            try { onProgress(currentFileBytes, chunk.length); } catch { /* swallow callback errors */ }
+          }
+        });
         resp.data.on('error', (e: Error) => { try { out.close(); } catch {} reject(e); });
         out.on('error', reject);
         out.on('finish', () => resolve());
@@ -188,6 +185,7 @@ async function downloadWithRetry(
       }
       try { if (fs.existsSync(dest)) fs.unlinkSync(dest); } catch {}
       safeRenameSync(tmp, dest);
+      await scanDownloadedFileAsync(dest);
       return;
     } catch (e) {
       lastErr = e;
@@ -237,9 +235,99 @@ export class MinecraftInstaller {
   constructor(gameDir: string) { this.gameDir = gameDir; }
   setGameDir(dir: string) { this.gameDir = dir; }
 
+  private manifestCachePath(): string {
+    return path.join(this.gameDir, '.trel-cache', 'version_manifest_v2.json');
+  }
+
+  private readCachedManifestVersions(): { id: string; type: string; url: string; releaseTime: string }[] {
+    try {
+      const cachePath = this.manifestCachePath();
+      if (!fs.existsSync(cachePath)) return [];
+      const data = JSON.parse(fs.readFileSync(cachePath, 'utf-8'));
+      if (!Array.isArray(data?.versions)) return [];
+      return data.versions.filter((v: any) =>
+        v && typeof v.id === 'string' && typeof v.type === 'string' &&
+        typeof v.releaseTime === 'string' && typeof v.url === 'string',
+      );
+    } catch {
+      return [];
+    }
+  }
+
+  private writeManifestCache(data: any): void {
+    try {
+      if (!data?.versions || !Array.isArray(data.versions)) return;
+      const cachePath = this.manifestCachePath();
+      fs.mkdirSync(path.dirname(cachePath), { recursive: true });
+      atomicWriteJson(cachePath, data);
+    } catch {}
+  }
+
+  private localInstalledVersionsFallback(): { id: string; type: string; url: string; releaseTime: string }[] {
+    const versionsDir = path.join(this.gameDir, 'versions');
+    if (!fs.existsSync(versionsDir)) return [];
+    const out: { id: string; type: string; url: string; releaseTime: string }[] = [];
+    for (const entry of fs.readdirSync(versionsDir)) {
+      const dir = path.join(versionsDir, entry);
+      const jar = path.join(dir, `${entry}.jar`);
+      const jsonPath = path.join(dir, `${entry}.json`);
+      if (!fs.existsSync(jar) && !fs.existsSync(jsonPath)) continue;
+      try {
+        const json = fs.existsSync(jsonPath) ? JSON.parse(fs.readFileSync(jsonPath, 'utf-8')) : {};
+        out.push({
+          id: entry,
+          type: typeof json.type === 'string' ? json.type : 'release',
+          url: typeof json.url === 'string' ? json.url : '',
+          releaseTime: typeof json.releaseTime === 'string' ? json.releaseTime : (typeof json.time === 'string' ? json.time : new Date(0).toISOString()),
+        });
+      } catch {
+        out.push({ id: entry, type: 'release', url: '', releaseTime: new Date(0).toISOString() });
+      }
+    }
+    return out.sort((a, b) => b.releaseTime.localeCompare(a.releaseTime));
+  }
+
   async fetchVersions(): Promise<{ id: string; type: string; url: string; releaseTime: string }[]> {
-    const { data } = await axios.get(MANIFEST_URL, { timeout: 15000 });
-    return data.versions;
+    const MAX_RETRIES = 3;
+    let lastError: any;
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        const { data } = await axios.get(MANIFEST_URL, {
+          timeout: 15000,
+          headers: { 'User-Agent': 'Botlume-Launcher/0.1' },
+        });
+        if (!data?.versions || !Array.isArray(data.versions)) {
+          throw new Error('Invalid manifest format: missing versions array');
+        }
+        this.writeManifestCache(data);
+        return data.versions;
+      } catch (err: any) {
+        lastError = err;
+        if (attempt < MAX_RETRIES) {
+          // Exponential backoff: 1s, 2s. Retry all network errors, not only
+          // socket hang up: Axios on Node 20 can wrap DNS/IPv6 failures into
+          // AggregateError, and the launcher should not fail the whole catalog.
+          await new Promise((r) => setTimeout(r, attempt * 1000));
+          continue;
+        }
+      }
+    }
+
+    const cached = this.readCachedManifestVersions();
+    if (cached.length > 0) {
+      console.warn(`[installer] Mojang manifest unavailable, using cached manifest (${cached.length} versions): ${lastError?.message || lastError}`);
+      return cached;
+    }
+
+    const local = this.localInstalledVersionsFallback();
+    if (local.length > 0) {
+      console.warn(`[installer] Mojang manifest unavailable, using local installed versions (${local.length} versions): ${lastError?.message || lastError}`);
+      return local;
+    }
+
+    throw new Error(
+      `Failed to fetch version manifest after ${MAX_RETRIES} attempts: ${lastError?.message || lastError}`,
+    );
   }
 
   /** Throttled progress report — max once per 100ms. */
@@ -284,11 +372,11 @@ export class MinecraftInstaller {
     const jsonPath = path.join(versionDir, versionId + '.json');
 
     if (!fs.existsSync(jsonPath)) {
-      const { data: manifest } = await axios.get(MANIFEST_URL, { timeout: 15000, maxContentLength: 4 * 1024 * 1024 });
-      if (!manifest?.versions || !Array.isArray(manifest.versions)) throw new Error('Invalid manifest format');
-      const entry = (manifest.versions as Array<{ id: string; url: string }>).find(v => v.id === versionId);
+      // Reuse fetchVersions() which already has retry + User-Agent logic
+      const versions = await this.fetchVersions();
+      const entry = (versions as Array<{ id: string; url: string }>).find(v => v.id === versionId);
       if (!entry) throw new Error(`Version ${versionId} not found in manifest`);
-      if (!isUrlAllowed(entry.url)) throw new Error(`Blocked URL: ${entry.url}`);
+      { const trust = verifyDownloadSource(entry.url); if (!trust.allowed) throw new Error(`${trust.reason}: ${entry.url}`); }
       const { data: versionJson } = await axios.get(entry.url, { timeout: 15000, maxContentLength: 2 * 1024 * 1024 });
       this.validateVersionJson(versionJson, versionId);
       atomicWriteJson(jsonPath, versionJson);
@@ -357,8 +445,14 @@ export class MinecraftInstaller {
 
     let totalBytes = 0;
     let downloadedBytes = 0;
+    /** Running bytes for the single file currently being downloaded (sequential stages). */
+    let currentFileBytes = 0;
+    /** Sum of in-flight bytes across all parallel library downloads. */
+    let libsInFlight = 0;
+    /** Sum of in-flight bytes across all parallel asset downloads. */
+    let assetsInFlight = 0;
 
-    this.report(win, { stage: 'Чтение метаданных версии', current: 0, total: 1, percent: 2 });
+    this.report(win, { stage: 'Чтение метаданных версии', current: 0, total: 1, percent: 2, bytesDownloaded: 0, bytesTotal: 0 });
     const ver = await this.fetchVersionJson(versionId);
 
     // --- Client JAR ---
@@ -370,12 +464,43 @@ export class MinecraftInstaller {
     if (clientAlready) downloadedBytes += clientSize;
     this.report(win, { stage: 'Скачивание клиента', current: 0, total: 1, percent: 5, bytesDownloaded: downloadedBytes, bytesTotal: totalBytes });
     if (ver.downloads?.client) {
-      if (!isUrlAllowed(ver.downloads.client.url)) throw new Error(`Blocked client URL: ${ver.downloads.client.url}`);
-      await downloadWithRetry(ver.downloads.client.url, clientJar, ver.downloads.client.sha1, 5, clientSize);
+      { const trust = verifyDownloadSource(ver.downloads.client.url); if (!trust.allowed) throw new Error(`${trust.reason}: ${ver.downloads.client.url}`); }
+      currentFileBytes = 0;
+      await downloadWithRetry(ver.downloads.client.url, clientJar, ver.downloads.client.sha1, 5, clientSize, (running) => {
+        currentFileBytes = running;
+        const overall = downloadedBytes + currentFileBytes + libsInFlight + assetsInFlight;
+        const pct = totalBytes > 0
+          ? Math.max(0, Math.min(100, Math.floor((overall / totalBytes) * 100)))
+          : 5;
+        this.report(win, {
+          stage: 'Скачивание клиента',
+          current: running,
+          total: clientSize,
+          percent: pct,
+          bytesDownloaded: overall,
+          bytesTotal: totalBytes,
+        });
+      });
       if (!clientAlready) downloadedBytes += clientSize;
+      currentFileBytes = 0;
     } else if (!fs.existsSync(clientJar)) {
       const legacyUrl = `${S3_LEGACY_HOST}/versions/${versionId}/${versionId}.jar`;
-      await downloadWithRetry(legacyUrl, clientJar, undefined);
+      currentFileBytes = 0;
+      await downloadWithRetry(legacyUrl, clientJar, undefined, 5, undefined, (running) => {
+        currentFileBytes = running;
+        const overall = downloadedBytes + currentFileBytes + libsInFlight + assetsInFlight;
+        const pct = totalBytes > 0
+          ? Math.max(0, Math.min(100, Math.floor((overall / totalBytes) * 100)))
+          : 5;
+        this.report(win, {
+          stage: 'Скачивание клиента',
+          current: running,
+          total: clientSize,
+          percent: pct,
+          bytesDownloaded: overall,
+          bytesTotal: totalBytes,
+        });
+      });
     }
 
     // --- Libraries ---
@@ -384,7 +509,7 @@ export class MinecraftInstaller {
     await ensureDir(nativesDir);
 
     const libs = (ver.libraries || []).filter(libraryAllowed);
-    const libDownloadTasks: { run: () => Promise<void>; dest: string; size: number; sha1?: string }[] = [];
+    const libDownloadTasks: { run: (onProgress?: (running: number) => void) => Promise<void>; dest: string; size: number; sha1?: string }[] = [];
     const nativeArtifacts: MojangLibraryArtifact[] = [];
     const nativeExcludes: Record<string, string[]> = {};
 
@@ -393,14 +518,14 @@ export class MinecraftInstaller {
       if (art) {
         if (!isUrlAllowed(art.url)) continue;
         const dest = path.join(librariesRoot, art.path);
-        libDownloadTasks.push({ run: () => downloadWithRetry(art.url, dest, art.sha1, 5, art.size), dest, size: art.size ?? 0, sha1: art.sha1 });
+        libDownloadTasks.push({ run: (onProgress) => downloadWithRetry(art.url, dest, art.sha1, 5, art.size, onProgress), dest, size: art.size ?? 0, sha1: art.sha1 });
       } else if (lib.name && lib.url) {
         if (!isUrlAllowed(lib.url)) continue;
         const [group, artifact, version] = lib.name.split(':');
         const rel = `${group.replace(/\./g, '/')}/${artifact}/${version}/${artifact}-${version}.jar`;
         const url = lib.url.replace(/\/$/, '') + '/' + rel;
         const dest = path.join(librariesRoot, rel);
-        libDownloadTasks.push({ run: () => downloadWithRetry(url, dest, undefined), dest, size: 0 });
+        libDownloadTasks.push({ run: (onProgress) => downloadWithRetry(url, dest, undefined, 5, undefined, onProgress), dest, size: 0 });
       }
       const classifier = nativeClassifier(lib);
       if (classifier && lib.downloads?.classifiers?.[classifier]) {
@@ -409,7 +534,7 @@ export class MinecraftInstaller {
         if (lib.extract?.exclude) nativeExcludes[nat.path] = lib.extract.exclude;
         if (!isUrlAllowed(nat.url)) continue;
         const dest = path.join(librariesRoot, nat.path);
-        libDownloadTasks.push({ run: () => downloadWithRetry(nat.url, dest, nat.sha1, 5, nat.size), dest, size: nat.size ?? 0, sha1: nat.sha1 });
+        libDownloadTasks.push({ run: (onProgress) => downloadWithRetry(nat.url, dest, nat.sha1, 5, nat.size, onProgress), dest, size: nat.size ?? 0, sha1: nat.sha1 });
       }
     }
 
@@ -421,22 +546,52 @@ export class MinecraftInstaller {
     for (const t of libDownloadTasks) { if (isLikelyValid(t.dest, t.size)) { libsAlreadyDone++; libsAlreadyBytes += t.size; } }
     downloadedBytes += libsAlreadyBytes;
 
+    // Skip tasks for files that are already on disk — otherwise `libDone` would
+    // overshoot `libTotal` because parallelPool's onOne fires for every task,
+    // including the already-cached ones that downloadWithRetry handles in a stat check.
+    const libTasksToRun = libDownloadTasks.filter((t) => !isLikelyValid(t.dest, t.size));
+
     let libDone = libsAlreadyDone;
     const libTotal = libDownloadTasks.length;
     this.report(win, { stage: `Скачивание библиотек ${libDone}/${libTotal}`, current: libDone, total: libTotal, percent: 10, bytesDownloaded: downloadedBytes, bytesTotal: totalBytes });
-    await parallelPool(libDownloadTasks, async (t) => {
-      const wasAlready = isLikelyValid(t.dest, t.size);
-      await t.run();
-      if (!wasAlready) downloadedBytes += t.size;
+    await parallelPool(libTasksToRun, async (t) => {
+      let taskBytes = 0;
+      try {
+        await t.run((running) => {
+          const delta = running - taskBytes;
+          taskBytes = running;
+          libsInFlight += delta;
+          const overall = downloadedBytes + currentFileBytes + libsInFlight + assetsInFlight;
+          const pct = totalBytes > 0
+            ? Math.max(0, Math.min(100, Math.floor((overall / totalBytes) * 100)))
+            : 10;
+          this.report(win, {
+            stage: `Скачивание библиотек ${libDone}/${libTotal}`,
+            current: libDone,
+            total: libTotal,
+            percent: pct,
+            bytesDownloaded: overall,
+            bytesTotal: totalBytes,
+          });
+        });
+      } finally {
+        libsInFlight -= taskBytes;
+        if (libsInFlight < 0) libsInFlight = 0;
+      }
+      downloadedBytes += t.size;
     }, getDynamicConcurrency(), () => {
       libDone++;
-      const pct = 10 + Math.floor((libDone / Math.max(1, libTotal)) * 20);
-      this.report(win, { stage: `Скачивание библиотек ${libDone}/${libTotal}`, current: libDone, total: libTotal, percent: pct, bytesDownloaded: downloadedBytes, bytesTotal: totalBytes });
+      const overall = downloadedBytes + currentFileBytes + libsInFlight + assetsInFlight;
+      const pct = totalBytes > 0
+        ? Math.max(0, Math.min(100, Math.floor((overall / totalBytes) * 100)))
+        : 10 + Math.floor((libDone / Math.max(1, libTotal)) * 20);
+      this.report(win, { stage: `Скачивание библиотек ${libDone}/${libTotal}`, current: libDone, total: libTotal, percent: pct, bytesDownloaded: overall, bytesTotal: totalBytes });
     });
 
     // Extract natives — Zip Slip protection
     if (nativeArtifacts.length) {
-      this.report(win, { stage: 'Распаковка нативных библиотек', current: 0, total: nativeArtifacts.length, percent: 32, bytesDownloaded: downloadedBytes, bytesTotal: totalBytes });
+      const overall = downloadedBytes + currentFileBytes + libsInFlight + assetsInFlight;
+      this.report(win, { stage: 'Распаковка нативных библиотек', current: 0, total: nativeArtifacts.length, percent: 32, bytesDownloaded: overall, bytesTotal: totalBytes });
       for (const nat of nativeArtifacts) {
         const jarPath = path.join(librariesRoot, nat.path);
         try {
@@ -474,7 +629,7 @@ export class MinecraftInstaller {
 
     if (ver.assetIndex) {
       const indexPath = path.join(assetsRoot, 'indexes', ver.assetIndex.id + '.json');
-      if (!isUrlAllowed(ver.assetIndex.url)) throw new Error(`Blocked assetIndex URL: ${ver.assetIndex.url}`);
+      { const trust = verifyDownloadSource(ver.assetIndex.url); if (!trust.allowed) throw new Error(`${trust.reason}: ${ver.assetIndex.url}`); }
       await downloadWithRetry(ver.assetIndex.url, indexPath, ver.assetIndex.sha1, 5, ver.assetIndex.size);
 
       const index = JSON.parse(fs.readFileSync(indexPath, 'utf-8')) as AssetIndexJson;
@@ -495,40 +650,73 @@ export class MinecraftInstaller {
 
       this.report(win, { stage: `Скачивание ассетов ${assetsAlreadyDone}/${total}`, current: assetsAlreadyDone, total, percent: 40, bytesDownloaded: downloadedBytes, bytesTotal: totalBytes });
 
-      const assetTasks = entries.map(([name, { hash, size }]) => async () => {
-        if (!/^[a-f0-9]{40}$/.test(hash)) return;
-        const prefix = hash.slice(0, 2);
-        const url = `${RESOURCES_HOST}/${prefix}/${hash}`;
-        const dest = path.join(assetsRoot, 'objects', prefix, hash);
-        const wasAlready = isLikelyValid(dest, size);
-        await downloadWithRetry(url, dest, hash, 5, size);
-        if (!wasAlready) downloadedBytes += size || 0;
-        if (index.virtual) {
-          const vdest = path.join(assetsRoot, 'virtual', ver.assetIndex!.id, name);
-          const resolved = path.resolve(vdest);
-          const base = path.resolve(assetsRoot, 'virtual');
-          if (resolved.startsWith(base + path.sep) || resolved === base) {
-            await ensureDir(path.dirname(vdest));
-            if (!fs.existsSync(vdest)) fs.copyFileSync(dest, vdest);
+      // Skip tasks for assets that are already on disk — otherwise `assetDone`
+      // would overshoot `total` because parallelPool's onOne fires for every task,
+      // including the already-cached ones.
+      const assetTasks = entries
+        .filter(([, { hash, size }]) => {
+          if (!/^[a-f0-9]{40}$/.test(hash)) return false;
+          const prefix = hash.slice(0, 2);
+          const dest = path.join(assetsRoot, 'objects', prefix, hash);
+          return !isLikelyValid(dest, size);
+        })
+        .map(([name, { hash, size }]) => async () => {
+          const prefix = hash.slice(0, 2);
+          const url = `${RESOURCES_HOST}/${prefix}/${hash}`;
+          const dest = path.join(assetsRoot, 'objects', prefix, hash);
+          let taskBytes = 0;
+          try {
+            await downloadWithRetry(url, dest, hash, 5, size, (running) => {
+              const delta = running - taskBytes;
+              taskBytes = running;
+              assetsInFlight += delta;
+              const overall = downloadedBytes + currentFileBytes + libsInFlight + assetsInFlight;
+              const pct = totalBytes > 0
+                ? Math.max(0, Math.min(100, Math.floor((overall / totalBytes) * 100)))
+                : 40;
+              this.report(win, {
+                stage: `Скачивание ассетов ${assetDone}/${total}`,
+                current: assetDone,
+                total,
+                percent: pct,
+                bytesDownloaded: overall,
+                bytesTotal: totalBytes,
+              });
+            });
+          } finally {
+            assetsInFlight -= taskBytes;
+            if (assetsInFlight < 0) assetsInFlight = 0;
           }
-        }
-        if (index.map_to_resources) {
-          const rdest = path.join(this.gameDir, 'resources', name);
-          const resolved = path.resolve(rdest);
-          const base = path.resolve(this.gameDir, 'resources');
-          if (resolved.startsWith(base + path.sep) || resolved === base) {
-            await ensureDir(path.dirname(rdest));
-            if (!fs.existsSync(rdest)) fs.copyFileSync(dest, rdest);
+          downloadedBytes += size || 0;
+          if (index.virtual) {
+            const vdest = path.join(assetsRoot, 'virtual', ver.assetIndex!.id, name);
+            const resolved = path.resolve(vdest);
+            const base = path.resolve(assetsRoot, 'virtual');
+            if (resolved.startsWith(base + path.sep) || resolved === base) {
+              await ensureDir(path.dirname(vdest));
+              if (!fs.existsSync(vdest)) fs.copyFileSync(dest, vdest);
+            }
           }
-        }
-      });
+          if (index.map_to_resources) {
+            const rdest = path.join(this.gameDir, 'resources', name);
+            const resolved = path.resolve(rdest);
+            const base = path.resolve(this.gameDir, 'resources');
+            if (resolved.startsWith(base + path.sep) || resolved === base) {
+              await ensureDir(path.dirname(rdest));
+              if (!fs.existsSync(rdest)) fs.copyFileSync(dest, rdest);
+            }
+          }
+        });
 
       let assetDone = assetsAlreadyDone;
       await parallelPool(assetTasks, (t) => t(), getDynamicConcurrency(), () => {
         assetDone++;
         if (assetDone % 10 === 0 || assetDone === total) {
-          const pct = 40 + Math.floor((assetDone / Math.max(1, total)) * 58);
-          this.report(win, { stage: `Скачивание ассетов ${assetDone}/${total}`, current: assetDone, total, percent: pct, bytesDownloaded: downloadedBytes, bytesTotal: totalBytes });
+          const overall = downloadedBytes + currentFileBytes + libsInFlight + assetsInFlight;
+          const pct = totalBytes > 0
+            ? Math.max(0, Math.min(100, Math.floor((overall / totalBytes) * 100)))
+            : 40 + Math.floor((assetDone / Math.max(1, total)) * 58);
+          this.report(win, { stage: `Скачивание ассетов ${assetDone}/${total}`, current: assetDone, total, percent: pct, bytesDownloaded: overall, bytesTotal: totalBytes });
         }
       });
     }

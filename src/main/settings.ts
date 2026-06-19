@@ -38,6 +38,7 @@ export class SettingsStore {
         if (typeof raw.memoryMb === 'number' && raw.memoryMb >= 256 && raw.memoryMb <= 32768) out.memoryMb = raw.memoryMb;
         if (typeof raw.javaPath === 'string') out.javaPath = raw.javaPath;
         if (typeof raw.lastVersionId === 'string') out.lastVersionId = raw.lastVersionId;
+        if (raw.lastVersionEdition === 'java' || raw.lastVersionEdition === 'bedrock') out.lastVersionEdition = raw.lastVersionEdition;
         if (typeof raw.theme === 'string' && (THEME_IDS as string[]).includes(raw.theme)) {
           out.theme = raw.theme as ThemeId;
         }

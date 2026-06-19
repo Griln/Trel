@@ -26,6 +26,16 @@ export interface VersionInfo {
   url: string;
 }
 
+export interface BedrockVersionInfo {
+  id: string;
+  type: 'bedrock';
+  releaseTime: string;
+  /** WP post ID used to resolve download link. */
+  postId: number;
+  /** page slug (minecraft-be-1-26-3 etc.) */
+  slug: string;
+}
+
 export interface LaunchOptions {
   versionId: string;
   account: MinecraftAccount;
@@ -37,6 +47,7 @@ export interface LauncherSettings {
   memoryMb: number;
   javaPath?: string;
   lastVersionId?: string;
+  lastVersionEdition?: 'java' | 'bedrock';
   /** Активная тема UI. По умолчанию — 'mono'. */
   theme?: ThemeId;
   jvmArgs?: string;
@@ -95,9 +106,18 @@ export interface ContentItem {
   size: number;
   enabled: boolean;
   isFolder: boolean;
+  meta?: {
+    title?: string;
+    version?: string;
+    loader?: string;
+    authors?: string[];
+    minecraft?: string;
+    dependencies?: string[];
+    warnings?: string[];
+  };
 }
 
-export type Page = 'home' | 'browse' | 'installed' | 'worlds' | 'content' | 'servers' | 'skin' | 'accounts' | 'settings' | 'import';
+export type Page = 'home' | 'browse' | 'installed' | 'worlds' | 'content' | 'servers' | 'skin' | 'accounts' | 'settings' | 'import' | 'diagnostics';
 
 export type Locale = 'ru' | 'en' | 'zh' | 'es' | 'de';
 

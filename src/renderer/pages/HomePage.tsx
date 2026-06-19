@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import type { DownloadProgress, LauncherSettings, MinecraftAccount, VersionInfo } from '../../shared/types';
+import type { BedrockVersionInfo, DownloadProgress, LauncherSettings, MinecraftAccount, VersionInfo } from '../../shared/types';
 import type { JavaPlan, InstalledVersionDetail, LoaderType } from '../../preload/preload';
 import {
   IconPlay, IconInfo, IconAlert, IconCheck, IconCube, IconFolder, IconArrow,
@@ -28,7 +28,7 @@ export const HomePage: React.FC<Props> = ({
   const t = useT();
 
   const typeLabel: Record<string, string> = {
-    release: t('home.typeRelease'), snapshot: t('home.typeSnapshot'), old_beta: 'beta', old_alpha: 'alpha',
+    release: t('home.typeRelease'), snapshot: t('home.typeSnapshot'), old_beta: 'beta', old_alpha: 'alpha', bedrock: 'Bedrock',
   };
   const [versions, setVersions] = useState<VersionInfo[]>([]);
   const [installed, setInstalled] = useState<Set<string>>(new Set());
@@ -74,13 +74,15 @@ export const HomePage: React.FC<Props> = ({
     return sorted[0];
   }, [settingsLastId, candidateIds, versions]);
 
-  const lastDetail = useMemo(() => details.find((d) => d.id === lastId) ?? null, [details, lastId]);
+  const lastDetail = useMemo(() => {
+    const matches = details.filter((d) => d.id === lastId);
+    return matches.find((d) => d.edition === settings.lastVersionEdition) ?? matches[0] ?? null;
+  }, [details, lastId, settings.lastVersionEdition]);
 
   useEffect(() => {
     let cancelled = false;
     window.api.minecraft.versions().then((v) => { if (!cancelled) setVersions(v); }).catch(() => {});
-    window.api.minecraft.installed().then((list) => { if (!cancelled) setInstalled(new Set(list)); });
-    window.api.minecraft.installedDetailed().then((d) => { if (!cancelled) setDetails(d); }).catch(() => {});
+    window.api.minecraft.installedDetailed().then((d) => { if (!cancelled) { setDetails(d); setInstalled(new Set(d.map((x) => x.id))); } }).catch(() => {});
 
     const offProgress = window.api.minecraft.onProgress(setProgress);
     const flushLogState = () => {
@@ -99,20 +101,29 @@ export const HomePage: React.FC<Props> = ({
         logFlushTimerRef.current = window.setTimeout(flushLogState, 200);
       }
     });
+    let launchHoldTimer: number | null = null;
+    const clearLaunchHold = () => {
+      if (launchHoldTimer !== null) {
+        window.clearTimeout(launchHoldTimer);
+        launchHoldTimer = null;
+      }
+    };
     const offExit = window.api.minecraft.onExit((code) => {
+      clearLaunchHold();
       setStatus(t('home.exitStatus', { code: String(code) }));
       setStatusType(code === 0 ? 'success' : 'error');
       setBusy(false);
     });
     const offLaunchStart = window.api.minecraft.onLaunchStart(() => {
-      // Игра spawn'нулась, но окно ещё не открылось — держим кнопку
+      // Игра spawn'нулась, но окно ещё не открылось, держим кнопку
       // «Запуск...» ещё ~3 секунды, пока Java не инициализирует окно.
-      const hold = setTimeout(() => setBusy(false), 3000);
-      // Если игра упала раньше — onExit сбросит busy и очистит таймер.
-      const offExitLocal = window.api.minecraft.onExit(() => clearTimeout(hold));
-      return () => offExitLocal();
+      clearLaunchHold();
+      launchHoldTimer = window.setTimeout(() => {
+        setBusy(false);
+        launchHoldTimer = null;
+      }, 3000);
     });
-    // manifestUpdated приходит после consolidateInstalls — обновляем данные.
+    // manifestUpdated приходит после consolidateInstalls, обновляем данные.
     // Без этого sidebar показывает phantom-счётчик пока не перезайдёт.
     const offManifest = window.api.minecraft.onManifestUpdated((details) => {
       setDetails(details);
@@ -120,6 +131,7 @@ export const HomePage: React.FC<Props> = ({
     });
     return () => {
       cancelled = true;
+      clearLaunchHold();
       offProgress(); offLog(); offExit(); offLaunchStart(); offManifest();
       if (logFlushTimerRef.current) {
         window.clearTimeout(logFlushTimerRef.current);
@@ -133,20 +145,22 @@ export const HomePage: React.FC<Props> = ({
   }, [logLines.length]);
 
   useEffect(() => {
-    if (!lastId) { setJavaPlan(null); return; }
+    if (!lastId || lastDetail?.edition === 'bedrock') { setJavaPlan(null); return; }
     let cancelled = false;
     window.api.java.planFor(lastId).then((p) => { if (!cancelled) setJavaPlan(p); }).catch(() => {});
     return () => { cancelled = true; };
-  }, [lastId]);
+  }, [lastId, lastDetail?.edition]);
 
   // Для отображения берём метаданные базовой ванильной версии (релиз/дата),
   // даже если активна модифицированная (Forge/Fabric) — у мод-профиля своих
   // мета-данных нет, он наследует от базы.
   const baseForMeta = lastDetail?.baseMc ?? lastId;
-  const lastVersion = useMemo(
-    () => versions.find((v) => v.id === baseForMeta),
-    [versions, baseForMeta],
-  );
+  const lastVersion = useMemo(() => {
+    if (lastDetail?.edition === 'bedrock') {
+      return { id: lastId, type: 'bedrock', releaseTime: new Date(0).toISOString(), postId: 0, slug: lastId } as BedrockVersionInfo;
+    }
+    return versions.find((v) => v.id === baseForMeta);
+  }, [versions, baseForMeta, lastDetail?.edition, lastId]);
   const isInstalled = installed.has(lastId);
   const heroTitle = lastDetail?.loader
     ? `${lastDetail.baseMc} + ${loaderLabel[lastDetail.loader]}`
@@ -165,9 +179,10 @@ export const HomePage: React.FC<Props> = ({
       .map((id): VersionInfo => {
         // Если в манифесте Mojang нет — это модовый/легаси профиль:
         // делаем минимальный VersionInfo, чтобы карточка всё равно отрисовалась.
+        const det = details.find((d) => d.id === id);
+        if (det?.edition === 'bedrock') return { id, type: 'bedrock', url: '', releaseTime: new Date(0).toISOString(), postId: 0, slug: id } as any;
         const v = versions.find((x) => x.id === id);
         if (v) return v;
-        const det = details.find((d) => d.id === id);
         const baseV = det?.baseMc ? versions.find((x) => x.id === det.baseMc) : undefined;
         return {
           id,
@@ -188,19 +203,26 @@ export const HomePage: React.FC<Props> = ({
     setShowLog(false);
     setStatusType('neutral');
     try {
-      if (!isInstalled) {
-        // Не установлено — качаем сначала
-        setStatus(t('home.downloading', { id: lastId }));
-        await window.api.minecraft.install(lastId);
-        const ids = await window.api.minecraft.installed();
-        setInstalled(new Set(ids));
+      if (lastDetail?.edition === 'bedrock') {
+        setStatus(t('home.launching'));
+        onSettingsChange({ ...settings, lastVersionId: lastId, lastVersionEdition: 'bedrock' });
+        await window.api.bedrock.launch(lastId, '');
+      } else {
+        if (!isInstalled) {
+          // Не установлено — качаем сначала
+          setStatus(t('home.downloading', { id: lastId }));
+          await window.api.minecraft.install(lastId);
+          const det = await window.api.minecraft.installedDetailed();
+          setDetails(det);
+          setInstalled(new Set(det.map((x) => x.id)));
+        }
+        // Уже установлено — сразу запускаем без проверок
+        setStatus(t('home.launching'));
+        onSettingsChange({ ...settings, lastVersionId: lastId, lastVersionEdition: 'java' });
+        await window.api.minecraft.launch({
+          versionId: lastId, account, memoryMb: settings.memoryMb,
+        });
       }
-      // Уже установлено — сразу запускаем без проверок
-      setStatus(t('home.launching'));
-      onSettingsChange({ ...settings, lastVersionId: lastId });
-      await window.api.minecraft.launch({
-        versionId: lastId, account, memoryMb: settings.memoryMb,
-      });
       setStatus(t('home.running'));
       setStatusType('success');
     } catch (e) {
@@ -385,7 +407,7 @@ export const HomePage: React.FC<Props> = ({
                 key={v.id}
                 className="recent-card"
                 onClick={() => {
-                  onSettingsChange({ ...settings, lastVersionId: v.id });
+                  onSettingsChange({ ...settings, lastVersionId: v.id, lastVersionEdition: (v as any).type === 'bedrock' ? 'bedrock' : 'java' });
                 }}
                 title={t('home.makeActive', { id: v.id })}
               >

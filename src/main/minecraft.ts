@@ -1,24 +1,32 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import * as os from 'node:os';
 import { BrowserWindow } from 'electron';
 import { launch, LaunchOption } from '@xmcl/core';
-import type { VersionInfo, LaunchOptions, LauncherSettings } from '../shared/types';
+import { spawn, execSync } from 'node:child_process';
+import type { VersionInfo, BedrockVersionInfo, LaunchOptions, LauncherSettings, ContentKind } from '../shared/types';
 import { CONTENT_FOLDERS } from '../shared/types';
+import { BEDROCK_PACKAGE } from '../shared/constants';
 import { supportsCustomSkin } from '../shared/skin-support';
 import { JavaService } from './java';
 import { MinecraftInstaller } from './installer';
+import { BedrockInstaller } from './bedrock-installer';
 import { LoaderService, LoaderType } from './loaders';
 import { WorldService } from './worlds';
 import { SkinServer } from './skin-server';
 import { AuthlibInjector } from './authlib';
+import { TrelEmuService } from './trelEmu';
 import { LEGACY_VERSIONS, isLegacyVersion, launchLegacy, installLegacy } from './legacy-versions';
+export { BEDROCK_PACKAGE };
 
 export interface InstalledVersionDetail {
-  /** Raw folder name (e.g. "1.20.1" or "1.20.1-forge-47.2.0"). */
+  /** Raw folder name (e.g. "1.20.1", "1.20.1-forge-47.2.0" or Bedrock APK id). */
   id: string;
-  /** The base Minecraft version. For vanilla equals id. */
+  /** Java base Minecraft version or Bedrock APK id. */
   baseMc: string;
-  /** Mod loader if this is a modded profile, otherwise null. */
+  /** Distinguishes Java profiles from Bedrock APK installs. */
+  edition: 'java' | 'bedrock';
+  /** Mod loader if this is a modded Java profile, otherwise null. */
   loader: LoaderType | null;
   /** Loader-specific version (e.g. "47.2.0" for Forge). */
   loaderVersion: string | null;
@@ -87,7 +95,9 @@ function detectLoaderFromId(
 
 export class MinecraftService {
   private installer: MinecraftInstaller;
+  public bedrock: BedrockInstaller;
   public loaders: LoaderService;
+  public trelEmu: TrelEmuService;
   private worlds: WorldService;
   /** Shared между клиентом и серверами — авторизация и скины через один mock. */
   private skinServer: SkinServer;
@@ -99,6 +109,8 @@ export class MinecraftService {
   private runningVersions = new Set<string>();
   /** Mutex для revertToVanilla — предотвращает race condition при параллельных IPC-вызовах. */
   private revertLock: Promise<unknown> = Promise.resolve();
+  /** Кэш пути к ADB — один раз нашли и переиспользуем. */
+  private adbPath: string | null | undefined = undefined;
 
   constructor(
     private gameDir: string,
@@ -109,10 +121,12 @@ export class MinecraftService {
     authlib?: AuthlibInjector,
   ) {
     this.installer = new MinecraftInstaller(gameDir);
-    this.loaders = new LoaderService(gameDir, java, this.installer);
-    this.worlds = worlds ?? new WorldService(gameDir);
+    this.bedrock = new BedrockInstaller(gameDir);
+    this.trelEmu = new TrelEmuService();
     // launcherDir для authlib-injector кэша. Если не передан — кладём рядом с gameDir.
     this.launcherDir = launcherDir ?? path.dirname(gameDir);
+    this.loaders = new LoaderService(gameDir, java, this.installer);
+    this.worlds = worlds ?? new WorldService(gameDir);
     this.skinServer = skinServer ?? new SkinServer();
     this.authlib = authlib ?? new AuthlibInjector(this.launcherDir);
   }
@@ -120,6 +134,7 @@ export class MinecraftService {
   setGameDir(dir: string) {
     this.gameDir = dir;
     this.installer.setGameDir(dir);
+    this.bedrock.setGameDir(dir);
     this.loaders.setGameDir(dir);
     this.worlds.setGameDir(dir);
   }
@@ -135,6 +150,577 @@ export class MinecraftService {
       releaseTime: v.releaseTime,
     }));
     return [...(list as VersionInfo[]), ...legacy];
+  }
+
+  // ─── Bedrock ──────────────────────────────────────────────────────────
+
+  async fetchBedrockVersions(): Promise<BedrockVersionInfo[]> {
+    return this.bedrock.fetchVersions();
+  }
+
+  installedBedrockIds(): string[] {
+    return this.bedrock.installedVersionIds();
+  }
+
+  isBedrockInstalled(versionId: string): boolean {
+    return this.bedrock.isInstalled(versionId);
+  }
+
+  async installBedrock(versionId: string, win: BrowserWindow) {
+    await this.bedrock.install(versionId, win);
+  }
+
+  uninstallBedrock(versionId: string): boolean {
+    return this.bedrock.uninstall(versionId);
+  }
+
+  bedrockApkPath(versionId: string): string {
+    return this.bedrock.apkPath(versionId);
+  }
+
+  /** Ищет adb.exe: сначала в bundled resources, потом PATH и SDK. */
+  private findAdb(): string | null {
+    if (this.adbPath !== undefined) return this.adbPath;
+    const candidates: string[] = [];
+
+    // Bundled with the launcher (resources/platform-tools/)
+    try {
+      const bundled = path.join(process.resourcesPath, 'platform-tools', 'adb.exe');
+      if (fs.existsSync(bundled)) candidates.push(bundled);
+    } catch {}
+
+    // PATH
+    const pathEnv = process.env.PATH || '';
+    for (const dir of pathEnv.split(path.delimiter)) {
+      candidates.push(path.join(dir, 'adb.exe'), path.join(dir, 'adb'));
+    }
+    // Android SDK
+    const local = process.env.LOCALAPPDATA || '';
+    if (local) candidates.push(path.join(local, 'Android', 'Sdk', 'platform-tools', 'adb.exe'));
+    const appData = process.env.APPDATA || '';
+    if (appData) candidates.push(path.join(appData, 'Android', 'Sdk', 'platform-tools', 'adb.exe'));
+    // Program Files
+    candidates.push(
+      'C:\\Program Files\\Android\\Sdk\\platform-tools\\adb.exe',
+      'C:\\adb\\adb.exe',
+    );
+    for (const c of candidates) {
+      if (fs.existsSync(c)) { this.adbPath = c; return c; }
+    }
+    this.adbPath = null;
+    return null;
+  }
+
+  /**
+   * ADB для TrelEmu работает на изолированном server port 5038. Если вызвать
+   * обычный `adb -s 127.0.0.1:5555 ...`, adb пойдёт в server 5037 и выдаст
+   * `device '127.0.0.1:5555' not found`, хотя TrelEmu уже подключён.
+   */
+  private adbServerArgsForSerial(serial?: string): string {
+    if (serial && /^(127\.0\.0\.1|localhost):5555$/i.test(serial)) return '-P 5038 ';
+    return '';
+  }
+
+  private adbEnvForSerial(serial?: string): NodeJS.ProcessEnv {
+    if (serial && /^(127\.0\.0\.1|localhost):5555$/i.test(serial)) {
+      return { ...process.env, ANDROID_ADB_SERVER_PORT: '5038', ADB_SERVER_PORT: '5038', ADB_SERVER_SOCKET: 'tcp:127.0.0.1:5038' };
+    }
+    return process.env;
+  }
+
+  private adbCmd(adb: string, serial: string | undefined, args: string): string {
+    return `"${adb}" ${this.adbServerArgsForSerial(serial)}${args}`;
+  }
+
+  private adbExec(adb: string, serial: string, args: string, timeout = 15_000): string {
+    return execSync(this.adbCmd(adb, serial, `-s ${serial} ${args}`), {
+      timeout,
+      encoding: 'utf-8',
+      stdio: 'pipe',
+      env: this.adbEnvForSerial(serial),
+      windowsHide: true,
+    });
+  }
+
+  private execShellAsync(cmd: string, timeout = 15_000, env: NodeJS.ProcessEnv = process.env): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const child = spawn(cmd, {
+        shell: true,
+        windowsHide: true,
+        env,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+      let stdout = '';
+      let stderr = '';
+      let done = false;
+      const timer = setTimeout(() => {
+        if (done) return;
+        done = true;
+        try {
+          if (child.pid) execSync(`taskkill /F /T /PID ${child.pid}`, { stdio: 'ignore', windowsHide: true, timeout: 5000 });
+        } catch {
+          try { child.kill('SIGKILL'); } catch {}
+        }
+        reject(new Error(`Command timed out after ${timeout}ms: ${cmd}\n${stderr || stdout}`));
+      }, timeout);
+
+      child.stdout?.on('data', (d) => { stdout += d.toString(); });
+      child.stderr?.on('data', (d) => { stderr += d.toString(); });
+      child.on('error', (e) => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        reject(e);
+      });
+      child.on('close', (code) => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        if (code === 0) resolve(stdout);
+        else reject(new Error(`Command failed with code ${code}: ${cmd}\n${stderr || stdout}`));
+      });
+    });
+  }
+
+  private adbExecAsync(adb: string, serial: string, args: string, timeout = 15_000): Promise<string> {
+    return this.execShellAsync(this.adbCmd(adb, serial, `-s ${serial} ${args}`), timeout, this.adbEnvForSerial(serial));
+  }
+
+  private async waitAndroidReady(adb: string, serial: string, win?: BrowserWindow): Promise<void> {
+    for (let i = 0; i < 90; i++) {
+      try {
+        const boot = (await this.adbExecAsync(adb, serial, 'shell getprop sys.boot_completed', 5000)).trim();
+        const packageReady = (await this.adbExecAsync(adb, serial, 'shell pm path android', 5000)).trim();
+        if (boot === '1' && packageReady.length > 0) return;
+      } catch {}
+      if (win && !win.isDestroyed() && i % 5 === 0) {
+        win.webContents.send('minecraft:log', `[bedrock] Жду готовность Android для запуска... ${i + 1}/90\n`);
+      }
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+    throw new Error('Android не успел загрузиться для запуска Bedrock');
+  }
+
+  private async resolveBedrockLaunchActivity(adb: string, serial: string): Promise<string | null> {
+    const commands = [
+      'shell cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.LAUNCHER com.mojang.minecraftpe',
+      'shell cmd package resolve-activity --brief com.mojang.minecraftpe',
+    ];
+
+    for (const cmd of commands) {
+      try {
+        const lines = (await this.adbExecAsync(adb, serial, cmd, 8000))
+          .split(/\r?\n/)
+          .map((x) => x.trim())
+          .filter(Boolean);
+        const component = [...lines].reverse().find((line) => line.includes('com.mojang.minecraftpe/') && !line.startsWith('priority='));
+        if (component) return component;
+      } catch {}
+    }
+
+    return null;
+  }
+
+  private async bedrockWindowFocus(adb: string, serial: string): Promise<string> {
+    const commands = [
+      'shell dumpsys window windows | grep -E "mCurrentFocus|mFocusedApp|mResumedActivity|mLastClosingApp"',
+      'shell dumpsys activity activities | grep -E "mResumedActivity|topResumedActivity|ResumedActivity|mLastPausedActivity"',
+    ];
+    const chunks: string[] = [];
+    for (const cmd of commands) {
+      try { chunks.push(await this.adbExecAsync(adb, serial, cmd, 8000)); } catch {}
+    }
+    return chunks.join('\n').trim();
+  }
+
+  private async isBedrockInForeground(adb: string, serial: string): Promise<boolean> {
+    return (await this.bedrockWindowFocus(adb, serial)).includes('com.mojang.minecraftpe');
+  }
+
+  private async dismissImmersiveModeOverlay(adb: string, serial: string): Promise<void> {
+    try { await this.adbExecAsync(adb, serial, 'shell settings put secure immersive_mode_confirmations confirmed', 5000); } catch {}
+    const focus = await this.bedrockWindowFocus(adb, serial);
+    if (focus.includes('ImmersiveModeConfirmation')) {
+      try { await this.adbExecAsync(adb, serial, 'shell input keyevent KEYCODE_DPAD_CENTER', 5000); } catch {}
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+  }
+
+  private async ensureTrelEmuNativeBridgeReady(adb: string, serial: string, win: BrowserWindow): Promise<void> {
+    if (!this.isTrelEmuSerial(serial)) return;
+    const log = (s: string) => { if (!win.isDestroyed()) win.webContents.send('minecraft:log', s); };
+    try {
+      const done = (await this.adbExecAsync(adb, serial, 'shell getprop persist.trel.nativebridge_zygote_restarted', 5000)).trim();
+      const abi = (await this.adbExecAsync(adb, serial, 'shell getprop ro.product.cpu.abilist', 5000)).trim();
+      const binfmt = (await this.adbExecAsync(adb, serial, 'shell "[ -e /proc/sys/fs/binfmt_misc/arm_exe ] && echo ARM_OK || echo NO_ARM"', 5000)).trim();
+      if (done === '1' && abi.includes('armeabi') && binfmt.includes('ARM_OK')) return;
+
+      log('[bedrock] Включаю Houdini native bridge и перезапускаю Android Runtime (zygote) один раз\n');
+      await this.adbExecAsync(
+        adb,
+        serial,
+        'shell "settings put secure immersive_mode_confirmations confirmed; setprop persist.sys.nativebridge 1; if [ -x /system/bin/enable_nativebridge ]; then /system/bin/enable_nativebridge; fi; setprop persist.trel.nativebridge_zygote_restarted 1; setprop ctl.restart zygote"',
+        20_000,
+      );
+      await new Promise((r) => setTimeout(r, 18_000));
+      await this.ensureAdbConnected(adb, serial);
+      await this.waitAndroidReady(adb, serial, win);
+    } catch (e) {
+      log(`[bedrock] Не удалось подтвердить Houdini native bridge: ${(e as Error).message}\n`);
+    }
+  }
+
+  private async bedrockCrashLog(adb: string, serial: string): Promise<string> {
+    try {
+      const out = await this.adbExecAsync(adb, serial, 'logcat -d -t 700', 15_000);
+      const lines = out.split(/\r?\n/).filter((line) =>
+        /AndroidRuntime|FATAL EXCEPTION|com\.mojang\.minecraftpe|libminecraft|libfmod|UnsatisfiedLinkError|houdini|Native bridge|SIGSEGV|Fatal signal|EGL|OpenGL|ANR|ActivityManager|crash/i.test(line),
+      );
+      return lines.slice(-120).join('\n');
+    } catch (e) {
+      return `logcat недоступен: ${(e as Error).message}`;
+    }
+  }
+
+  private async startBedrockForeground(adb: string, serial: string, win: BrowserWindow): Promise<void> {
+    const log = (s: string) => {
+      if (!win.isDestroyed()) win.webContents.send('minecraft:log', s);
+    };
+
+    await this.waitAndroidReady(adb, serial, win);
+
+    // Android-x86 ISO often boots into Google Setup Wizard. It is a HOME
+    // activity and can remain foreground forever, so Bedrock starts in the
+    // background or never becomes visible. Mark setup as complete and stop it
+    // right before launching the game too, not only from initrd.
+    try { await this.adbExecAsync(adb, serial, 'shell settings put global device_provisioned 1', 5000); } catch {}
+    try { await this.adbExecAsync(adb, serial, 'shell settings put secure user_setup_complete 1', 5000); } catch {}
+    try { await this.adbExecAsync(adb, serial, 'shell settings put secure tv_user_setup_complete 1', 5000); } catch {}
+    try { await this.adbExecAsync(adb, serial, 'shell settings put secure immersive_mode_confirmations confirmed', 5000); } catch {}
+    try { await this.adbExecAsync(adb, serial, 'shell pm disable-user --user 0 com.google.android.setupwizard', 8000); } catch {}
+    try { await this.adbExecAsync(adb, serial, 'shell pm disable com.google.android.setupwizard', 8000); } catch {}
+    try { await this.adbExecAsync(adb, serial, 'shell am force-stop com.google.android.setupwizard', 5000); } catch {}
+
+    // Make Home app deterministic at runtime too. If Android keeps several
+    // HOME candidates enabled, it opens ResolverActivity and steals the screen.
+    try { await this.adbExecAsync(adb, serial, 'shell pm enable com.farmerbb.taskbar.androidx86', 8000); } catch {}
+    for (const pkg of [
+      'com.android.launcher3',
+      'com.android.launcher',
+      'com.google.android.apps.nexuslauncher',
+      'com.google.android.tvlauncher',
+      'com.google.android.leanbacklauncher',
+      'org.android_x86.launcher',
+    ]) {
+      try { await this.adbExecAsync(adb, serial, `shell pm disable-user --user 0 ${pkg}`, 8000); } catch {}
+      try { await this.adbExecAsync(adb, serial, `shell pm disable ${pkg}`, 8000); } catch {}
+    }
+    try { await this.adbExecAsync(adb, serial, 'shell cmd package set-home-activity --user 0 com.farmerbb.taskbar.androidx86/com.farmerbb.taskbar.activity.DashboardActivity', 8000); } catch {}
+    try { await this.adbExecAsync(adb, serial, 'shell cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME', 8000); } catch {}
+
+    try { await this.adbExecAsync(adb, serial, 'shell input keyevent KEYCODE_WAKEUP', 5000); } catch {}
+    try { await this.adbExecAsync(adb, serial, 'shell wm dismiss-keyguard', 5000); } catch {}
+    // Close ResolverActivity/chooser if the user previously opened it. Do not press HOME, it may open chooser again.
+    try { await this.adbExecAsync(adb, serial, 'shell input keyevent KEYCODE_BACK', 5000); } catch {}
+    try { await this.adbExecAsync(adb, serial, 'shell input keyevent KEYCODE_BACK', 5000); } catch {}
+
+    const installed = await this.adbExecAsync(adb, serial, 'shell pm list packages com.mojang.minecraftpe', 8000);
+    if (!installed.includes('com.mojang.minecraftpe')) {
+      throw new Error('Bedrock не установлен в Android после install');
+    }
+
+    const resolved = await this.resolveBedrockLaunchActivity(adb, serial);
+    const candidates = [
+      resolved,
+      'com.mojang.minecraftpe/com.mojang.minecraftpe.MainActivity',
+      'com.mojang.minecraftpe/.MainActivity',
+    ].filter(Boolean) as string[];
+
+    let lastErr = '';
+    let lastCrashLog = '';
+    for (const component of candidates) {
+      try {
+        log(`[bedrock] Запускаю Activity: ${component}\n`);
+        try { await this.adbExecAsync(adb, serial, 'logcat -c', 8000); } catch {}
+        try { await this.adbExecAsync(adb, serial, 'shell am force-stop com.mojang.minecraftpe', 8000); } catch {}
+        await new Promise((r) => setTimeout(r, 1000));
+
+        const out = await this.adbExecAsync(
+          adb,
+          serial,
+          `shell am start -S -W -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -n ${component}`,
+          25_000,
+        );
+        log(`[bedrock] am start ответ:\n${out}\n`);
+        await new Promise((r) => setTimeout(r, 5000));
+
+        if (await this.isBedrockInForeground(adb, serial)) {
+          await this.dismissImmersiveModeOverlay(adb, serial);
+          log('[bedrock] Minecraft открыт на экране QEMU\n');
+          return;
+        }
+
+        const pid = (await this.adbExecAsync(adb, serial, 'shell "pidof com.mojang.minecraftpe || echo NONE"', 8000)).trim();
+        lastCrashLog = await this.bedrockCrashLog(adb, serial);
+        if (pid && pid !== 'NONE') {
+          const fatal = /FATAL EXCEPTION|UnsatisfiedLinkError|Fatal signal|SIGSEGV|has died/i.test(lastCrashLog);
+          if (!fatal) {
+            await this.dismissImmersiveModeOverlay(adb, serial);
+            log(`[bedrock] Minecraft процесс жив (${pid}), считаю запуск успешным\n`);
+            return;
+          }
+          log(`[bedrock] Minecraft процесс появился (${pid}), но logcat содержит crash-признаки\n`);
+        }
+
+        const focus = await this.bedrockWindowFocus(adb, serial);
+        lastErr = `Activity ${component} запустилась, но Minecraft не стал foreground. Focus: ${focus || 'пусто'}`;
+        log(`[bedrock] ${lastErr}\n`);
+        if (lastCrashLog) log(`[bedrock] crash/logcat после запуска:\n${lastCrashLog}\n`);
+      } catch (e) {
+        lastErr = (e as Error).message;
+        lastCrashLog = await this.bedrockCrashLog(adb, serial);
+        log(`[bedrock] Activity ${component} не сработала: ${lastErr.split('\n')[0]}\n`);
+        if (lastCrashLog) log(`[bedrock] crash/logcat после ошибки:\n${lastCrashLog}\n`);
+      }
+    }
+
+    try {
+      const pid = (await this.adbExecAsync(adb, serial, 'shell "pidof com.mojang.minecraftpe || echo NONE"', 8000)).trim();
+      if (pid && pid !== 'NONE') {
+        await this.dismissImmersiveModeOverlay(adb, serial);
+        log(`[bedrock] Minecraft процесс всё ещё жив (${pid}), считаю запуск успешным\n`);
+        return;
+      }
+    } catch (e) {
+      lastErr = (e as Error).message;
+    }
+
+    const focus = await this.bedrockWindowFocus(adb, serial) || 'не удалось получить focus';
+    const crash = await this.bedrockCrashLog(adb, serial) || lastCrashLog || 'crash log пустой';
+    throw new Error(`Minecraft установлен, но не открылся на экране QEMU. Последняя ошибка: ${lastErr}\nFocus:\n${focus}\nCrash/logcat:\n${crash}`);
+  }
+
+  private isTrelEmuSerial(serial?: string): boolean {
+    return !!serial && /^(127\.0\.0\.1|localhost):5555$/i.test(serial);
+  }
+
+  private async ensureAdbConnected(adb: string, serial: string): Promise<void> {
+    if (!this.isTrelEmuSerial(serial)) return;
+    try {
+      await this.execShellAsync(this.adbCmd(adb, serial, `connect ${serial}`), 10_000, this.adbEnvForSerial(serial));
+    } catch {}
+  }
+
+  private apkLooksArmOnly(apk: string): boolean {
+    try {
+      const buf = fs.readFileSync(apk);
+      const text = buf.toString('latin1');
+      const hasArm = text.includes('lib/armeabi-v7a/') || text.includes('lib/arm/');
+      const hasX86 = text.includes('lib/x86/') || text.includes('lib/x86_64/');
+      return hasArm && !hasX86;
+    } catch {
+      return false;
+    }
+  }
+
+  private bedrockNeedsArmAbiInstall(apk: string, serial: string): boolean {
+    return this.isTrelEmuSerial(serial) && this.apkLooksArmOnly(apk);
+  }
+
+  private async bedrockInstalledWithArmAbi(adb: string, serial: string): Promise<boolean> {
+    try {
+      const out = await this.adbExecAsync(adb, serial, 'shell dumpsys package com.mojang.minecraftpe | grep -E "primaryCpuAbi|secondaryCpuAbi|nativeLibrary"', 10_000);
+      return out.includes('primaryCpuAbi=armeabi-v7a') || out.includes('primaryCpuAbi=armeabi');
+    } catch {
+      return false;
+    }
+  }
+
+  /** Возвращает список serial подключённых устройств/эмуляторов через adb. */
+  listAdbDevices(): { serial: string; state: string; model?: string }[] {
+    const adb = this.findAdb();
+    if (!adb) return [];
+    try {
+      const out = execSync(`"${adb}" devices -l`, { timeout: 5000, encoding: 'utf-8' });
+      const lines = out.split('\n').slice(1);
+      const devs: { serial: string; state: string; model?: string }[] = [];
+      for (const line of lines) {
+        const parts = line.trim().split(/\s+/);
+        if (parts.length < 2 || parts[0] === '') continue;
+        const serial = parts[0];
+        const state = parts[1];
+        const modelMatch = line.match(/model:(\S+)/);
+        devs.push({ serial, state, model: modelMatch?.[1] });
+      }
+      return devs.filter((d) => d.state === 'device');
+    } catch { return []; }
+  }
+
+
+  async installBedrockContentToAndroid(kind: ContentKind, localPath: string, serial: string | undefined, win: BrowserWindow): Promise<{ target: string; serial: string; output: string }> {
+    const adb = this.findAdb();
+    if (!adb) throw new Error('adb.exe не найден — невозможно установить Bedrock-контент в Android');
+
+    let targetSerial = serial && /^[a-zA-Z0-9._:-]+$/.test(serial) ? serial : (this.trelEmu.getAdbSerial() || undefined);
+    if (!targetSerial) {
+      const emu = this.trelEmu.find();
+      if (!emu) throw new Error('TrelEmu не найден. Запусти Bedrock или установи TrelEmu перед установкой аддонов.');
+      if (!win.isDestroyed()) win.webContents.send('minecraft:log', '[bedrock] Запускаю TrelEmu для установки контента\n');
+      targetSerial = await this.trelEmu.start();
+    }
+
+    await this.ensureAdbConnected(adb, targetSerial);
+    await this.waitAndroidReady(adb, targetSerial, win);
+
+    const sub = kind === 'texturepack' ? 'minecraftWorlds' : (kind === 'mod' ? 'behavior_packs' : 'resource_packs');
+    const targetBase = `/sdcard/Android/data/${BEDROCK_PACKAGE}/files/games/com.mojang/${sub}`;
+    const itemName = path.basename(localPath).replace(/["'`$\\]/g, '_');
+    const target = `${targetBase}/${itemName}`;
+
+    await this.adbExecAsync(adb, targetSerial, `shell mkdir -p "${targetBase}"`, 10_000);
+    const stat = fs.statSync(localPath);
+    let output = '';
+    if (stat.isDirectory()) {
+      // Push directory contents into target/<pack>. `adb push dir target` creates target/dir on most ADB builds,
+      // so pushing to the parent keeps the original pack folder name and matches Minecraft's folder layout.
+      output = await this.execShellAsync(this.adbCmd(adb, targetSerial, `-s ${targetSerial} push "${localPath}" "${targetBase}/"`), 180_000, this.adbEnvForSerial(targetSerial));
+    } else {
+      output = await this.execShellAsync(this.adbCmd(adb, targetSerial, `-s ${targetSerial} push "${localPath}" "${target}"`), 180_000, this.adbEnvForSerial(targetSerial));
+    }
+    try { await this.adbExecAsync(adb, targetSerial, `shell am force-stop ${BEDROCK_PACKAGE}`, 8000); } catch {}
+    if (!win.isDestroyed()) win.webContents.send('minecraft:log', `[bedrock] Контент установлен в Android: ${target}\n`);
+    return { target, serial: targetSerial, output };
+  }
+
+  async launchBedrock(versionId: string, serial: string, win: BrowserWindow): Promise<number> {
+    if (this.launchingVersions.has(versionId)) throw new Error('Запуск уже идёт — подождите');
+    if (this.runningVersions.has(versionId)) {
+      // Защита от дублей для Bedrock: Trel не получает событие выхода от
+      // Android-процесса внутри TrelEmu. Поэтому перед блокировкой обязательно
+      // проверяем реальность процесса. Если эмулятор уже закрыт или ADB не
+      // отвечает, блокировка считается устаревшей и снимается.
+      let stillRunning = false;
+      const adb = this.findAdb();
+      if (adb) {
+        const probeSerial = (serial && /^[a-zA-Z0-9._:-]+$/.test(serial))
+          ? serial
+          : (this.trelEmu.getAdbSerial() || '127.0.0.1:5555');
+        try {
+          if (probeSerial && await this.isBedrockProcessAlive(adb, probeSerial)) stillRunning = true;
+        } catch {
+          stillRunning = false;
+        }
+      }
+      if (stillRunning) throw new Error('Эта версия уже запущена');
+      this.runningVersions.delete(versionId);
+    }
+
+    const apk = this.bedrockApkPath(versionId);
+    if (!fs.existsSync(apk)) throw new Error(`APK не найден: ${apk}. Сначала установите версию.`);
+
+    // Если renderer передал валидный ADB-серийник (например, реальное устройство
+    // по USB или scrcpy) — используем его и идём по короткому пути install+launch.
+    const useExternalDevice = serial && /^[a-zA-Z0-9._:-]+$/.test(serial);
+    if (useExternalDevice) {
+      return this.launchBedrockOnAdb(versionId, apk, serial, win);
+    }
+
+    // Иначе — автоматически поднимаем TrelEmu, если пользователь уже скачал
+    // optional emulator pack через лаунчер или положил portable pack рядом с Trel.exe.
+    const trelEmuInfo = this.trelEmu.find();
+    if (trelEmuInfo) {
+      if (!win.isDestroyed()) win.webContents.send('minecraft:log', `[bedrock] Запускаю TrelEmu: ${trelEmuInfo.qemuExe}\n`);
+      const trelEmuSerial = await this.trelEmu.start();
+      if (!win.isDestroyed()) win.webContents.send('minecraft:log', `[bedrock] TrelEmu подключён по ADB: ${trelEmuSerial}\n`);
+      return this.launchBedrockOnAdb(versionId, apk, trelEmuSerial, win);
+    }
+
+    throw new Error('TrelEmu не установлен. Скачайте TrelEmu в лаунчере или положите папку trel-emu рядом с Trel.exe.');
+  }
+
+  /**
+   * Общая хвостовая часть: установить APK и запустить главный активити Bedrock
+   * на произвольном ADB-устройстве. Используется и для TrelEmu (bundled), и для
+   * внешних устройств (scrcpy, USB-телефон).
+   */
+  private async launchBedrockOnAdb(versionId: string, apk: string, serial: string, win: BrowserWindow): Promise<number> {
+    const adb = this.findAdb();
+    if (!adb) throw new Error('adb.exe не найден — невозможно установить APK');
+    await this.ensureAdbConnected(adb, serial);
+
+    if (!win.isDestroyed()) win.webContents.send('minecraft:log', `[bedrock] Устанавливаю APK: ${apk}\n`);
+
+    // Сначала проверяем, не установлен ли уже Bedrock на этом устройстве.
+    // Для ARM-only APK на TrelEmu важен ABI: без --abi armeabi-v7a Android
+    // запускает процесс как x86 и падает на lib/arm/*.so с EM_ARM.
+    const installed = await this.bedrockInstalledOnDevice(adb, serial);
+    const needsArmAbi = this.bedrockNeedsArmAbiInstall(apk, serial);
+    const installedAbiOk = !needsArmAbi || await this.bedrockInstalledWithArmAbi(adb, serial);
+    if (installed && installedAbiOk) {
+      if (!win.isDestroyed()) win.webContents.send('minecraft:log', `[bedrock] Bedrock уже установлен на ${serial}, пропускаю install\n`);
+    } else {
+      if (installed && !installedAbiOk) {
+        if (!win.isDestroyed()) win.webContents.send('minecraft:log', '[bedrock] Bedrock установлен с неправильным ABI, переустанавливаю как ARM через Houdini\n');
+        try { await this.adbExecAsync(adb, serial, 'uninstall com.mojang.minecraftpe', 30_000); } catch {}
+      }
+      try {
+        const abiArg = needsArmAbi ? '--abi armeabi-v7a ' : '';
+        if (needsArmAbi && !win.isDestroyed()) win.webContents.send('minecraft:log', '[bedrock] ARM-only APK, ставлю с --abi armeabi-v7a для Houdini\n');
+        await this.execShellAsync(this.adbCmd(adb, serial, `-s ${serial} install -r -g ${abiArg}"${apk}"`), 240_000, this.adbEnvForSerial(serial));
+      } catch (e) {
+        throw new Error(`Не удалось установить Bedrock на ${serial}: ${(e as Error).message}`);
+      }
+    }
+
+    if (!win.isDestroyed()) {
+      win.webContents.send('minecraft:log', `[bedrock] Запускаю Minecraft на экране QEMU: ${serial}
+`);
+    }
+
+    if (needsArmAbi) await this.ensureTrelEmuNativeBridgeReady(adb, serial, win);
+
+    await this.startBedrockForeground(adb, serial, win);
+
+    this.runningVersions.add(versionId);
+    // Трекаем выход — TrelEmu продолжает работать, но Bedrock выйдет, когда
+    // пользователь нажмёт «Назад» в эмуляторе. Тут только чистим Set, чтобы
+    // повторный запуск не ругался «уже запущено».
+    const cleanup = () => { this.runningVersions.delete(versionId); };
+    // Через 30 секунд снимаем блокировку — это страховка от случая, когда
+    // процесс не сообщил о выходе (а он и не сообщит, потому что это Android
+    // внутри TrelEmu, а не дочерний процесс Trel). Плюс выше добавлена проверка
+    // через `pidof` в launchBedrock — она снимет блокировку сразу же, как
+    // пользователь закроет Bedrock.
+    setTimeout(cleanup, 30_000);
+
+    if (!win.isDestroyed()) win.webContents.send('minecraft:launchStart', versionId);
+    return 0;
+  }
+
+  /** Проверяет, установлен ли Bedrock на ADB-устройстве (по пакету). */
+  private async bedrockInstalledOnDevice(adb: string, serial: string): Promise<boolean> {
+    try {
+      const out = await this.adbExecAsync(adb, serial, 'shell pm list packages com.mojang.minecraftpe', 10_000);
+      return out.includes('com.mojang.minecraftpe');
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Проверяет, реально ли запущен процесс com.mojang.minecraftpe на устройстве.
+   * Используется для снятия «защиты от дублей», когда пользователь уже
+   * закрыл Bedrock через кнопку «Назад» в TrelEmu — Trel об этом никак не узнает,
+   * но `pidof` честно вернёт пустую строку.
+   */
+  private async isBedrockProcessAlive(adb: string, serial: string): Promise<boolean> {
+    try {
+      const out = await this.adbExecAsync(adb, serial, 'shell "pidof com.mojang.minecraftpe || echo NONE"', 5000);
+      const pid = out.trim();
+      return pid.length > 0 && pid !== 'NONE';
+    } catch {
+      return false;
+    }
   }
 
   /**
@@ -166,7 +752,15 @@ export class MinecraftService {
 
   /** Same as installedVersionIds but enriched with loader info per entry. */
   installedDetailed(): InstalledVersionDetail[] {
-    return this.installedVersionIds().map((id) => this.detailFor(id));
+    const java = this.installedVersionIds().map((id) => this.detailFor(id));
+    const bedrock: InstalledVersionDetail[] = this.installedBedrockIds().map((id) => ({
+      id,
+      baseMc: id,
+      edition: 'bedrock',
+      loader: null,
+      loaderVersion: null,
+    }));
+    return [...bedrock, ...java];
   }
 
   detailFor(id: string): InstalledVersionDetail {
@@ -182,14 +776,15 @@ export class MinecraftService {
       return {
         id,
         baseMc: inheritsFrom ?? detected.baseMc,
+        edition: 'java',
         loader: detected.loader,
         loaderVersion: detected.loaderVersion,
       };
     }
     if (inheritsFrom) {
-      return { id, baseMc: inheritsFrom, loader: null, loaderVersion: null };
+      return { id, baseMc: inheritsFrom, edition: 'java', loader: null, loaderVersion: null };
     }
-    return { id, baseMc: id, loader: null, loaderVersion: null };
+    return { id, baseMc: id, edition: 'java', loader: null, loaderVersion: null };
   }
 
   /** Returns all installed loader profiles for a given base MC version. */
@@ -739,7 +1334,26 @@ export class MinecraftService {
 
     await contentPromise;
     const { path: javaPath, reason } = await javaPromise;
-    win.webContents.send('minecraft:log', `[launcher] Using Java: ${javaPath} (${reason})\n`);
+
+    const preflightProblems: string[] = [];
+    if (!fs.existsSync(javaPath)) preflightProblems.push(`Java не найдена: ${javaPath}`);
+    if (!fs.existsSync(jsonPath)) preflightProblems.push(`version.json не найден: ${jsonPath}`);
+    if (!fs.existsSync(clientJar)) preflightProblems.push(`client jar не найден: ${clientJar}`);
+    const requestedMemory = opts.memoryMb || settings.memoryMb || 1024;
+    const totalRamMb = Math.floor(os.totalmem() / 1024 / 1024);
+    if (requestedMemory > Math.floor(totalRamMb * 0.85)) {
+      preflightProblems.push(`Выделено слишком много памяти: ${requestedMemory} МБ из ${totalRamMb} МБ RAM`);
+    }
+    try {
+      fs.mkdirSync(this.gameDir, { recursive: true });
+      fs.accessSync(this.gameDir, fs.constants.W_OK);
+    } catch {
+      preflightProblems.push(`Нет прав записи в папку игры: ${this.gameDir}`);
+    }
+    if (preflightProblems.length) {
+      throw new Error('Проверка перед запуском не пройдена:\n' + preflightProblems.map((x) => `• ${x}`).join('\n'));
+    }
+    win.webContents.send('minecraft:log', `[launcher] Preflight OK. Using Java: ${javaPath} (${reason})\n`);
 
     // Pre-Classic (rd-*, c0.*) и Indev/Infdev/ранний Alpha игнорируют gamePath
     // и пишут мир в %APPDATA%\.minecraft. Подменяем env ТОЛЬКО для них —

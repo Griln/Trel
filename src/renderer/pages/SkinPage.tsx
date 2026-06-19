@@ -346,7 +346,7 @@ export const SkinPage: React.FC<Props> = ({ accounts, activeUuid, onSelect, onCh
                   <SkinBody skin={p.dataUrl} model={p.model} height={112} />
                 </div>
                 <div className="skin-preset-info">
-                  <div className="skin-preset-name">{t('skin.' + p.id)}</div>
+                  <div className="skin-preset-name">{p.name}</div>
                   <div className="skin-preset-cat">
                     {p.category === 'male' ? t('skin.presetMale') :
                       p.category === 'female' ? t('skin.presetFemale') :

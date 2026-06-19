@@ -11,3 +11,28 @@ release/
 package-lock.json
 # Временные артефакты при компиляции standalone скриптов через tsc --outDir
 scripts/.tmp/
+# Local debug / temporary files, not part of source release
+adb_*.txt
+qemu_*.txt
+*_err.txt
+*_out.txt
+dist-build.log
+screenshot_issue.png
+temp-first-run-profile*/
+whpx-test/
+$tmp/
+_backup_moved_site/
+test_mcpe.js
+test_trelemu_*.js
+run_qemu_*.js
+run_appdata_*.js
+extract_boot_tmp.js
+verify_asar.js
+patch*.js
+adb_proxy.js
+
+# Local conversation history and secrets
+chat_history/
+
+# Huge optional emulator pack, downloaded separately
+resources/trel-emu/

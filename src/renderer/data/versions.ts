@@ -1,4 +1,4 @@
-import type { VersionInfo, Locale } from '../../shared/types';
+import type { VersionInfo, BedrockVersionInfo, Locale } from '../../shared/types';
 import DICT_EN from './versions.en';
 
 /**
@@ -1022,10 +1022,77 @@ function fallbackEnDescription(v: VersionInfo): string {
   return `Minecraft ${v.id}${dateSuffix}.`;
 }
 
-export function describeVersion(v: VersionInfo | undefined, locale: Locale = 'ru'): string {
+
+type BedrockCopy = { ru: string; en: string };
+
+const BEDROCK_DESCRIPTIONS: Record<string, BedrockCopy> = {
+  '26.40.22.23': { ru: 'Тестовый патч 26.40.22.23 — искажение экрана, Vibrant Visuals, серные кубы, Realms и 27 исправлений.', en: 'Test patch 26.40.22.23 — screen distortion, Vibrant Visuals, sulfur cubes, Realms and 27 fixes.' },
+  '26.40.20': { ru: 'Тестовый патч 26.40.20 — серные кубы, диск Bounce, черепахи на шарах, Realms UI и 49 исправлений.', en: 'Test patch 26.40.20 — sulfur cubes, Bounce disc, balloon turtles, Realms UI and 49 fixes.' },
+  '26.30.32': { ru: 'Тестовый патч 26.30.32 — смешивание Серных пещер с биомами и исправления Кубов хаоса.', en: 'Test patch 26.30.32 — sulfur cave biome blending and chaos cube fixes.' },
+  '26.30.31': { ru: 'Хотфикс 26.30.31 — срочные исправления проблем из 26.30.29.', en: 'Hotfix 26.30.31 — urgent fixes for issues from 26.30.29.' },
+  '26.30.29': { ru: 'Тестовый патч 26.30.29 — Серные пещеры, Кубы хаоса, цвет травы и 17 исправлений.', en: 'Test patch 26.30.29 — sulfur caves, chaos cubes, grass color and 17 fixes.' },
+  '26.23.01': { ru: 'Хотфикс 26.23.01 — чёрные квадраты Vibrant Visuals на Android и ещё одно исправление.', en: 'Hotfix 26.23.01 — black squares in Vibrant Visuals on Android and one more fix.' },
+  '26.22.1': { ru: 'Файловый релиз 26.22.1 — обновлены APK-файлы без официального списка изменений.', en: 'File release 26.22.1 — APK files updated without an official changelog.' },
+  '1.26': { ru: 'Bedrock 1.26 — крафт Бирки, Золотой одуванчик и детёныши мобов.', en: 'Bedrock 1.26 — craftable name tags, golden dandelion and baby mobs.' },
+  '1.22': { ru: 'Bedrock 1.22 — Скрипун, Бледный сад, Глазоцвет и Смоляные блоки.', en: 'Bedrock 1.22 — Creaking, Pale Garden, Eyeblossom and Resin blocks.' },
+  '1.21': { ru: 'Tricky Trials — пробные камеры, булава, бриз, крафтер, хранилища, новые испытания и награды.', en: 'Tricky Trials — trial chambers, the mace, breeze, crafter, vaults, new challenges and rewards.' },
+  '1.20': { ru: 'Trails & Tales — археология, верблюды, сниффер, вишнёвые рощи, бамбук и узоры брони.', en: 'Trails & Tales — archaeology, camels, the sniffer, cherry groves, bamboo and armor trims.' },
+  '1.19': { ru: 'The Wild Update — Deep Dark, древние города, Страж, скалк-блоки, мангровые болота, лягушки и аллей.', en: 'The Wild Update — Deep Dark, ancient cities, the Warden, sculk blocks, mangrove swamps, frogs and the Allay.' },
+  '1.18': { ru: 'Caves & Cliffs: Part II — новая генерация мира, огромные пещеры, высокие горы, новые высоты мира и распределение руд.', en: 'Caves & Cliffs: Part II — new world generation, huge caves, taller mountains, new world height and ore distribution.' },
+  '1.17': { ru: 'Caves & Cliffs: Part I — аксолотли, козы, медь, аметист, светящиеся спруты и новые блоки пещер.', en: 'Caves & Cliffs: Part I — axolotls, goats, copper, amethyst, glow squids and new cave blocks.' },
+  '1.16': { ru: 'Nether Update — новые биомы Нижнего мира, пиглины, хоглины, бастионы, незерит и новые адские блоки.', en: 'Nether Update — new Nether biomes, piglins, hoglins, bastions, netherite and new Nether blocks.' },
+  '1.15': { ru: 'Патч 1.15 — техническая ветка Bedrock после Buzzy Bees: исправления стабильности, поведения мобов и совместимости клиента.', en: 'Patch 1.15 — a technical Bedrock branch after Buzzy Bees: stability, mob behavior and client compatibility fixes.' },
+  '1.14': { ru: 'Buzzy Bees — пчёлы, ульи, мёд, медовые блоки, соты и связанные механики.', en: 'Buzzy Bees — bees, beehives, honey, honey blocks, honeycombs and related mechanics.' },
+  '1.13': { ru: 'Fox Update — лисы, коричневые грибо-коровы, подозрительный суп, новые команды и правки карт.', en: 'Fox Update — foxes, brown mooshrooms, suspicious stew, new commands and map fixes.' },
+  '1.12': { ru: 'Add-ons & Scripting — улучшения add-ons, scripting API, поведения пакетов ресурсов и стабильности клиента.', en: 'Add-ons & Scripting — improvements to add-ons, scripting API, resource-pack behavior and client stability.' },
+  '1.11': { ru: 'Village & Pillage — рейды, разбойники, новые жители, профессии, торговля и обновлённые деревни.', en: 'Village & Pillage — raids, pillagers, new villagers, professions, trading and updated villages.' },
+  '1.10': { ru: 'Village & Pillage preview — щиты, кафедра, ткацкий станок, фонарь, бочка и новые блоки деревень.', en: 'Village & Pillage preview — shields, lecterns, looms, lanterns, barrels and new village blocks.' },
+  '1.9': { ru: 'Village preview — новые стены, таблички, цветы, блоки деревень и подготовка к Village & Pillage.', en: 'Village preview — new walls, signs, flowers, village blocks and preparation for Village & Pillage.' },
+  '1.8': { ru: 'Panda & Cats — панды, бамбук, новые коты, строительные леса и исправления поведения мобов.', en: 'Panda & Cats — pandas, bamboo, new cats, scaffolding and mob-behavior fixes.' },
+  '1.7': { ru: 'Scoreboard & command update — scoreboard, новые команды, улучшения карт и исправления стабильности.', en: 'Scoreboard & command update — scoreboard, new commands, map improvements and stability fixes.' },
+  '1.6': { ru: 'Phantom Update — фантомы, медленное падение, барьеры, новые команды и правки сна.', en: 'Phantom Update — phantoms, slow falling, barriers, new commands and sleep fixes.' },
+  '1.5': { ru: 'Update Aquatic: Part II — черепахи, проводники, пузырьковые колонны, утопленники и новые водные механики.', en: 'Update Aquatic: Part II — turtles, conduits, bubble columns, drowned mobs and new aquatic mechanics.' },
+  '1.4': { ru: 'Update Aquatic: Part I — дельфины, трезубец, кораллы, водоросли, новые океаны и плавание.', en: 'Update Aquatic: Part I — dolphins, tridents, coral, kelp, new oceans and swimming.' },
+  '1.2': { ru: 'Better Together — Marketplace, серверы, кроссплатформенный Bedrock, стойки для брони и новые настройки мира.', en: 'Better Together — Marketplace, servers, cross-platform Bedrock, armor stands and new world settings.' },
+};
+
+function bedrockDescriptionFallback(id: string, locale: Locale): string {
+  const m = /^(\d+)\.(\d+)(?:\.(\d+))?(?:\.(\d+))?/.exec(id);
+  if (!m) return locale === 'ru'
+    ? `Bedrock ${id} — мобильная сборка с правками стабильности, миров, сетевой игры и Android-клиента.`
+    : `Bedrock ${id} — a mobile build with stability, world, networking and Android-client fixes.`;
+  const branch = `${m[1]}.${m[2]}`;
+  const patch = m[3] ? Number(m[3]) : null;
+  if (locale === 'ru') {
+    return patch === null
+      ? `Bedrock ${id} — крупная ветка ${branch}: новые возможности, правки миров, мобов, интерфейса и стабильности.`
+      : `Патч ${id} — исправления ветки ${branch}: стабильность, совместимость миров, сетевые правки и мобильный клиент.`;
+  }
+  return patch === null
+    ? `Bedrock ${id} — a major ${branch} branch: new features, world, mob, UI and stability fixes.`
+    : `Patch ${id} — ${branch} branch fixes: stability, world compatibility, networking and the mobile client.`;
+}
+
+export function bedrockDisplayName(id: string, _locale: Locale = 'ru'): string {
+  return id;
+}
+
+export function bedrockDescription(id: string, locale: Locale = 'ru'): string {
+  const exact = BEDROCK_DESCRIPTIONS[id];
+  if (exact) return locale === 'ru' ? exact.ru : exact.en;
+  return bedrockDescriptionFallback(id, locale);
+}
+
+
+export function describeVersion(v: VersionInfo | BedrockVersionInfo | undefined, locale: Locale = 'ru'): string {
   if (!v) return '';
+  // Bedrock versions share numeric ids with Java, so they use their own
+  // manually curated Bedrock names/descriptions instead of the Java dictionary.
+  if ((v as BedrockVersionInfo).type === 'bedrock') {
+    return bedrockDescription(v.id, locale);
+  }
   if (locale === 'en' || locale === 'zh' || locale === 'es' || locale === 'de') {
-    return DICT_EN[v.id] ?? fallbackEnDescription(v);
+    return DICT_EN[v.id] ?? fallbackEnDescription(v as VersionInfo);
   }
   return DICT[v.id] ?? `Minecraft ${v.id}.`;
 }

@@ -1,6 +1,6 @@
 {
   "name": "trel-launcher",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Trel",
   "main": "dist-electron/main/main.js",
   "author": "you",
@@ -14,13 +14,15 @@
     "dev": "vite",
     "icon": "node scripts/build-icon.js",
     "skins": "tsc --module commonjs --target es2020 --esModuleInterop --skipLibCheck scripts/generate-skins.ts --outDir scripts/.tmp && node scripts/.tmp/generate-skins.js && node -e \"require('fs').rmSync('scripts/.tmp',{recursive:true,force:true})\"",
+    "build:trel-emu": "node scripts/build-trel-emu.js",
+    "build:trel-emu-pack": "node scripts/build-trel-emu-pack.js",
     "build:renderer": "vite build",
     "build:electron": "tsc -p tsconfig.electron.json",
     "build": "npm run build:renderer && npm run build:electron",
     "start": "electron .",
     "test": "vitest run",
     "dist": "npm run icon && npm run build && electron-builder --win",
-    "dist:publish": "npm run dist -- --publish always",
+    "dist:publish": "npm run icon && npm run build && node scripts/publish-with-token.js",
     "smartscreen": "node scripts/smartscreen-hashes.js"
   },
   "dependencies": {
@@ -41,6 +43,7 @@
     "@vitest/ui": "^4.1.8",
     "electron": "^33.2.0",
     "electron-builder": "^25.1.8",
+    "playwright": "^1.61.0",
     "pngjs": "^7.0.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
@@ -71,6 +74,13 @@
       {
         "from": "resources/legacy",
         "to": "legacy",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "resources/platform-tools",
+        "to": "platform-tools",
         "filter": [
           "**/*"
         ]

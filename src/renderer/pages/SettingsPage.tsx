@@ -50,13 +50,14 @@ export const SettingsPage: React.FC<Props> = ({ settings, onChange }) => {
   const [shortcutExists, setShortcutExists] = useState(false);
   const [moving, setMoving] = useState(false);
   const [moveStatus, setMoveStatus] = useState('');
+  const [emuResetting, setEmuResetting] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-    window.api.java.list().then((v) => { if (!cancelled) setJavaList(v); });
-    window.api.updater.state().then((v) => { if (!cancelled) setUpdater(v); });
-    window.api.settings.desktopShortcutExists().then((v) => { if (!cancelled) setShortcutExists(v); });
-    const off = window.api.updater.onState(setUpdater);
+    window.api.java.list().then((v) => { if (!cancelled) setJavaList(v); }).catch((e) => console.warn('[settings] java list failed', e));
+    window.api.updater.state().then((v) => { if (!cancelled) setUpdater(v); }).catch((e) => console.warn('[settings] updater state failed', e));
+    window.api.settings.desktopShortcutExists().then((v) => { if (!cancelled) setShortcutExists(v); }).catch((e) => console.warn('[settings] shortcut check failed', e));
+    const off = window.api.updater.onState((v) => { if (!cancelled) setUpdater(v); });
     return () => { cancelled = true; off(); };
   }, []);
 
@@ -174,6 +175,51 @@ export const SettingsPage: React.FC<Props> = ({ settings, onChange }) => {
     window.api.reset.restart();
   };
 
+  const onResetEmu = async () => {
+    const choice = await dlg.show({
+      title: 'Сбросить TrelEmu / Bedrock',
+      tone: 'danger',
+      message: (
+        <div style={{ display: 'grid', gap: 10 }}>
+          <div>Это остановит TrelEmu и удалит скачанную папку эмулятора. После этого Bedrock заново скачает или пересоздаст TrelEmu.</div>
+          <div className="hint">Сборочные ресурсы внутри установленного лаунчера не удаляются.</div>
+        </div>
+      ),
+      buttons: [
+        { label: t('settings.resetCancel'), value: 'cancel', variant: 'ghost' },
+        { label: 'Сбросить эмулятор', value: 'reset', variant: 'danger' },
+      ],
+      defaultIndex: 0,
+      cancelValue: 'cancel',
+    });
+    if (choice !== 'reset') return;
+    setEmuResetting(true);
+    try {
+      const result = await window.api.emu.reset();
+      await dlg.show({
+        title: result.ok ? 'TrelEmu сброшен' : 'Сброс TrelEmu завершился с ошибками',
+        tone: result.ok ? 'info' : 'warn',
+        message: result.ok
+          ? (result.removed.length > 0 ? `Удалено папок: ${result.removed.length}` : 'Папка TrelEmu не найдена, удалять было нечего.')
+          : result.errors.join(', '),
+        buttons: [{ label: 'OK', value: 'ok', variant: 'default' }],
+        defaultIndex: 0,
+        cancelValue: 'ok',
+      });
+    } catch (e) {
+      await dlg.show({
+        title: 'Не удалось сбросить TrelEmu',
+        tone: 'warn',
+        message: (e as Error).message,
+        buttons: [{ label: 'OK', value: 'ok', variant: 'default' }],
+        defaultIndex: 0,
+        cancelValue: 'ok',
+      });
+    } finally {
+      setEmuResetting(false);
+    }
+  };
+
   const onUninstallLauncher = async () => {
     const step1 = await dlg.show({
       title: t('settings.uninstallTitle'),
@@ -210,7 +256,7 @@ export const SettingsPage: React.FC<Props> = ({ settings, onChange }) => {
         title: t('settings.uninstallErrorTitle'),
         tone: 'warn',
         message: result.reason || t('settings.uninstallErrorMsg'),
-        buttons: [{ label: t('settings.ok'), value: 'ok', variant: 'default' }],
+        buttons: [{ label: 'OK', value: 'ok', variant: 'default' }],
         defaultIndex: 0,
         cancelValue: 'ok',
       });
@@ -597,6 +643,18 @@ export const SettingsPage: React.FC<Props> = ({ settings, onChange }) => {
           </div>
           <button className="btn danger" onClick={onResetLauncher}>
             <IconAlert /> {t('settings.resetLauncher')}
+          </button>
+        </div>
+
+        <div className="row" style={{ justifyContent: 'space-between', gap: 12, paddingTop: 14, borderTop: '1px solid var(--border)', marginTop: 14 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 500, fontSize: 13, marginBottom: 4 }}>TrelEmu / Bedrock</div>
+            <div className="muted" style={{ fontSize: 12, lineHeight: 1.5 }}>
+              Сброс скачанного эмулятора, если Android зависает, ADB не отвечает или Bedrock больше не запускается.
+            </div>
+          </div>
+          <button className="btn danger" onClick={onResetEmu} disabled={emuResetting}>
+            <IconTrash /> {emuResetting ? 'Сбрасываем...' : 'Сбросить эмулятор'}
           </button>
         </div>
 

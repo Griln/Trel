@@ -148,6 +148,23 @@ describe('MinecraftService installedVersionIds', () => {
     expect(mc.installedVersionIds()).toEqual([]);
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
+
+  it('includes installed Bedrock APKs in installedDetailed', () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'trel-test-mc-'));
+    const bedrockDir = path.join(tmpDir, 'bedrock', '1.20.80');
+    fs.mkdirSync(bedrockDir, { recursive: true });
+    fs.writeFileSync(path.join(bedrockDir, 'minecraft.apk'), Buffer.alloc(20 * 1024 * 1024));
+    const java = new JavaService(tmpDir);
+    const mc = new MinecraftService(tmpDir, java);
+    expect(mc.installedDetailed()).toContainEqual({
+      id: '1.20.80',
+      baseMc: '1.20.80',
+      edition: 'bedrock',
+      loader: null,
+      loaderVersion: null,
+    });
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
 });
 
 describe('MinecraftService supportsAuthlibInjector', () => {

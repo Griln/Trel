@@ -2,7 +2,7 @@ import React from 'react';
 import { useT } from '../i18n';
 import type { Page } from '../../shared/types';
 import type { MinecraftAccount } from '../../shared/types';
-import { IconPlay, IconCube, IconCheck, IconUser, IconSettings, IconGlobe, IconArchive, IconSkin, IconServer, IconImport } from './icons';
+import { IconPlay, IconCube, IconCheck, IconUser, IconSettings, IconGlobe, IconArchive, IconSkin, IconServer, IconImport, IconAlert } from './icons';
 import { SkinFace } from './SkinPreview';
 
 interface Props {
@@ -58,6 +58,7 @@ const SidebarBase: React.FC<Props> = ({
         { id: 'worlds',  label: t('nav.worlds'),   Icon: IconGlobe },
         { id: 'content', label: t('nav.content'),  Icon: IconArchive },
         { id: 'import',  label: t('nav.import'),    Icon: IconImport },
+        { id: 'diagnostics', label: t.locale === 'ru' ? 'Диагностика' : 'Diagnostics', Icon: IconAlert },
       ],
     },
     {

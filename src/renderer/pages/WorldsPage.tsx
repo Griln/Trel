@@ -64,11 +64,11 @@ export const WorldsPage: React.FC = () => {
   };
 
   useEffect(() => {
-    let cancelled = false;
+    
     refresh().then(() => {
       // refresh sets state internally
     });
-    return () => { cancelled = true; };
+    return () => {};
   }, []);
 
   const filtered = list.filter((w) =>

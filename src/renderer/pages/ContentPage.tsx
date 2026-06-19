@@ -51,6 +51,33 @@ const HINT_KEY: Record<ContentKind, string> = {
   texturepack: 'content.hintTexturepack',
 };
 
+const BEDROCK_TAB_IDS: ContentKind[] = ['mod', 'resourcepack', 'texturepack'];
+
+function bedrockLabel(kind: ContentKind, locale: string): string {
+  const ru = locale === 'ru';
+  if (kind === 'mod') return ru ? 'Аддоны' : 'Add-ons';
+  if (kind === 'resourcepack') return ru ? 'Ресурс-паки' : 'Resource packs';
+  if (kind === 'texturepack') return ru ? 'Миры' : 'Worlds';
+  return ru ? 'Ресурс-паки' : 'Resource packs';
+}
+
+function bedrockHint(kind: ContentKind, locale: string): string {
+  const ru = locale === 'ru';
+  if (kind === 'mod') {
+    return ru
+      ? 'Bedrock не использует Java .jar-моды. Добавляй .mcaddon/.mcpack или распакованные behavior_packs.'
+      : 'Bedrock does not use Java .jar mods. Add .mcaddon/.mcpack files or extracted behavior_packs.';
+  }
+  if (kind === 'resourcepack') {
+    return ru
+      ? 'Для Bedrock сюда подходят .mcpack/.zip или распакованные resource_packs.'
+      : 'For Bedrock, use .mcpack/.zip files or extracted resource_packs here.';
+  }
+  return ru
+    ? 'Для Bedrock сюда подходят .mcworld/.mctemplate/.zip или распакованные minecraftWorlds.'
+    : 'For Bedrock, use .mcworld/.mctemplate/.zip files or extracted minecraftWorlds here.';
+}
+
 export const ContentPage: React.FC<Props> = ({ lastVersionId, onPickVersion }) => {
   const t = useT();
   const dlg = useDialog();
@@ -99,11 +126,26 @@ export const ContentPage: React.FC<Props> = ({ lastVersionId, onPickVersion }) =
     return () => { cancelled = true; };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const currentDetail = details.find((d) => d.id === versionId) ?? null;
+  const isBedrock = currentDetail?.edition === 'bedrock';
+  const visibleTabs = isBedrock ? BEDROCK_TAB_IDS : TAB_IDS;
+  const effectiveTab = isBedrock && tab === 'shader' ? 'mod' : tab;
+  const Icon = KindIcon[effectiveTab];
+  const noVersionPicked = !versionId || !currentDetail;
+  const isModdable = currentDetail?.edition === 'java' && !!currentDetail?.loader;
+  const tabLabel = isBedrock ? bedrockLabel(effectiveTab, t.locale) : t(TAB_LABEL_KEY[effectiveTab]);
+  const placeholderHint = isBedrock ? bedrockHint(effectiveTab, t.locale) : t(HINT_KEY[effectiveTab]);
+  const totalSize = items.reduce((acc, it) => acc + it.size, 0);
+
+  useEffect(() => {
+    if (isBedrock && tab === 'shader') setTab('mod');
+  }, [isBedrock, tab]);
+
   const refresh = async () => {
     if (!versionId) { setItems([]); return; }
     setLoading(true);
     try {
-      const list = await window.api.content.list(tab, versionId);
+      const list = await window.api.content.list(effectiveTab, versionId, currentDetail?.edition);
       setItems(list);
     } finally {
       setLoading(false);
@@ -116,18 +158,18 @@ export const ContentPage: React.FC<Props> = ({ lastVersionId, onPickVersion }) =
       if (!versionId) { setItems([]); return; }
       setLoading(true);
       try {
-        const list = await window.api.content.list(tab, versionId);
+        const list = await window.api.content.list(effectiveTab, versionId, currentDetail?.edition);
         if (!cancelled) setItems(list);
       } finally {
         if (!cancelled) setLoading(false);
       }
     })();
     return () => { cancelled = true; };
-  }, [tab, versionId]);
+  }, [effectiveTab, versionId, currentDetail?.edition]);
 
   const onAdd = async () => {
     if (!versionId) return;
-    const res = await window.api.content.add(tab, versionId);
+    const res = await window.api.content.add(effectiveTab, versionId, currentDetail?.edition);
     if (res.copied > 0) {
       const files = t.plural(res.copied, t('plural.file.one'), t('plural.file.few'), t('plural.file.many'));
       setStatus(t('content.statusAdded', { count: String(res.copied), files }));
@@ -151,7 +193,7 @@ export const ContentPage: React.FC<Props> = ({ lastVersionId, onPickVersion }) =
       cancelValue: 'cancel',
     });
     if (choice !== 'ok') return;
-    const ok = await window.api.content.delete(tab, it.name, versionId);
+    const ok = await window.api.content.delete(effectiveTab, it.name, versionId, currentDetail?.edition);
     if (ok) {
       setStatus(t('content.statusDeleted', { name: it.displayName }));
       refresh();
@@ -160,7 +202,7 @@ export const ContentPage: React.FC<Props> = ({ lastVersionId, onPickVersion }) =
 
   const onToggle = async (it: ContentItem) => {
     if (!versionId) return;
-    const ok = await window.api.content.toggle(tab, it.name, versionId);
+    const ok = await window.api.content.toggle(effectiveTab, it.name, versionId, currentDetail?.edition);
     if (ok) {
       setStatus(it.enabled
         ? t('content.statusDisabled', { name: it.displayName })
@@ -169,14 +211,22 @@ export const ContentPage: React.FC<Props> = ({ lastVersionId, onPickVersion }) =
     }
   };
 
-  const tabLabel = t(TAB_LABEL_KEY[tab]);
-  const totalSize = items.reduce((acc, it) => acc + it.size, 0);
-  const Icon = KindIcon[tab];
-  const currentDetail = details.find((d) => d.id === versionId) ?? null;
-  const noVersionPicked = !versionId || !currentDetail;
-  const isModdable = !!currentDetail?.loader;
 
-  const placeholderHint = t(HINT_KEY[tab]);
+  const onInstallToBedrock = async (it: ContentItem) => {
+    if (!versionId) return;
+    setStatus(t.locale === 'ru' ? `Устанавливаю в Android: ${it.meta?.title || it.displayName}...` : `Installing to Android: ${it.meta?.title || it.displayName}...`);
+    try {
+      const res = await window.api.content.installToBedrock(effectiveTab, it.name, versionId);
+      setStatus(t.locale === 'ru'
+        ? `Установлено в Bedrock (${res.serial}): ${res.target}`
+        : `Installed to Bedrock (${res.serial}): ${res.target}`);
+    } catch (e) {
+      setStatus(t.locale === 'ru'
+        ? `Не удалось установить в Bedrock: ${(e as Error).message}`
+        : `Failed to install to Bedrock: ${(e as Error).message}`);
+    }
+  };
+
 
   return (
     <div>
@@ -216,7 +266,7 @@ export const ContentPage: React.FC<Props> = ({ lastVersionId, onPickVersion }) =
       </div>
 
       <div className="content-tabs">
-        {TAB_IDS.map(id => {
+        {visibleTabs.map(id => {
           const T = KindIcon[id];
           return (
             <button
@@ -225,13 +275,25 @@ export const ContentPage: React.FC<Props> = ({ lastVersionId, onPickVersion }) =
               onClick={() => setTab(id)}
             >
               <T />
-              <span>{t(TAB_LABEL_KEY[id])}</span>
+              <span>{isBedrock ? bedrockLabel(id, t.locale) : t(TAB_LABEL_KEY[id])}</span>
             </button>
           );
         })}
       </div>
 
-      {tab === 'shader' && (
+      {isBedrock && (
+        <div className="content-banner info">
+          <div className="content-banner-icon"><IconInfoLocal /></div>
+          <div className="content-banner-body">
+            <h3>{t.locale === 'ru' ? 'Режим Bedrock-контента' : 'Bedrock content mode'}</h3>
+            <p>{t.locale === 'ru'
+              ? 'Bedrock использует не Java-моды, а аддоны, behavior packs, resource packs и .mcworld. Шейдеры Java здесь скрыты, потому что они несовместимы с Bedrock/RenderDragon.'
+              : 'Bedrock uses add-ons, behavior packs, resource packs and .mcworld files instead of Java mods. Java shaders are hidden because they are not compatible with Bedrock/RenderDragon.'}</p>
+          </div>
+        </div>
+      )}
+
+      {!isBedrock && tab === 'shader' && (
         <div className="content-banner info">
           <div className="content-banner-icon"><IconAlert /></div>
           <div className="content-banner-body">
@@ -241,7 +303,7 @@ export const ContentPage: React.FC<Props> = ({ lastVersionId, onPickVersion }) =
         </div>
       )}
 
-      {tab === 'texturepack' && (
+      {!isBedrock && tab === 'texturepack' && (
         <div className="content-banner warn">
           <div className="content-banner-icon"><IconAlert /></div>
           <div className="content-banner-body">
@@ -251,7 +313,7 @@ export const ContentPage: React.FC<Props> = ({ lastVersionId, onPickVersion }) =
         </div>
       )}
 
-      {tab === 'mod' && !isModdable && currentDetail && (
+      {!isBedrock && tab === 'mod' && !isModdable && currentDetail && (
         <div className="content-banner accent">
           <div className="content-banner-icon"><IconInfoLocal /></div>
           <div className="content-banner-body">
@@ -273,7 +335,7 @@ export const ContentPage: React.FC<Props> = ({ lastVersionId, onPickVersion }) =
             <button className="btn primary" onClick={onAdd}>
               {t('content.addFiles')}
             </button>
-            <button className="btn" onClick={() => window.api.content.openFolder(tab, versionId)}>
+            <button className="btn" onClick={() => window.api.content.openFolder(effectiveTab, versionId, currentDetail?.edition)}>
               <IconFolder /> {t('content.openFolder')}
             </button>
             <button className="btn ghost sm" onClick={refresh} disabled={loading}>
@@ -302,26 +364,40 @@ export const ContentPage: React.FC<Props> = ({ lastVersionId, onPickVersion }) =
           ) : (
             <div className="content-grid">
               {items.map(it => {
-                const ItemIcon = KindIcon[tab];
+                const ItemIcon = KindIcon[effectiveTab];
                 return (
                   <div key={it.name} className={'content-card' + (it.enabled ? '' : ' disabled')}>
                     <div className="content-icon"><ItemIcon /></div>
                     <div className="content-body">
-                      <div className="content-name" title={it.name}>{it.displayName}</div>
+                      <div className="content-name" title={it.name}>{it.meta?.title || it.displayName}</div>
                       <div className="content-meta">
                         <span className="chip">{fmtSize(it.size)}</span>
+                        {it.meta?.loader && <span className="chip">{it.meta.loader}</span>}
+                        {it.meta?.version && <span className="chip mono">v{it.meta.version}</span>}
                         {it.isFolder && <span className="chip">{t('content.chipFolder')}</span>}
                         {!it.enabled && <span className="chip warn">{t('content.chipDisabled')}</span>}
+                        {it.meta?.warnings?.length ? <span className="chip warn">{it.meta.warnings.length} warn</span> : null}
                       </div>
+                      {it.meta?.authors?.length ? <div className="content-subtle">{it.meta.authors.slice(0, 3).join(', ')}</div> : null}
+                      {it.meta?.warnings?.length ? <div className="content-warnings">{it.meta.warnings.map((w) => <div key={w}>⚠ {w}</div>)}</div> : null}
                     </div>
                     <div className="content-actions">
-                      {tab === 'mod' && (
+                      {!isBedrock && effectiveTab === 'mod' && (
                         <button
                           className="icon-btn"
                           onClick={() => onToggle(it)}
                           title={it.enabled ? t('content.toggleDisable') : t('content.toggleEnable')}
                         >
                           {it.enabled ? <IconCheck /> : <IconAlert />}
+                        </button>
+                      )}
+                      {isBedrock && (
+                        <button
+                          className="icon-btn"
+                          onClick={() => onInstallToBedrock(it)}
+                          title={t.locale === 'ru' ? 'Установить в Android / TrelEmu' : 'Install to Android / TrelEmu'}
+                        >
+                          <IconSpark />
                         </button>
                       )}
                       <button

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { isUrlAllowed, getDynamicConcurrency, isLikelyValid } from './installer';
+import { verifyDownloadSource, shouldVirusScan } from './download-security';
 
 describe('isUrlAllowed', () => {
   it('allows Mojang and known hosts', () => {
@@ -7,12 +8,27 @@ describe('isUrlAllowed', () => {
     expect(isUrlAllowed('https://resources.download.minecraft.net/ab/cd1234.png')).toBe(true);
     expect(isUrlAllowed('https://s3.amazonaws.com/Minecraft.Download/launcher.jar')).toBe(true);
     expect(isUrlAllowed('https://bmclapi2.bangbang93.com/version/1.20.1')).toBe(true);
+    expect(isUrlAllowed('https://mcpehub.org/engine/getfile.php?id=123')).toBe(true);
   });
 
   it('blocks unknown and http hosts', () => {
     expect(isUrlAllowed('http://evil.com/minecraft.jar')).toBe(false);
+    expect(isUrlAllowed('http://mcpehub.org/file.apk')).toBe(false);
     expect(isUrlAllowed('https://unknown.example.com/file')).toBe(false);
     expect(isUrlAllowed('ftp://launchermeta.mojang.com/file')).toBe(false);
+  });
+
+  it('reports auto-confirmed trusted sources and unconfirmed unknown sources', () => {
+    expect(verifyDownloadSource('https://piston-data.mojang.com/v1/objects/x/client.jar').allowed).toBe(true);
+    const unknown = verifyDownloadSource('https://unknown.example.com/file.jar');
+    expect(unknown.allowed).toBe(false);
+    expect(unknown.reason).toContain('Источник не подтверждён');
+  });
+
+  it('marks executable archives and packages for virus scanning', () => {
+    expect(shouldVirusScan('minecraft.jar')).toBe(true);
+    expect(shouldVirusScan('minecraft.apk')).toBe(true);
+    expect(shouldVirusScan('readme.txt')).toBe(false);
   });
 });
 

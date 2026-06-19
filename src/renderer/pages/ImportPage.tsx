@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { IconRefresh, IconFolder, IconInfo } from '../components/icons';
 import { useDialog } from '../components/Dialog';
 import { useT } from '../i18n';
@@ -197,7 +197,15 @@ export const ImportPage: React.FC = () => {
           <div style={{ display: 'grid', gap: 8 }}>
             <div>{parts.length ? parts.join(' · ') : t('settings.importNothingCopied')}</div>
             {skippedParts.length > 0 && <div className="hint">{skippedParts.join(' · ')}</div>}
-            {report.errors.length > 0 && <div className="hint">{t('settings.importErrors', { count: report.errors.length })}</div>}
+            {report.errors.length > 0 && (
+              <div className="hint" style={{ color: 'var(--warn)', display: 'grid', gap: 4 }}>
+                <div>{t('settings.importErrors', { count: report.errors.length })}</div>
+                {report.errors.slice(0, 5).map((err, i) => (
+                  <div key={i} className="mono" style={{ fontSize: 11, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{err}</div>
+                ))}
+                {report.errors.length > 5 && <div>{t('import.moreErrors', { count: report.errors.length - 5 })}</div>}
+              </div>
+            )}
           </div>
         ),
         buttons: [{ label: t('settings.ok'), value: 'ok', variant: 'default' }],

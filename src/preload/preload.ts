@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
-import type { LaunchOptions, LauncherSettings, MinecraftAccount, VersionInfo, DownloadProgress, ServerStatus, ServerProperties, ServerInstance, ContentKind, ContentItem } from '../shared/types';
+import type { LaunchOptions, LauncherSettings, MinecraftAccount, VersionInfo, BedrockVersionInfo, DownloadProgress, ServerStatus, ServerProperties, ServerInstance, ContentKind, ContentItem } from '../shared/types';
 
 
 
@@ -37,7 +37,6 @@ export interface JavaPlan {
   vendor?: string;
 
   error?: string;
-
 }
 
 
@@ -79,10 +78,8 @@ export interface UpdaterState {
   bytesPerSecond?: number;
 
   error?: string;
-
+  isPortableHint?: boolean;
 }
-
-
 
 export type LoaderType = 'fabric' | 'quilt' | 'neoforge' | 'forge';
 
@@ -110,6 +107,8 @@ export interface InstalledVersionDetail {
 
   baseMc: string;
 
+  edition: 'java' | 'bedrock';
+
   loader: LoaderType | null;
 
   loaderVersion: string | null;
@@ -125,7 +124,16 @@ export interface ServerCreateProgress {
   percent: number;
 }
 
+export interface EmuResetResult {
+  ok: boolean;
+  removed: string[];
+  errors: string[];
+}
+
 const api = {
+  emu: {
+    reset: (): Promise<EmuResetResult> => ipcRenderer.invoke('emu:reset')
+  },
 
   window: {
 
@@ -257,27 +265,41 @@ const api = {
 
   },
 
+
+  tools: {
+    diagnostics: (): Promise<{ generatedAt: string; checks: Array<{ id: string; label: string; ok: boolean; level: 'ok' | 'warn' | 'error'; details: string; action?: string }> }> =>
+      ipcRenderer.invoke('tools:diagnostics'),
+    integrityCheck: (versionId: string): Promise<{ ok: boolean; issues: string[]; repaired: string[]; edition?: 'java' | 'bedrock' }> =>
+      ipcRenderer.invoke('tools:integrityCheck', versionId),
+    logsList: (): Promise<Array<{ name: string; path: string; size: number; mtime: number }>> =>
+      ipcRenderer.invoke('tools:logsList'),
+    logRead: (path: string): Promise<string> => ipcRenderer.invoke('tools:logRead', path),
+    copyReport: (): Promise<string> => ipcRenderer.invoke('tools:copyReport'),
+  },
+
   content: {
 
-    list: (kind: ContentKind, versionId?: string): Promise<ContentItem[]> =>
+    list: (kind: ContentKind, versionId?: string, edition?: 'java' | 'bedrock'): Promise<ContentItem[]> =>
 
-      ipcRenderer.invoke('content:list', kind, versionId),
+      ipcRenderer.invoke('content:list', kind, versionId, edition),
 
-    delete: (kind: ContentKind, name: string, versionId?: string): Promise<boolean> =>
+    delete: (kind: ContentKind, name: string, versionId?: string, edition?: 'java' | 'bedrock'): Promise<boolean> =>
 
-      ipcRenderer.invoke('content:delete', kind, name, versionId),
+      ipcRenderer.invoke('content:delete', kind, name, versionId, edition),
 
-    toggle: (kind: ContentKind, name: string, versionId?: string): Promise<boolean> =>
+    toggle: (kind: ContentKind, name: string, versionId?: string, edition?: 'java' | 'bedrock'): Promise<boolean> =>
 
-      ipcRenderer.invoke('content:toggle', kind, name, versionId),
+      ipcRenderer.invoke('content:toggle', kind, name, versionId, edition),
 
-    openFolder: (kind: ContentKind, versionId?: string): Promise<string> =>
+    openFolder: (kind: ContentKind, versionId?: string, edition?: 'java' | 'bedrock'): Promise<string> =>
 
-      ipcRenderer.invoke('content:openFolder', kind, versionId),
+      ipcRenderer.invoke('content:openFolder', kind, versionId, edition),
 
-    add: (kind: ContentKind, versionId?: string): Promise<{ copied: number; errors: string[] }> =>
+    add: (kind: ContentKind, versionId?: string, edition?: 'java' | 'bedrock'): Promise<{ copied: number; errors: string[] }> =>
 
-      ipcRenderer.invoke('content:add', kind, versionId),
+      ipcRenderer.invoke('content:add', kind, versionId, edition),
+    installToBedrock: (kind: ContentKind, name: string, versionId?: string, serial?: string): Promise<{ target: string; serial: string; output: string }> =>
+      ipcRenderer.invoke('content:installToBedrock', kind, name, versionId, serial),
 
   },
 
@@ -375,6 +397,45 @@ const api = {
 
     },
 
+  },
+  bedrock: {
+    versions: (): Promise<BedrockVersionInfo[]> => ipcRenderer.invoke('bedrock:versions'),
+    installed: (): Promise<string[]> => ipcRenderer.invoke('bedrock:installed'),
+    install: (versionId: string): Promise<boolean> => ipcRenderer.invoke('bedrock:install', versionId),
+    uninstall: (versionId: string): Promise<boolean> => ipcRenderer.invoke('bedrock:uninstall', versionId),
+    launch: (versionId: string, serial: string): Promise<number> => ipcRenderer.invoke('bedrock:launch', versionId, serial),
+    openFolder: (versionId: string): Promise<string> => ipcRenderer.invoke('bedrock:openFolder', versionId),
+    devices: (): Promise<{ serial: string; state: string; model?: string }[]> => ipcRenderer.invoke('bedrock:devices'),
+    wsaInstalled: (): Promise<boolean> => ipcRenderer.invoke('bedrock:genymotionInstalled'),
+    wsaInstall: (): Promise<boolean> => ipcRenderer.invoke('bedrock:genymotionStart'),
+    wsaStart: (vmName?: string): Promise<string> => ipcRenderer.invoke('bedrock:genymotionStart', vmName),
+    wsaCheckHyperV: (): Promise<{ enabled: boolean; missing: string[] }> => Promise.resolve({ enabled: true, missing: [] }),
+    wsaCheckDeveloperMode: (): Promise<boolean> => Promise.resolve(true),
+    genymotionInstalled: (): Promise<boolean> => ipcRenderer.invoke('bedrock:genymotionInstalled'),
+    genymotionVms: (): Promise<{ name: string; uuid?: string; state?: string }[]> => ipcRenderer.invoke('bedrock:genymotionVms'),
+    genymotionStart: (vmName?: string): Promise<string> => ipcRenderer.invoke('bedrock:genymotionStart', vmName),
+    genymotionSelectedVm: (vmName?: string): Promise<string | null> => ipcRenderer.invoke('bedrock:genymotionSelectedVm', vmName),
+    genymotionDownloadAndInstall: (): Promise<boolean> => ipcRenderer.invoke('bedrock:genymotionDownloadAndInstall'),
+    cancelDownload: (): Promise<boolean> => ipcRenderer.invoke('bedrock:cancelDownload'),
+    cancelWsaInstall: (): Promise<boolean> => ipcRenderer.invoke('bedrock:cancelGenymotionStart'),
+    cancelGenymotionStart: (): Promise<boolean> => ipcRenderer.invoke('bedrock:cancelGenymotionStart'),
+    trelEmuInfo: (): Promise<{ found: boolean; qemuExe?: string; imagePath?: string; adbPort?: number; memoryMb?: number; cpuCores?: number; hasSnapshot?: boolean; source?: 'downloaded' | 'portable' | 'bundled' | 'dev' | 'unknown'; root?: string; targetDir?: string; downloaderBusy?: boolean }> => ipcRenderer.invoke('bedrock:trelEmuInfo'),
+    trelEmuStatus: (): Promise<boolean> => ipcRenderer.invoke('bedrock:trelEmuStatus'),
+    trelEmuStart: (): Promise<{ serial: string; running: boolean }> => ipcRenderer.invoke('bedrock:trelEmuStart'),
+    trelEmuStop: (): Promise<{ running: boolean }> => ipcRenderer.invoke('bedrock:trelEmuStop'),
+    trelEmuDownload: (url?: string, sha1?: string): Promise<{ ok: boolean; target?: string; error?: string }> => ipcRenderer.invoke('bedrock:trelEmuDownload', url, sha1),
+    trelEmuDownloadCancel: (): Promise<{ cancelled: boolean }> => ipcRenderer.invoke('bedrock:trelEmuDownloadCancel'),
+    trelEmuDownloadState: (): Promise<{ state: string; targetDir: string }> => ipcRenderer.invoke('bedrock:trelEmuDownloadState'),
+    onDownloadProgress: (cb: (p: { state: string; downloaded: number; total: number; ratio: number; speed: number; message: string; error?: string; resumedFrom?: number }) => void) => {
+      const listener = (_: unknown, p: any) => cb(p);
+      ipcRenderer.on('trelEmu:downloadProgress', listener);
+      return () => ipcRenderer.removeListener('trelEmu:downloadProgress', listener);
+    },
+    onProgress: (cb: (p: DownloadProgress) => void) => {
+      const listener = (_: unknown, p: DownloadProgress) => cb(p);
+      ipcRenderer.on('bedrock:progress', listener);
+      return () => ipcRenderer.removeListener('bedrock:progress', listener);
+    },
   },
   servers: {
     list: (): Promise<ServerInstance[]> => ipcRenderer.invoke('servers:list'),

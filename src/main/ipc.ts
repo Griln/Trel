@@ -1,4 +1,4 @@
-import { BrowserWindow, ipcMain, dialog } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 import { shell } from 'electron';
 import * as fs from 'node:fs';
 import * as fsp from 'node:fs/promises';
@@ -12,6 +12,7 @@ import { JavaService } from './java';
 import { WorldService } from './worlds';
 import { ResetService } from './reset';
 import { ContentService } from './content';
+import type { ContentEdition } from './content';
 import type { ContentKind } from '../shared/types';
 import { LauncherUpdater } from './updater';
 import * as launcherImport from './import';
@@ -78,6 +79,19 @@ function validateSettings(s: any): LauncherSettings {
   if (typeof s.preCommand === 'string') clean.preCommand = s.preCommand;
   if (typeof s.postCommand === 'string') clean.postCommand = s.postCommand;
   return clean;
+}
+
+
+function classifyTrelEmuSource(root: string): 'downloaded' | 'portable' | 'bundled' | 'dev' | 'unknown' {
+  const norm = (x: string) => path.normalize(x).toLowerCase();
+  const r = norm(root);
+  if (process.env.PORTABLE_EXECUTABLE_FILE && r === norm(path.join(path.dirname(process.env.PORTABLE_EXECUTABLE_FILE), 'trel-emu'))) return 'portable';
+  if (process.platform === 'win32' && r === norm(path.join(process.env.APPDATA || os.homedir(), 'Trel', 'trel-emu'))) return 'downloaded';
+  if (process.platform === 'darwin' && r === norm(path.join(os.homedir(), 'Library', 'Application Support', 'Trel', 'trel-emu'))) return 'downloaded';
+  if (process.platform !== 'win32' && process.platform !== 'darwin' && r === norm(path.join(os.homedir(), '.config', 'Trel', 'trel-emu'))) return 'downloaded';
+  if (process.resourcesPath && r === norm(path.join(process.resourcesPath, 'trel-emu'))) return 'bundled';
+  if (r === norm(path.join(process.cwd(), 'resources', 'trel-emu'))) return 'dev';
+  return 'unknown';
 }
 
 export function registerIpc(win: BrowserWindow, launcherDir: string, updater: LauncherUpdater) {
@@ -174,6 +188,47 @@ export function registerIpc(win: BrowserWindow, launcherDir: string, updater: La
       } catch (e) { console.warn('Ignored error:', e); }
     })();
   }
+
+  ipcMain.handle('emu:reset', async () => {
+    if (mc.trelEmu.downloader.isBusy()) {
+      throw new Error('TrelEmu download is running. Cancel it before reset.');
+    }
+
+    try { await mc.trelEmu.stop(); } catch (e) { console.warn('[ipc] TrelEmu stop before reset failed:', e); }
+
+    const candidates = new Set<string>();
+    const current = mc.trelEmu.find();
+    if (current) {
+      const source = classifyTrelEmuSource(current.treluEmuRoot);
+      // Do not delete bundled app resources from Program Files/app.asar resources.
+      if (source === 'downloaded' || source === 'portable' || source === 'dev' || source === 'unknown') {
+        candidates.add(current.treluEmuRoot);
+      }
+    }
+    candidates.add(mc.trelEmu.downloader.resolveTargetDir());
+    // Compatibility cleanup: an older reset handler used launcherDir/emu.
+    candidates.add(path.join(launcherDir, 'emu'));
+
+    const removed: string[] = [];
+    const errors: string[] = [];
+    for (const dir of candidates) {
+      try {
+        const resolved = path.resolve(dir);
+        if (resolved.includes('\0')) throw new Error('Invalid path');
+        if (process.resourcesPath && resolved.toLowerCase().startsWith(path.resolve(process.resourcesPath).toLowerCase() + path.sep)) {
+          continue;
+        }
+        if (fs.existsSync(resolved)) {
+          await fsp.rm(resolved, { recursive: true, force: true });
+          removed.push(resolved);
+        }
+      } catch (e) {
+        errors.push(`${dir}: ${(e as Error).message}`);
+      }
+    }
+    mc.trelEmu.resetCache();
+    return { ok: errors.length === 0, removed, errors };
+  });
 
   ipcMain.handle('settings:get', () => store.loadSettings());
   ipcMain.handle('settings:set', (_e, s: LauncherSettings) => {
@@ -728,6 +783,134 @@ export function registerIpc(win: BrowserWindow, launcherDir: string, updater: La
     return mc.launch(opts, win, s);
   });
 
+  // ─── Bedrock ─────────────────────────────────────────────────────────
+
+  ipcMain.handle('bedrock:versions', () => mc.fetchBedrockVersions());
+  ipcMain.handle('bedrock:installed', () => mc.installedBedrockIds());
+  ipcMain.handle('bedrock:install', async (_e, versionId: string) => {
+    assertSafeVersionId(versionId);
+    await mc.installBedrock(versionId, win);
+    return true;
+  });
+  ipcMain.handle('bedrock:uninstall', (_e, versionId: string) => {
+    assertSafeVersionId(versionId);
+    return mc.uninstallBedrock(versionId);
+  });
+  ipcMain.handle('bedrock:launch', async (_e, versionId: string, serial: string) => {
+    assertSafeVersionId(versionId);
+    // Пустой serial — это сигнал "запусти через TrelEmu (bundled, auto-start)".
+    // Внешний ADB-серийник (USB/scrcpy) должен соответствовать строгому формату.
+    if (serial && (typeof serial !== 'string' || serial.length > 256 || !/^[a-zA-Z0-9._:-]+$/.test(serial))) {
+      throw new Error('Invalid device serial');
+    }
+    return mc.launchBedrock(versionId, serial ?? '', win);
+  });
+  ipcMain.handle('bedrock:openFolder', (_e, versionId: string) => {
+    assertSafeVersionId(versionId);
+    const p = path.join(mc.bedrock.versionDir(versionId));
+    shell.openPath(p).catch(() => {});
+    return p;
+  });
+  ipcMain.handle('bedrock:devices', () => {
+    return mc.listAdbDevices();
+  });
+  ipcMain.handle('bedrock:genymotionInstalled', () => false);
+  ipcMain.handle('bedrock:genymotionVms', () => []);
+  ipcMain.handle('bedrock:genymotionStart', async () => {
+    throw new Error('Бэкенд Bedrock не настроен');
+  });
+  ipcMain.handle('bedrock:genymotionSelectedVm', () => null);
+  ipcMain.handle('bedrock:genymotionDownloadAndInstall', async () => {
+    throw new Error('Автоустановка отключена');
+  });
+  ipcMain.handle('bedrock:cancelDownload', () => { mc.bedrock.cancelCurrentDownload(); return true; });
+
+  // ─── TrelEmu (bundled Android-x86 + QEMU TCG) ─────────────────────────
+  // Приоритетный бэкенд для Bedrock: всегда с собой, ничего не надо ставить.
+  // `info` отдаёт qemuExe/imagePath/port — UI использует чтобы показать
+  // "bundled emulator готов" либо "не входит в бандл этой сборки".
+  ipcMain.handle('bedrock:trelEmuInfo', () => {
+    const i = mc.trelEmu.find();
+    if (!i) {
+      return {
+        found: false,
+        // Скажет UI куда положится TrelEmu после скачивания — чтобы пользователь
+        // понимал куда уйдёт 1 ГБ.
+        targetDir: mc.trelEmu.downloader.resolveTargetDir(),
+        downloaderBusy: mc.trelEmu.downloader.isBusy(),
+      };
+    }
+    // hasSnapshot — есть ли в overlay готовый snapshot для мгновенной загрузки.
+    return {
+      found: true,
+      qemuExe: i.qemuExe,
+      imagePath: i.imagePath,
+      adbPort: i.adbPort,
+      memoryMb: i.memoryMb,
+      cpuCores: i.cpuCores,
+      hasSnapshot: mc.trelEmu.hasReadySnapshot(i.overlayPath),
+      source: classifyTrelEmuSource(i.treluEmuRoot),
+      root: i.treluEmuRoot,
+    };
+  });
+  ipcMain.handle('bedrock:trelEmuStatus', () => mc.trelEmu.isRunning());
+  ipcMain.handle('bedrock:trelEmuStart', async () => {
+    try {
+      const serial = await mc.trelEmu.start();
+      return { serial, running: true };
+    } catch (e) {
+      const message = (e as Error).message || String(e);
+      // Some Android/ADB preparation commands can timeout while QEMU keeps
+      // booting successfully. Do not surface those transient 8000ms messages
+      // as a red user-facing launcher error if TrelEmu is already reachable.
+      if (/timeout|timed out|exceeded/i.test(message)) {
+        try {
+          if (await mc.trelEmu.isRunning()) return { serial: '127.0.0.1:5555', running: true, warning: message };
+        } catch {}
+      }
+      throw e;
+    }
+  });
+  ipcMain.handle('bedrock:trelEmuStop', () => {
+    mc.trelEmu.stop();
+    return { running: false };
+  });
+
+  // In-app скачивание TrelEmu pack. URL и SHA1 можно переопределить
+  // параметрами (для тестов / зеркал).
+  ipcMain.handle('bedrock:trelEmuDownload', async (_e, url?: string, sha1?: string) => {
+    if (typeof url === 'string' && url.length > 0) {
+      if (url.length > 1024 || !/^https?:\/\//i.test(url)) throw new Error('Invalid download URL');
+    }
+    if (typeof sha1 === 'string' && sha1.length > 0) {
+      if (sha1.length > 64 || !/^[0-9a-f]+$/i.test(sha1)) throw new Error('Invalid SHA1');
+    }
+    if (mc.trelEmu.downloader.isBusy()) throw new Error('TrelEmu: загрузка уже выполняется');
+    // Подписываемся один раз — эмитим прогресс в renderer.
+    const onProgress = (p: any) => {
+      if (!win.isDestroyed()) win.webContents.send('trelEmu:downloadProgress', p);
+    };
+    mc.trelEmu.downloader.on('progress', onProgress);
+    try {
+      const target = await mc.trelEmu.downloader.downloadAndInstall(url, sha1);
+      return { ok: true, target };
+    } catch (e) {
+      return { ok: false, error: (e as Error).message };
+    } finally {
+      mc.trelEmu.downloader.off('progress', onProgress);
+    }
+  });
+  ipcMain.handle('bedrock:trelEmuDownloadCancel', () => {
+    mc.trelEmu.downloader.cancel();
+    return { cancelled: true };
+  });
+  ipcMain.handle('bedrock:trelEmuDownloadState', () => {
+    return {
+      state: mc.trelEmu.downloader.getState(),
+      targetDir: mc.trelEmu.downloader.resolveTargetDir(),
+    };
+  });
+
   ipcMain.handle('java:list', () => java.list());
   ipcMain.handle('java:scan', () => java.scan());
   ipcMain.handle('java:planFor', async (_e, versionId: string) => {
@@ -794,45 +977,178 @@ export function registerIpc(win: BrowserWindow, launcherDir: string, updater: La
     return resolved;
   });
 
-  // ---- content (mods, shaders, resourcepacks, texturepacks) ----
+
+  // ---- diagnostics / repair / logs ----
+  type ToolCheck = { id: string; label: string; ok: boolean; level: 'ok' | 'warn' | 'error'; details: string; action?: string };
+  const makeCheck = (id: string, label: string, ok: boolean, details: string, level?: 'ok' | 'warn' | 'error', action?: string): ToolCheck => ({
+    id, label, ok, details, level: level ?? (ok ? 'ok' : 'warn'), action,
+  });
+
+  ipcMain.handle('tools:diagnostics', async () => {
+    const checks: ToolCheck[] = [];
+    const s = store.loadSettings();
+    const trel = mc.trelEmu.find();
+    const trelRunning = await mc.trelEmu.isRunning().catch(() => false);
+    let devices: any[] = [];
+    try { devices = mc.listAdbDevices(); } catch { devices = []; }
+    const bedrockInstalled = mc.installedBedrockIds();
+    const javaInstalled = mc.installedDetailed().filter((v) => v.edition === 'java');
+    const adbDevices = devices.filter((d: any) => d.state === 'device');
+
+    checks.push(makeCheck('gameDir', 'Папка игры', fs.existsSync(s.gameDir), s.gameDir, fs.existsSync(s.gameDir) ? 'ok' : 'error', 'Проверь gameDir в настройках'));
+    checks.push(makeCheck('javaVersions', 'Java-версии', javaInstalled.length > 0, `Найдено: ${javaInstalled.length}`, javaInstalled.length > 0 ? 'ok' : 'warn', 'Установи Java-версию во вкладке Версии'));
+    checks.push(makeCheck('bedrockApk', 'Bedrock APK', bedrockInstalled.length > 0, `Установлено Bedrock-версий: ${bedrockInstalled.length}`, bedrockInstalled.length > 0 ? 'ok' : 'warn', 'Установи Bedrock во вкладке Версии'));
+    checks.push(makeCheck('trelEmu', 'TrelEmu', !!trel, trel ? `${classifyTrelEmuSource(trel.treluEmuRoot)}: ${trel.treluEmuRoot}` : `Не найден, будет скачан в ${mc.trelEmu.downloader.resolveTargetDir()}`, trel ? 'ok' : 'warn', 'Скачай TrelEmu или нажми сброс/скачивание Bedrock'));
+    checks.push(makeCheck('trelRunning', 'TrelEmu запущен', trelRunning, trelRunning ? 'Эмулятор отвечает' : 'Эмулятор сейчас не запущен', trelRunning ? 'ok' : 'warn', 'Запусти Bedrock или TrelEmu'));
+    checks.push(makeCheck('adb', 'ADB устройство', adbDevices.length > 0, adbDevices.length > 0 ? adbDevices.map((d: any) => `${d.serial} (${d.state})`).join(', ') : 'ADB не видит Android-устройство', adbDevices.length > 0 ? 'ok' : 'warn', 'Перезапусти TrelEmu или ADB'));
+    if (process.platform === 'win32') {
+      let virt = 'Не удалось проверить';
+      try { virt = execSync('systeminfo', { encoding: 'utf8', timeout: 15000 }).split(/\r?\n/).filter((l) => /Hyper-V|Virtualization|виртуал/i.test(l)).slice(-6).join('\n') || virt; } catch {}
+      checks.push(makeCheck('virtualization', 'Виртуализация Windows', true, virt, 'ok'));
+    }
+    return { generatedAt: new Date().toISOString(), checks };
+  });
+
+  ipcMain.handle('tools:integrityCheck', async (_e, versionId: string) => {
+    assertSafeVersionId(versionId);
+    const issues: string[] = [];
+    const repaired: string[] = [];
+    const details = mc.installedDetailed().find((v) => v.id === versionId);
+    if (!details) return { ok: false, issues: ['Версия не установлена'], repaired };
+    if (details.edition === 'bedrock') {
+      const apk = mc.bedrock.apkPath(versionId);
+      if (!fs.existsSync(apk)) issues.push('Bedrock APK отсутствует');
+      else if (fs.statSync(apk).size < 10 * 1024 * 1024) issues.push('Bedrock APK слишком маленький или повреждён');
+      if (!mc.trelEmu.find()) issues.push('TrelEmu не найден');
+      return { ok: issues.length === 0, issues, repaired, edition: 'bedrock' };
+    }
+    const activeSettings = store.loadSettings();
+    const vDir = path.join(activeSettings.gameDir, 'versions', versionId);
+    const jsonPath = path.join(vDir, `${versionId}.json`);
+    const jarPath = path.join(vDir, `${versionId}.jar`);
+    if (!fs.existsSync(jsonPath)) issues.push('version.json отсутствует');
+    if (!fs.existsSync(jarPath)) issues.push('client jar отсутствует');
+    if (fs.existsSync(jsonPath)) {
+      try {
+        const json = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
+        for (const lib of json.libraries || []) {
+          const rel = lib?.downloads?.artifact?.path;
+          if (rel && !fs.existsSync(path.join(activeSettings.gameDir, 'libraries', rel))) issues.push(`Библиотека отсутствует: ${rel}`);
+        }
+        const assetIndex = json?.assetIndex?.id;
+        if (assetIndex && !fs.existsSync(path.join(activeSettings.gameDir, 'assets', 'indexes', `${assetIndex}.json`))) issues.push(`Asset index отсутствует: ${assetIndex}`);
+      } catch (e) { issues.push(`version.json повреждён: ${(e as Error).message}`); }
+    }
+    if (issues.length > 0) {
+      try { await mc.install(versionId, win); repaired.push('Запущена переустановка/докачка версии'); } catch (e) { issues.push(`Автодокачка не удалась: ${(e as Error).message}`); }
+    }
+    return { ok: issues.length === 0, issues, repaired, edition: 'java' };
+  });
+
+  const logCandidates = () => {
+    const out = [
+      path.join(launcherDir, 'crash.log'),
+      path.join(process.cwd(), 'crash.log'),
+      path.join(app.getPath('userData'), 'crash.log'),
+      path.join(app.getPath('userData'), 'logs'),
+      path.join(store.loadSettings().gameDir, 'logs'),
+    ];
+    return out;
+  };
+  ipcMain.handle('tools:logsList', () => {
+    const files: Array<{ name: string; path: string; size: number; mtime: number }> = [];
+    for (const candidate of logCandidates()) {
+      try {
+        if (!fs.existsSync(candidate)) continue;
+        const st = fs.statSync(candidate);
+        const list = st.isDirectory() ? fs.readdirSync(candidate).map((f) => path.join(candidate, f)) : [candidate];
+        for (const f of list) {
+          try {
+            const s = fs.statSync(f);
+            if (s.isFile() && s.size < 10 * 1024 * 1024) files.push({ name: path.basename(f), path: f, size: s.size, mtime: s.mtimeMs });
+          } catch {}
+        }
+      } catch {}
+    }
+    return files.sort((a, b) => b.mtime - a.mtime).slice(0, 40);
+  });
+  ipcMain.handle('tools:logRead', (_e, file: string) => {
+    const resolved = path.resolve(file);
+    const allowed = logCandidates().some((c) => isInsideDir(resolved, fs.existsSync(c) && fs.statSync(c).isDirectory() ? c : path.dirname(c)));
+    if (!allowed) throw new Error('Log path is not allowed');
+    return fs.readFileSync(resolved, 'utf8').slice(-120000);
+  });
+  ipcMain.handle('tools:copyReport', async () => {
+    const reportDir = path.join(app.getPath('userData'), 'reports');
+    fs.mkdirSync(reportDir, { recursive: true });
+    const file = path.join(reportDir, `trel-report-${Date.now()}.txt`);
+    const content = [`Trel diagnostic report`, `Date: ${new Date().toISOString()}`, `GameDir: ${store.loadSettings().gameDir}`, `Versions: ${JSON.stringify(mc.installedDetailed(), null, 2)}`].join('\n\n');
+    fs.writeFileSync(file, content, 'utf8');
+    shell.showItemInFolder(file);
+    return file;
+  });
+
+
+  // ---- content (Java mods/shaders/resourcepacks and Bedrock packs/worlds) ----
   const ensureSafeContentVersion = (versionId?: string) => {
     if (versionId !== undefined) assertSafeVersionId(versionId);
   };
-  ipcMain.handle('content:list', (_e, kind: ContentKind, versionId?: string) => {
+  const ensureContentEdition = (edition?: ContentEdition): ContentEdition => {
+    if (edition === undefined) return 'java';
+    if (edition !== 'java' && edition !== 'bedrock') throw new Error('Invalid content edition');
+    return edition;
+  };
+  ipcMain.handle('content:list', (_e, kind: ContentKind, versionId?: string, edition?: ContentEdition) => {
     ensureSafeContentVersion(versionId);
-    return content.list(kind, versionId);
+    return content.list(kind, versionId, ensureContentEdition(edition));
   });
   const validateContentName = (name: unknown): string => {
     if (typeof name !== 'string' || name.length === 0 || name.length > 256) throw new Error('Invalid content name');
     if (name.includes('\0') || name.includes('/') || name.includes('\\')) throw new Error('Invalid content name');
     return name;
   };
-  ipcMain.handle('content:delete', (_e, kind: ContentKind, name: string, versionId?: string) => {
+  ipcMain.handle('content:delete', (_e, kind: ContentKind, name: string, versionId?: string, edition?: ContentEdition) => {
     ensureSafeContentVersion(versionId);
-    return content.delete(kind, validateContentName(name), versionId);
+    return content.delete(kind, validateContentName(name), versionId, ensureContentEdition(edition));
   });
-  ipcMain.handle('content:toggle', (_e, kind: ContentKind, name: string, versionId?: string) => {
+  ipcMain.handle('content:toggle', (_e, kind: ContentKind, name: string, versionId?: string, edition?: ContentEdition) => {
     ensureSafeContentVersion(versionId);
-    return content.toggle(kind, validateContentName(name), versionId);
+    return content.toggle(kind, validateContentName(name), versionId, ensureContentEdition(edition));
   });
-  ipcMain.handle('content:openFolder', (_e, kind: ContentKind, versionId?: string) => {
+  ipcMain.handle('content:openFolder', (_e, kind: ContentKind, versionId?: string, edition?: ContentEdition) => {
     ensureSafeContentVersion(versionId);
-    const dir = content.dirFor(kind, versionId);
+    const resolvedEdition = ensureContentEdition(edition);
+    const dir = content.dirFor(kind, versionId, resolvedEdition);
     fs.mkdirSync(dir, { recursive: true });
     shell.openPath(dir).catch(() => {});
     return dir;
   });
-  ipcMain.handle('content:add', async (_e, kind: ContentKind, versionId?: string) => {
+
+  ipcMain.handle('content:installToBedrock', async (_e, kind: ContentKind, name: string, versionId?: string, serial?: string) => {
     ensureSafeContentVersion(versionId);
-    const filters = kind === 'mod'
-      ? [{ name: 'Моды (.jar)', extensions: ['jar', 'disabled'] }]
-      : [{ name: 'Архивы (.zip)', extensions: ['zip'] }, { name: 'Все файлы', extensions: ['*'] }];
+    const safeName = validateContentName(name);
+    const dir = content.dirFor(kind, versionId, 'bedrock');
+    const full = path.join(dir, safeName);
+    if (!isInsideDir(full, dir) || !fs.existsSync(full)) throw new Error('Bedrock-контент не найден');
+    return mc.installBedrockContentToAndroid(kind, full, serial, win);
+  });
+
+  ipcMain.handle('content:add', async (_e, kind: ContentKind, versionId?: string, edition?: ContentEdition) => {
+    ensureSafeContentVersion(versionId);
+    const resolvedEdition = ensureContentEdition(edition);
+    const filters = resolvedEdition === 'bedrock'
+      ? (kind === 'texturepack'
+        ? [{ name: 'Bedrock worlds (.mcworld/.mctemplate/.zip)', extensions: ['mcworld', 'mctemplate', 'zip'] }]
+        : [{ name: 'Bedrock packs (.mcpack/.mcaddon/.zip)', extensions: ['mcpack', 'mcaddon', 'zip'] }])
+      : (kind === 'mod'
+        ? [{ name: 'Моды (.jar)', extensions: ['jar', 'disabled'] }]
+        : [{ name: 'Архивы (.zip)', extensions: ['zip'] }, { name: 'Все файлы', extensions: ['*'] }]);
     const res = await dialog.showOpenDialog(win, {
       properties: ['openFile', 'multiSelections'],
       filters,
     });
     if (res.canceled) return { copied: 0, errors: [] as string[] };
-    return content.add(kind, res.filePaths, versionId);
+    return content.add(kind, res.filePaths, versionId, resolvedEdition);
   });
 
   // ---- launcher reset ----
@@ -1047,6 +1363,12 @@ export function registerIpc(win: BrowserWindow, launcherDir: string, updater: La
   // Экспортируем shutdownAll для app.on('before-quit') в main.ts,
   // чтобы можно было дождаться завершения серверов перед выходом.
   return {
-    shutdownAll: () => servers.shutdownAll(),
+    shutdownAll: async () => {
+      await servers.shutdownAll();
+      // TrelEmu — отдельный процесс (QEMU detached), Trel не держит ссылку
+      // на child. Если юзер вышел из лаунчера — VM ему больше не нужна,
+      // иначе она будет висеть в фоне жрёт CPU. Чистим при выходе.
+      try { mc.trelEmu.stop(); } catch (e) { console.warn('[ipc] TrelEmu stop on shutdown:', e); }
+    },
   };
 }

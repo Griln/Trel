@@ -327,7 +327,10 @@ function fileSizeInRoot(rootDir: string, cat: ImportCategory): number {
       const vDir = path.join(rootDir, 'versions');
       if (!safeStat(vDir)?.isDirectory()) return 0;
       let bytes = 0;
-      for (const ver of safeReaddir(vDir)) { bytes += dirSize(path.join(vDir, ver), 3); }
+      for (const ver of safeReaddir(vDir)) {
+        const verDir = path.join(vDir, ver);
+        if (safeStat(verDir)?.isDirectory()) bytes += dirSize(verDir, 3);
+      }
       return bytes;
     }
     default: return 0;
@@ -431,30 +434,75 @@ function availableCategories(rootDir: string, bedrock = false): ImportCategory[]
 
 // ─── Installable version detection ──────────────────────────────────────
 
-export function detectInstallableVersions(rootDir: string): string[] {
+interface InstallableVersionEntry {
+  id: string;
+  folder: string;
+  hasJar: boolean;
+  hasJson: boolean;
+  sourceId: string;
+  inheritsFrom?: string;
+}
+
+function looksLikeRealMinecraftVersionJson(j: Record<string, unknown>): boolean {
+  return typeof j.id === 'string'
+    || typeof j.inheritsFrom === 'string'
+    || typeof j.mainClass === 'string'
+    || !!j.downloads
+    || Array.isArray(j.libraries);
+}
+
+function isLikelyJavaVersionId(id: string): boolean {
+  // Modern releases: 1.21, 1.21.5, 1.20.1
+  if (/^1\.\d+(?:\.\d+)?$/.test(id)) return true;
+  // Snapshots: 24w14a, 1.20-pre1, 1.20.2-rc2
+  if (/^\d{2}w\d{2}[a-z]$/i.test(id)) return true;
+  if (/^1\.\d+(?:\.\d+)?-(?:pre|rc)-?\d+$/i.test(id)) return true;
+  // Old versions: b1.7.3, a1.2.6, rd-132211, in-20100110, inf-20100618
+  if (/^[ab]\d+\.\d+(?:\.\d+)?(?:_\d+)?$/i.test(id)) return true;
+  if (/^(?:rd|in|inf)-/i.test(id)) return true;
+  // Local modded profile folders usually start with a real Java base id.
+  if (/^1\.\d+(?:\.\d+)?[-_].+/i.test(id)) return true;
+  return false;
+}
+
+function detectInstallableVersionEntries(rootDir: string): InstallableVersionEntry[] {
   const vDir = path.join(rootDir, 'versions');
   if (!safeStat(vDir)?.isDirectory()) return [];
-  const ids: string[] = [];
-  for (const name of safeReaddir(vDir)) {
-    const verDir = path.join(vDir, name);
+  const entries: InstallableVersionEntry[] = [];
+  const seenFolders = new Set<string>();
+  for (const folder of safeReaddir(vDir)) {
+    if (JUNK_NAMES.has(folder)) continue;
+    const verDir = path.join(vDir, folder);
     if (!safeStat(verDir)?.isDirectory()) continue;
-    const jsonPath = path.join(verDir, name + '.json');
+    const jsonPath = path.join(verDir, folder + '.json');
+    const jarPath = path.join(verDir, folder + '.jar');
     const j = readJson(jsonPath) as Record<string, unknown> | null;
-    if (!j) continue;
-    const hasMain = typeof j.mainClass === 'string' && j.mainClass !== '';
-    const hasParent = typeof j.inheritsFrom === 'string';
-    if (!hasMain && !hasParent) continue;
-    // Version folders with inheritsFrom may not have their own jar —
-    // they inherit it from the parent. Don't filter them out.
-    if (!hasParent) {
-      const jarPath = path.join(verDir, name + '.jar');
-      if (!safeStat(jarPath)?.isFile()) continue;
-    }
-    const id = typeof j.id === 'string' && j.id !== '' ? j.id : name;
-    if (!ids.includes(id)) ids.push(id);
+    const hasJson = !!j && looksLikeRealMinecraftVersionJson(j);
+    const hasJar = !!safeStat(jarPath)?.isFile();
+    if (!hasJson && !hasJar) continue;
+
+    const sourceId = typeof j?.id === 'string' && j.id ? j.id : folder;
+    const inheritsFrom = typeof j?.inheritsFrom === 'string' && j.inheritsFrom ? j.inheritsFrom : undefined;
+    const javaIdForValidation = inheritsFrom || sourceId;
+    if (!isLikelyJavaVersionId(javaIdForValidation) && !isLikelyJavaVersionId(folder)) continue;
+    // For downloadable vanilla fallback use the parent id for modded profiles,
+    // but keep the folder too so local profile files can be copied without
+    // creating fake Mojang downloads for Forge/Fabric/TLauncher profiles.
+    const id = inheritsFrom || sourceId;
+    if (seenFolders.has(folder.toLowerCase())) continue;
+    seenFolders.add(folder.toLowerCase());
+    entries.push({ id, folder, hasJar, hasJson, sourceId, inheritsFrom });
   }
-  return ids;
+  return entries.sort((a, b) => a.folder.localeCompare(b.folder, undefined, { numeric: true }));
 }
+
+export function detectInstallableVersions(rootDir: string): string[] {
+  // For import UI/counts show actual local profile folders. A Forge/Fabric
+  // profile may inherit from a vanilla id, but it is still a separate local
+  // version folder that must be copied.
+  return detectInstallableVersionEntries(rootDir).map((x) => x.folder);
+}
+
 
 // ─── Dedup / copy depth constants ────────────────────────────────────────
 const MAX_COPY_DEPTH = 32;
@@ -666,29 +714,83 @@ async function copyDirAtomic(
 
 // ─── Accounts extraction ────────────────────────────────────────────────
 
+function collectNamesDeep(value: unknown, out: Set<string>, depth = 0): void {
+  if (depth > 5 || value == null) return;
+  if (typeof value === 'string') return;
+  if (Array.isArray(value)) {
+    for (const v of value) collectNamesDeep(v, out, depth + 1);
+    return;
+  }
+  if (typeof value === 'object') {
+    const obj = value as Record<string, unknown>;
+    for (const key of ['name', 'username', 'userName', 'displayName', 'playerName', 'lastUsername', 'selectedProfileName']) {
+      const v = obj[key];
+      if (typeof v === 'string' && /^[a-zA-Z0-9_]{1,16}$/.test(v)) out.add(v);
+    }
+    for (const key of ['minecraftProfile', 'profile', 'selectedProfile', 'selectedUser', 'accounts', 'users', 'profiles', 'authenticationDatabase']) {
+      if (key in obj) collectNamesDeep(obj[key], out, depth + 1);
+    }
+    for (const v of Object.values(obj)) {
+      if (v && typeof v === 'object') collectNamesDeep(v, out, depth + 1);
+    }
+  }
+}
+
 function extractOfflineNames(rootDir: string): string[] {
   const names = new Set<string>();
-  try {
-    const j = JSON.parse(fs.readFileSync(ntPath(path.join(rootDir, 'launcher_accounts.json')), 'utf-8')) as any;
-    for (const k of Object.keys(j.accounts ?? {})) {
-      const a = j.accounts[k];
-      if (a?.minecraftProfile?.name) names.add(a.minecraftProfile.name);
-      else if (a?.username) names.add(a.username);
-    }
-  } catch {}
-  try {
-    const j = JSON.parse(fs.readFileSync(ntPath(path.join(rootDir, 'launcher_profiles.json')), 'utf-8')) as any;
-    const auth = j.authenticationDatabase ?? {};
-    for (const k of Object.keys(auth)) { const a = auth[k]; const profiles = a?.profiles ?? {};
-      for (const pk of Object.keys(profiles)) { const name = profiles[pk]?.displayName ?? profiles[pk]?.name; if (name) names.add(name); }
-      if (a?.displayName) names.add(a.displayName); }
-  } catch {}
-  try { const tl = JSON.parse(fs.readFileSync(ntPath(path.join(rootDir, 'TLauncherProfile.json')), 'utf-8')) as any; if (tl?.lastUsername) names.add(tl.lastUsername); if (Array.isArray(tl?.users)) for (const u of tl.users) { if (u?.username) names.add(u.username); } } catch {}
-  try { const sk = JSON.parse(fs.readFileSync(ntPath(path.join(rootDir, 'sklauncher_accounts.json')), 'utf-8')) as any; for (const k of Object.keys(sk)) { if (sk[k]?.username) names.add(sk[k].username); } } catch {}
+  const jsonFiles = [
+    'launcher_accounts.json',
+    'launcher_profiles.json',
+    'TLauncherProfile.json',
+    'sklauncher_accounts.json',
+    'accounts.json',
+    'usercache.json',
+    'usernamecache.json',
+  ];
+
+  for (const file of jsonFiles) {
+    try {
+      const data = JSON.parse(fs.readFileSync(ntPath(path.join(rootDir, file)), 'utf-8'));
+      collectNamesDeep(data, names);
+    } catch {}
+  }
+
+  // Some launchers keep tiny text files with the last offline username.
+  for (const file of ['lastlogin', 'username.txt', 'user.txt', 'login.txt']) {
+    try {
+      const raw = fs.readFileSync(ntPath(path.join(rootDir, file)), 'utf-8').trim();
+      const m = raw.match(/[a-zA-Z0-9_]{1,16}/);
+      if (m) names.add(m[0]);
+    } catch {}
+  }
+
   return Array.from(names).filter((n) => /^[a-zA-Z0-9_]{1,16}$/.test(n));
 }
 
+
 // ─── Source detection ───────────────────────────────────────────────────
+
+
+function inferJavaSourceLabel(rootDir: string, fallback: string): string {
+  if (safeStat(path.join(rootDir, 'TLauncherProfile.json'))) return 'TLauncher (.minecraft)';
+  if (safeStat(path.join(rootDir, 'sklauncher_accounts.json'))) return 'SKlauncher (.minecraft)';
+  if (safeStat(path.join(rootDir, 'launcher_accounts.json'))) return 'Minecraft Launcher';
+  const profiles = readJson(path.join(rootDir, 'launcher_profiles.json')) as any;
+  if (profiles?.profiles || profiles?.authenticationDatabase || profiles?.selectedUser) return 'Minecraft data folder (.minecraft)';
+  if (safeStat(path.join(rootDir, 'versions'))?.isDirectory() || safeStat(path.join(rootDir, 'saves'))?.isDirectory()) return 'Minecraft data folder (.minecraft)';
+  return fallback;
+}
+
+
+function hasRealJavaImportContent(categories: ImportCategory[], installableVersions?: string[]): boolean {
+  const realCats = new Set<ImportCategory>([
+    'worlds', 'mods', 'shaderpacks', 'resourcepacks', 'texturepacks', 'servers',
+    'screenshots', 'config', 'datapacks', 'advancements', 'logs', 'scripts',
+    'defaultconfigs', 'backups', 'local', 'world_templates', 'resources', 'pin',
+    'version-content', 'pack-meta', 'version-install',
+  ]);
+  return categories.some((c) => realCats.has(c)) || !!installableVersions?.length;
+}
 
 export function detectSources(): DetectedSource[] {
   const now = Date.now();
@@ -708,8 +810,8 @@ export function detectSources(): DetectedSource[] {
     if (!safeStat(r.dir)?.isDirectory()) continue;
     const installableVersions = detectInstallableVersions(r.dir);
     const cats = availableCategories(r.dir);
-    if (cats.length === 0) continue;
-    sources.push({ id: r.id, label: r.label, rootDir: r.dir, available: cats, approxSize: approxSizeOf(r.dir, cats), kind: 'java', installableVersions });
+    if (cats.length === 0 || !hasRealJavaImportContent(cats, installableVersions)) continue;
+    sources.push({ id: r.id, label: inferJavaSourceLabel(r.dir, r.label), rootDir: r.dir, available: cats, approxSize: approxSizeOf(r.dir, cats), kind: 'java', installableVersions });
   }
 
   const instanceRoots: Array<{ idPrefix: string; labelPrefix: string; parent: string; instanceSub?: string; recursive?: boolean }> = [
@@ -734,15 +836,9 @@ export function detectSources(): DetectedSource[] {
       const root = r.instanceSub && safeStat(path.join(instRoot, r.instanceSub)) ? path.join(instRoot, r.instanceSub) : instRoot;
       const installableVersions = detectInstallableVersions(root);
       const cats = availableCategories(root);
-      if (cats.length === 0) continue;
+      if (cats.length === 0 || !hasRealJavaImportContent(cats, installableVersions)) continue;
       sources.push({ id: `${r.idPrefix}:${name}`, label: `${r.labelPrefix}: ${name}`, rootDir: root, available: cats, approxSize: approxSizeOf(root, cats), kind: 'java', installableVersions });
     }
-  }
-
-  const JAVA_GAME_CATS = new Set(['worlds', 'mods', 'shaderpacks', 'resourcepacks', 'texturepacks', 'screenshots', 'config', 'datapacks', 'scripts', 'defaultconfigs', 'backups', 'world_templates', 'resources', 'pin', 'version-content', 'version-install']);
-  const mojangSource = sources.find(s => s.id === 'mojang');
-  if (mojangSource) {
-    mojangSource.mojangOnlyBedrock = !mojangSource.available.some(cat => JAVA_GAME_CATS.has(cat));
   }
 
   const bedrockRoot = detectBedrockRoot();
@@ -818,9 +914,12 @@ export async function performImport(
   // Pre-calculate total steps including per-version installs
   let totalSteps = plan.categories.length;
   let versionsToInstall: string[] | undefined;
-  if (plan.categories.includes('version-install') && installVersion) {
+  let versionEntries: InstallableVersionEntry[] = [];
+  if (plan.categories.includes('version-install')) {
+    versionEntries = detectInstallableVersionEntries(source.rootDir);
     versionsToInstall = source.installableVersions ?? detectInstallableVersions(source.rootDir);
-    if (versionsToInstall.length > 0) totalSteps += versionsToInstall.length - 1;
+    const versionSteps = versionEntries.length > 0 ? versionEntries.length : (versionsToInstall?.length ?? 0);
+    if (versionSteps > 0) totalSteps += versionSteps - 1;
   }
   let completedSteps = 0;
   const step = (stage = '') => { completedSteps++; onProgress?.(completedSteps, totalSteps, stage); };
@@ -887,11 +986,43 @@ export async function performImport(
 
   // ── Version install ──
   if (plan.categories.includes('version-install')) {
-    if (versionsToInstall && versionsToInstall.length > 0) {
+    const entries = versionEntries;
+    if (entries.length > 0) {
+      const vDirSrc = path.join(source.rootDir, 'versions');
+      const vDirDst = path.join(gameDir, 'versions');
+      for (let i = 0; i < entries.length; i++) {
+        const entry = entries[i];
+        const vid = entry.id;
+        onProgress?.(completedSteps, totalSteps, `Importing ${vid}...`);
+        const srcFolder = path.join(vDirSrc, entry.folder);
+        const dstFolder = path.join(vDirDst, entry.folder);
+        try {
+          if (safeStat(srcFolder)?.isDirectory() && (entry.hasJar || entry.hasJson)) {
+            const warnings: string[] = [];
+            await copyDirAtomic(srcFolder, dstFolder, MAX_COPY_DEPTH, warnings, undefined, signal);
+            report.warnings.push(...warnings);
+            report.installedVersions.push(entry.folder === vid ? vid : `${entry.folder} → ${vid}`);
+            report.copied['version-install'] = (report.copied['version-install'] ?? 0) + 1;
+          } else if (installVersion) {
+            await installVersion(vid);
+            report.installedVersions.push(vid);
+            report.copied['version-install'] = (report.copied['version-install'] ?? 0) + 1;
+          } else {
+            report.warnings.push(`version "${vid}": no local files and no installer available`);
+          }
+        } catch (e) {
+          // Do not spam one cryptic error per custom launcher profile. Keep the
+          // profile copied when possible; if it cannot be copied, report the
+          // exact folder/id pair for diagnostics.
+          report.errors.push(`version "${entry.folder}" (${vid}): ${(e as Error).message}`);
+        }
+        completedSteps++;
+      }
+    } else if (versionsToInstall && versionsToInstall.length > 0 && installVersion) {
       for (let i = 0; i < versionsToInstall.length; i++) {
         const vid = versionsToInstall[i];
         onProgress?.(completedSteps, totalSteps, `Installing ${vid}...`);
-        try { await installVersion!(vid); report.installedVersions.push(vid); report.copied['version-install'] = (report.copied['version-install'] ?? 0) + 1; }
+        try { await installVersion(vid); report.installedVersions.push(vid); report.copied['version-install'] = (report.copied['version-install'] ?? 0) + 1; }
         catch (e) { report.errors.push(`version "${vid}": ${(e as Error).message}`); }
         completedSteps++;
       }
@@ -1049,7 +1180,8 @@ export function detectFromDir(dir: string): DetectedSource | null {
   const cats = availableCategories(dir, isBedrock);
   if (cats.length === 0) return null;
   const installableVersions = isBedrock ? undefined : detectInstallableVersions(dir);
-  return { id: 'custom', label: isBedrock ? 'Minecraft Bedrock Edition' : path.basename(dir) + ' (' + dir + ')', rootDir: dir, available: cats, approxSize: approxSizeOf(dir, cats, isBedrock), kind: isBedrock ? 'bedrock' : 'java', installableVersions };
+  if (!isBedrock && !hasRealJavaImportContent(cats, installableVersions)) return null;
+  return { id: 'custom', label: isBedrock ? 'Minecraft Bedrock Edition' : inferJavaSourceLabel(dir, path.basename(dir) + ' (' + dir + ')'), rootDir: dir, available: cats, approxSize: approxSizeOf(dir, cats, isBedrock), kind: isBedrock ? 'bedrock' : 'java', installableVersions };
 }
 
 export async function performCacheImport(plan: CacheImportPlan, gameDir: string, onProgress?: ProgressCallback): Promise<{ copied: Partial<Record<CacheCategory, number>>; bytesCopied: number; errors: string[] }> {

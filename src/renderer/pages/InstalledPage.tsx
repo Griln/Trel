@@ -27,7 +27,7 @@ export const InstalledPage: React.FC<Props> = ({ settings, account, onSettingsCh
   const t = useT();
 
   const typeLabel: Record<string, string> = {
-    release: t('installed.typeRelease'), snapshot: t('installed.typeSnapshot'), old_beta: 'beta', old_alpha: 'alpha',
+    release: t('installed.typeRelease'), snapshot: t('installed.typeSnapshot'), old_beta: 'beta', old_alpha: 'alpha', bedrock: 'Bedrock',
   };
   const [versions, setVersions] = useState<VersionInfo[]>([]);
   const [details, setDetails] = useState<InstalledVersionDetail[]>([]);
@@ -52,16 +52,16 @@ export const InstalledPage: React.FC<Props> = ({ settings, account, onSettingsCh
   // Скрываем стандалон-ваниль, если для этой же базы установлен хотя бы
   // один лоадер — он "впитывает" её под именем базовой MC версии.
   const items = useMemo(() => {
-    const moddedBases = new Set(details.filter((d) => d.loader).map((d) => d.baseMc));
+    const moddedBases = new Set(details.filter((d) => d.edition === 'java' && d.loader).map((d) => d.baseMc));
     return details
-      .filter((d) => d.loader || !moddedBases.has(d.id))
+      .filter((d) => d.edition === 'bedrock' || d.loader || !moddedBases.has(d.id))
       .map((d) => {
-        const meta = versions.find((v) => v.id === d.baseMc);
+        const meta = d.edition === 'bedrock' ? undefined : versions.find((v) => v.id === d.baseMc);
         return {
           ...d,
-          type: meta?.type ?? 'unknown',
+          type: d.edition === 'bedrock' ? 'bedrock' : (meta?.type ?? 'unknown'),
           releaseTime: meta?.releaseTime,
-          isLast: d.id === settings.lastVersionId,
+          isLast: d.id === settings.lastVersionId && (settings.lastVersionEdition ? settings.lastVersionEdition === d.edition : true),
         };
       })
       .sort((a, b) => {
@@ -69,15 +69,20 @@ export const InstalledPage: React.FC<Props> = ({ settings, account, onSettingsCh
         if (!a.isLast && b.isLast) return 1;
         return (b.releaseTime || '').localeCompare(a.releaseTime || '');
       });
-  }, [details, versions, settings.lastVersionId]);
+  }, [details, versions, settings.lastVersionId, settings.lastVersionEdition]);
 
-  const onPlay = async (id: string) => {
+  const onPlay = async (it: InstalledVersionDetail) => {
+    const id = it.id;
     if (!account) return;
     setBusyId(id);
     setStatus(t('installed.launchingStatus', { id }));
     try {
-      onSettingsChange({ ...settings, lastVersionId: id });
-      await window.api.minecraft.launch({ versionId: id, account, memoryMb: settings.memoryMb });
+      onSettingsChange({ ...settings, lastVersionId: id, lastVersionEdition: it.edition });
+      if (it.edition === 'bedrock') {
+        await window.api.bedrock.launch(id, '');
+      } else {
+        await window.api.minecraft.launch({ versionId: id, account, memoryMb: settings.memoryMb });
+      }
       setStatus(t('installed.runningStatus'));
     } catch (e) {
       setStatus(t('installed.errorStatus', { message: (e as Error).message }));
@@ -87,7 +92,8 @@ export const InstalledPage: React.FC<Props> = ({ settings, account, onSettingsCh
     }
   };
 
-  const onUninstall = async (id: string) => {
+  const onUninstall = async (it: InstalledVersionDetail) => {
+    const id = it.id;
     const choice = await dialog.show({
       title: t('installed.deleteTitle', { id }),
       tone: 'danger',
@@ -101,7 +107,9 @@ export const InstalledPage: React.FC<Props> = ({ settings, account, onSettingsCh
       cancelValue: 'cancel',
     });
     if (choice === 'cancel') return;
-    if (choice === 'deep') {
+    if (it.edition === 'bedrock') {
+      await window.api.bedrock.uninstall(id);
+    } else if (choice === 'deep') {
       await window.api.minecraft.uninstallDeep(id);
     } else {
       await window.api.minecraft.uninstall(id);
@@ -110,7 +118,7 @@ export const InstalledPage: React.FC<Props> = ({ settings, account, onSettingsCh
     // её как выбранную. Бэкенд уже сбросил это в settings.json, но рендерер
     // держит копию в памяти — синхронизируем явно.
     if (settings.lastVersionId === id) {
-      onSettingsChange({ ...settings, lastVersionId: '' });
+      onSettingsChange({ ...settings, lastVersionId: '', lastVersionEdition: undefined });
     }
     setStatus(t('installed.deletedStatus', { id }));
     refresh();
@@ -138,7 +146,7 @@ export const InstalledPage: React.FC<Props> = ({ settings, account, onSettingsCh
     if (result.settings) {
       onSettingsChange(result.settings);
     } else if (settings.lastVersionId && result.removed.includes(settings.lastVersionId)) {
-      onSettingsChange({ ...settings, lastVersionId: baseMc });
+      onSettingsChange({ ...settings, lastVersionId: baseMc, lastVersionEdition: 'java' });
     }
     refresh();
   };
@@ -162,7 +170,7 @@ export const InstalledPage: React.FC<Props> = ({ settings, account, onSettingsCh
       try { await window.api.minecraft.uninstall(id); } catch {}
     }
     if (settings.lastVersionId && ids.includes(settings.lastVersionId)) {
-      onSettingsChange({ ...settings, lastVersionId: '' });
+      onSettingsChange({ ...settings, lastVersionId: '', lastVersionEdition: undefined });
     }
     setStatus(t('installed.deletedAllStatus', { count: String(ids.length) }));
     refresh();
@@ -225,7 +233,7 @@ export const InstalledPage: React.FC<Props> = ({ settings, account, onSettingsCh
                     {it.releaseTime && (
                       <span className="chip">{new Date(it.releaseTime).toLocaleDateString(t.locale === 'en' ? 'en-US' : 'ru-RU')}</span>
                     )}
-                    {!supportsCustomSkin(it.id, it.baseMc) && (
+                    {it.edition === 'java' && !supportsCustomSkin(it.id, it.baseMc) && (
                       <span className="chip warn" title={t('installed.noSkinTitle')}>
                         <IconSkinOff /> {t('installed.noSkins')}
                       </span>
@@ -235,14 +243,14 @@ export const InstalledPage: React.FC<Props> = ({ settings, account, onSettingsCh
                     <button
                       className="btn primary block"
                       disabled={!account || busyId === it.id || !!(settings.lockOnLaunch && gameRunning)}
-                      onClick={() => onPlay(it.id)}
+                      onClick={() => onPlay(it)}
                     >
                       <IconPlay />
                       {busyId === it.id ? t('installed.btnLaunching') : t('installed.btnPlay')}
                     </button>
                     <div className="row" style={{ gap: 4 }}>
                       {/* Установка лоадера доступна для чистых релизов без лоадера */}
-                      {!it.loader && /^1\.\d+(\.\d+)?$/.test(it.id) && (
+                      {it.edition === 'java' && !it.loader && /^1\.\d+(\.\d+)?$/.test(it.id) && (
                         <button
                           className="icon-btn"
                           onClick={() => setLoaderFor(it.id)}
@@ -263,14 +271,14 @@ export const InstalledPage: React.FC<Props> = ({ settings, account, onSettingsCh
                       )}
                       <button
                         className="icon-btn"
-                        onClick={() => window.api.minecraft.openFolder('version', it.id)}
+                        onClick={() => it.edition === 'bedrock' ? window.api.bedrock.openFolder(it.id) : window.api.minecraft.openFolder('version', it.id)}
                         title={t('installed.openFolder')}
                       >
                         <IconFolder />
                       </button>
                       <button
                         className="icon-btn"
-                        onClick={() => onUninstall(it.id)}
+                        onClick={() => onUninstall(it)}
                         title={t('installed.delete')}
                       >
                         <IconTrash />
@@ -291,7 +299,7 @@ export const InstalledPage: React.FC<Props> = ({ settings, account, onSettingsCh
         onInstalled={async (versionId) => {
           await refresh();
           setStatus(t('installed.installedStatus', { id: versionId }));
-          onSettingsChange({ ...settings, lastVersionId: versionId });
+          onSettingsChange({ ...settings, lastVersionId: versionId, lastVersionEdition: 'java' });
         }}
       />
     </div>
