@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "module": "commonjs",
+    "target": "es2020",
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "moduleResolution": "node",
+    "outDir": ".tmp",
+    "rootDir": ".",
+    "noEmitOnError": false,
+    "resolveJsonModule": true,
+    "types": [
+      "node"
+    ]
+  },
+  "include": [
+    "generate-skins.ts",
+    "skin-scripts/**/*.ts"
+  ]
+}

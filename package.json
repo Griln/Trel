@@ -1,0 +1,160 @@
+{
+  "name": "trel-launcher",
+  "version": "0.4.0",
+  "description": "Trel",
+  "main": "dist-electron/main/main.js",
+  "author": "you",
+  "license": "MIT",
+  "overrides": {
+    "esbuild": {
+      "optionalDependencies": {}
+    }
+  },
+  "scripts": {
+    "dev": "vite",
+    "icon": "node scripts/build-icon.js",
+    "skins": "node scripts/skins/build-soul.js",
+    "build:trel-emu": "node scripts/build-trel-emu.js",
+    "build:trel-emu-pack": "node scripts/build-trel-emu-pack.js",
+    "build:renderer": "vite build",
+    "build:electron": "tsc -p tsconfig.electron.json",
+    "build": "npm run build:renderer && npm run build:electron",
+    "start": "electron .",
+    "test": "vitest run",
+    "dist": "npm run icon && npm run build && electron-builder --win",
+    "dist:linux": "npm run icon && npm run build && electron-builder --linux",
+    "dist:publish": "npm run icon && npm run build && node scripts/publish-with-token.js",
+    "smartscreen": "node scripts/smartscreen-hashes.js"
+  },
+  "dependencies": {
+    "@xmcl/core": "^2.12.0",
+    "adm-zip": "^0.5.17",
+    "axios": "^1.7.7",
+    "electron-updater": "^6.8.3",
+    "prismarine-nbt": "^2.8.0"
+  },
+  "devDependencies": {
+    "@types/adm-zip": "^0.5.8",
+    "@types/node": "^22.9.0",
+    "@types/pngjs": "^6.0.5",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@types/three": "^0.171.0",
+    "@vitejs/plugin-react": "^4.3.3",
+    "@vitest/ui": "^4.1.8",
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8",
+    "playwright": "^1.61.0",
+    "pngjs": "^7.0.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "three": "^0.171.0",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.11",
+    "vitest": "^4.1.8"
+  },
+  "build": {
+    "appId": "com.trel.launcher",
+    "productName": "Trel",
+    "asar": true,
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "build/icon.ico",
+      "build/icon.png",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "dist-electron/preload/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "resources/legacy",
+        "to": "legacy",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "resources/platform-tools",
+        "to": "platform-tools",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "mkrlord1000-sketch",
+        "repo": "Trel",
+        "releaseType": "release"
+      }
+    ],
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "Trel-${version}-${arch}.${ext}",
+      "publisherName": "Trel"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false,
+      "differentialPackage": true,
+      "deleteAppDataOnUninstall": false,
+      "shortcutName": "Trel",
+      "createDesktopShortcut": "always",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "include": "build/installer.nsh"
+    },
+    "portable": {
+      "artifactName": "Trel.exe"
+    },
+    "linux": {
+      "icon": "build/icon.png",
+      "category": "Game",
+      "target": [
+        { "target": "AppImage", "arch": ["x64"] },
+        { "target": "deb", "arch": ["x64"] },
+        { "target": "rpm", "arch": ["x64"] }
+      ],
+      "artifactName": "Trel-${version}-${arch}.${ext}"
+    },
+    "appImage": {
+      "artifactName": "Trel-${version}-${arch}.AppImage"
+    },
+    "deb": {
+      "artifactName": "Trel-${version}-${arch}.deb",
+      "depends": [
+        "libgtk-3-0", "libnotify4", "libnss3", "libxss1", "libxtst6",
+        "xdg-utils", "libatspi2.0-0", "libdrm2", "libgbm1", "libasound2"
+      ]
+    },
+    "rpm": {
+      "artifactName": "Trel-${version}-${arch}.rpm",
+      "depends": [
+        "gtk3", "libnotify", "nss", "libXScrnSaver", "libXtst",
+        "xdg-utils", "at-spi2-atk", "libdrm", "mesa-libgbm", "alsa-lib"
+      ]
+    }
+  }
+}
