@@ -106,10 +106,21 @@ function resolvePreloadPath(): string {
 }
 
 function resolveAppIconPath(): string {
+  // На Windows приоритизируем .ico (многослойная иконка, лучше в трее/taskbar).
+  // На Linux/macOS .ico Electron'ом декодируется как png-фрейм, но нативные
+  // tray-менеджеры (GNOME/KDE) предпочитают .png — иначе tray и иконка окна
+  // получаются пустыми. Поэтому на не-Windows первым кандидатом ставим .png.
+  const isWin = process.platform === 'win32';
+  const ext = isWin ? 'ico' : 'png';
+  const fallbackExt = isWin ? 'png' : 'ico';
   const candidates = [
-    path.join(app.getAppPath(), 'build', 'icon.ico'),
-    path.join(process.resourcesPath || '', 'build', 'icon.ico'),
-    path.join(process.cwd(), 'build', 'icon.ico'),
+    path.join(app.getAppPath(), 'build', 'icon.' + ext),
+    path.join(process.resourcesPath || '', 'build', 'icon.' + ext),
+    path.join(process.cwd(), 'build', 'icon.' + ext),
+    // Запасной формат (междуplatform-совместимый): icon.png лежит рядом с проектом.
+    path.join(app.getAppPath(), 'build', 'icon.' + fallbackExt),
+    path.join(process.resourcesPath || '', 'build', 'icon.' + fallbackExt),
+    path.join(process.cwd(), 'build', 'icon.' + fallbackExt),
   ];
   return candidates.find((x) => x && fs.existsSync(x)) ?? candidates[0];
 }

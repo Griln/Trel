@@ -31,6 +31,7 @@ import { DANGEROUS_JVM_ARGS, SHELL_WHITELIST } from '../shared/constants';
 import { ScreenshotService } from './screenshots';
 import { NativeScreenshotService } from './nativeScreenshot';
 import { ServerPingService } from './serverping';
+import { getAutoLaunch, setAutoLaunch } from './autostart';
 
 const SYSTEM_DENYLIST = new Set([
   'c:\\windows', 'c:\\program files', 'c:\\program files (x86)',
@@ -431,6 +432,12 @@ export function registerIpc(win: BrowserWindow, launcherDir: string, updater: La
       return true;
     } catch { return false; }
   });
+
+  // ─── Auto-launch at system startup ──────────────────────────────────
+  // Linux: .desktop в ~/.config/autostart/, Windows: .lnk в Startup-папке,
+  // macOS: нативный LoginItems через app.setLoginItemSettings. См. autostart.ts.
+  ipcMain.handle('settings:autoLaunchGet', () => getAutoLaunch());
+  ipcMain.handle('settings:autoLaunchSet', (_e, enabled: boolean) => setAutoLaunch(!!enabled));
 
     // ─── Move game directory ────────────────────────────────────────────
   /** Execute a PowerShell script safely via spawnSync with separate arguments. Win-only. */
