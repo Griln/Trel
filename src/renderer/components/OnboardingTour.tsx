@@ -31,6 +31,27 @@ const filterBullets = (list: string[]): string[] =>
 const filterChips = (list: string[]): string[] =>
   IS_WIN ? list : list.filter((s) => !/bedrock|trelemu|trel emu/i.test(s));
 
+/**
+ * Заголовок шага «Версии» упоминает Bedrock. На не-Windows подменяем на
+ * Java-only вариант. Lead шага также упрощаем — убираем упоминание Bedrock.
+ */
+function adaptTitle(step: Step, ru: boolean): string {
+  const t = ru ? step.titleRu : step.titleEn;
+  if (IS_WIN) return t;
+  if (step.id === 'browse') return ru ? 'Версии: Java' : 'Versions: Java';
+  return t;
+}
+function adaptLead(step: Step, ru: boolean): string {
+  const l = ru ? step.leadRu : step.leadEn;
+  if (IS_WIN) return l;
+  if (step.id === 'browse') {
+    return ru
+      ? 'Во вкладке версий устанавливаются Java-сборки и загрузчики модов. Прогресс скачивания виден в глобальном индикаторе.'
+      : 'The versions page installs Java builds and mod loaders. Download progress is visible in the global indicator.';
+  }
+  return l;
+}
+
 const STEPS: Step[] = [
   {
     id: 'home',
@@ -195,8 +216,8 @@ export const OnboardingTour: React.FC<Props> = ({ open, onClose, onNavigate }) =
   const step = STEPS[index];
   const progress = useMemo(() => Math.round(((index + 1) / STEPS.length) * 100), [index]);
 
-  const title = ru ? step.titleRu : step.titleEn;
-  const lead = ru ? step.leadRu : step.leadEn;
+  const title = adaptTitle(step, ru);
+  const lead = adaptLead(step, ru);
   const bullets = filterBullets(ru ? step.bulletsRu : step.bulletsEn);
   const action = ru ? step.actionRu : step.actionEn;
 

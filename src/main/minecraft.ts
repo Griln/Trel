@@ -322,10 +322,17 @@ export class MinecraftService {
       const timer = setTimeout(() => {
         if (done) return;
         done = true;
-        try {
-          if (child.pid) execSync(`taskkill /F /T /PID ${child.pid}`, { stdio: 'ignore', windowsHide: true, timeout: 5000 });
-        } catch {
-          try { child.kill('SIGKILL'); } catch {}
+        if (child.pid) {
+          if (process.platform === 'win32') {
+            try { execSync(`taskkill /F /T /PID ${child.pid}`, { stdio: 'ignore', windowsHide: true, timeout: 5000 }); }
+            catch { try { child.kill('SIGKILL'); } catch {} }
+          } else {
+            // На Linux/macOS SIGTERM даёт JVM шанс закрыть сокеты и нативные
+            // библиотеки, тогда как SIGKILL оставляет .so-файлы и orphan'ов.
+            try { process.kill(child.pid, 'SIGTERM'); } catch {}
+            // Ждём 500ms, если не вышел — принудительно SIGKILL.
+            setTimeout(() => { try { process.kill(child.pid, 'SIGKILL'); } catch {} }, 500);
+          }
         }
         reject(new Error(`Command timed out after ${timeout}ms: ${cmd}\n${stderr || stdout}`));
       }, timeout);

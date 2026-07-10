@@ -194,6 +194,13 @@ const api = {
 
     moveGameDir: (oldDir: string, newDir: string): Promise<{ moved: number; errors: string[] }> => ipcRenderer.invoke('settings:moveGameDir', oldDir, newDir),
 
+    /** Включить/выключить автозапуск Trel вместе с системой. См. autostart.ts. */
+    autoLaunchGet: (): Promise<{ enabled: boolean; unavailable?: boolean; reason?: string }> =>
+      ipcRenderer.invoke('settings:autoLaunchGet'),
+
+    autoLaunchSet: (enabled: boolean): Promise<{ ok: boolean; unavailable?: boolean; reason?: string }> =>
+      ipcRenderer.invoke('settings:autoLaunchSet', enabled),
+
   },
 
   accounts: {

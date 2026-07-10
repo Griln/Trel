@@ -53,12 +53,20 @@ export const SettingsPage: React.FC<Props> = ({ settings, onChange }) => {
   const [moving, setMoving] = useState(false);
   const [moveStatus, setMoveStatus] = useState('');
   const [emuResetting, setEmuResetting] = useState(false);
+  const [autolaunchEnabled, setAutolaunchEnabled] = useState(false);
+  const [autolaunchUnavailable, setAutolaunchUnavailable] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     window.api.java.list().then((v) => { if (!cancelled) setJavaList(v); }).catch((e) => console.warn('[settings] java list failed', e));
     window.api.updater.state().then((v) => { if (!cancelled) setUpdater(v); }).catch((e) => console.warn('[settings] updater state failed', e));
     window.api.settings.desktopShortcutExists().then((v) => { if (!cancelled) setShortcutExists(v); }).catch((e) => console.warn('[settings] shortcut check failed', e));
+    // Автозапуск: тянем состояние из ОС (файл/ярлык/LoginItems).
+    window.api.settings.autoLaunchGet().then((v) => {
+      if (cancelled) return;
+      setAutolaunchEnabled(!!v.enabled);
+      setAutolaunchUnavailable(!!v.unavailable);
+    }).catch((e) => console.warn('[settings] autoLaunchGet failed', e));
     const off = window.api.updater.onState((v) => { if (!cancelled) setUpdater(v); });
     return () => { cancelled = true; off(); };
   }, []);
@@ -439,6 +447,34 @@ export const SettingsPage: React.FC<Props> = ({ settings, onChange }) => {
           <span className="hint" style={{ fontSize: 12 }}>
             {shortcutExists ? t('settings.shortcutInstalled') : t('settings.shortcutNotInstalled')}
           </span>
+        </div>
+      </div>
+
+      {/* Автозапуск вместе с системой. На macOS используем нативные LoginItems,
+          на Linux — XDG .desktop в ~/.config/autostart/, на Windows — .lnk в
+          Startup-папке. Недоступно для portable-сборки Trel без известного .exe. */}
+      <div className="card">
+        <div className="card-head">
+          <h2>{t('settings.autoLaunchTitle')}</h2>
+        </div>
+        <label className="row" style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: autolaunchUnavailable ? 'not-allowed' : 'pointer' }}>
+          <input
+            type="checkbox"
+            disabled={autolaunchUnavailable}
+            checked={autolaunchEnabled}
+            onChange={async (e) => {
+              const target = e.target.checked;
+              const r = await window.api.settings.autoLaunchSet(target);
+              if (r.ok) { setAutolaunchEnabled(target); setAutolaunchUnavailable(!!r.unavailable); }
+              else { setAutolaunchUnavailable(!!r.unavailable); }
+            }}
+          />
+          <span>{t('settings.autoLaunchLabel')}</span>
+        </label>
+        <div className="hint" style={{ fontSize: 12, marginTop: 6 }}>
+          {autolaunchUnavailable
+            ? (t('settings.autoLaunchUnavailable'))
+            : (autolaunchEnabled ? t('settings.autoLaunchOn') : t('settings.autoLaunchOff'))}
         </div>
       </div>
 
