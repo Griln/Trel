@@ -4,7 +4,7 @@
   Unlike publish.ps1 it does NOT delete existing releases or tags.
 
 .PARAMETER Token
-  GitHub Personal Access Token. Needs write access to the repository:
+  Optional GitHub Personal Access Token. Defaults to the GH_TOKEN environment variable. Needs write access to the repository:
   Classic PAT with the "repo" scope, or a fine-grained token with
   "Contents: Read and write" on this repo.
 
@@ -14,7 +14,7 @@
   fallback string built from package.json.version.
 
 .EXAMPLE
-  .\scripts\publish-release.ps1 -Token REMOVED_SECRET_USE_GH_TOKEN
+  Set GH_TOKEN in the environment, then run this script without -Token.
 
 .NOTES
   Owner/repo and version are read from package.json. Tag is "v" + version.
@@ -22,13 +22,17 @@
   changing anything (so re-running is safe).
 #>
 param(
-  [Parameter(Mandatory = $true)]
-  [string]$Token,
+  [Parameter(Mandatory = $false)]
+  [string]$Token = $env:GH_TOKEN,
 
   [string]$NotesFile = ''
 )
 
 $ErrorActionPreference = 'Stop'
+
+if ([string]::IsNullOrWhiteSpace($Token)) {
+  throw "GH_TOKEN is not set. Set the GH_TOKEN environment variable or pass -Token explicitly."
+}
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $pkgPath  = Join-Path $repoRoot 'package.json'
