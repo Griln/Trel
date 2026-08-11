@@ -36,3 +36,6 @@ chat_history/
 
 # Huge optional emulator pack, downloaded separately
 resources/trel-emu/
+
+# Extracted application filesystem (generated)
+squashfs-root/
