@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trel — каркас приложения · превью</title>
+<link rel="stylesheet" href="trel-design.css">
+<style>
+  /* trel-design.css не определяет RGB/градиентные токены акцента —
+     дублируем их сюда по аналогии со styles.css лаунчера. */
+  :root{--accent-rgb:255,255,255;--accent-bright:#ffffff;--accent-deep:#d4d4d4;--accent-border:rgba(255,255,255,.3)}
+  html[data-theme="eclipse"]{--accent-rgb:26,26,26;--accent-bright:#3a3a3a;--accent-deep:#000000;--accent-border:rgba(0,0,0,.2)}
+  html[data-theme="voxel"]{--accent-rgb:80,200,120;--accent-bright:#7adb9a;--accent-deep:#2d8b53;--accent-border:rgba(80,200,120,.38)}
+  /* Это превью показывает НОВУЮ вкладку внутри РЕАЛЬНОГО каркаса:
+     titlebar (не трогаем) + sidebar v3 (hero-«Главная») + content (новый стиль).
+     Цель — убедиться, что всё дружит со всем. */
+  html,body{height:100%;overflow:hidden}
+  .app{display:flex;flex-direction:column;height:100vh}
+
+  /* ===== titlebar (как в лаунчере, не трогаем) ===== */
+  .titlebar{height:40px;display:flex;align-items:center;padding:0 4px 0 16px;flex-shrink:0;
+    border-bottom:1px solid var(--border);background:linear-gradient(180deg,rgba(0,0,0,.45),rgba(0,0,0,.25));position:relative;z-index:20}
+  .brand{display:flex;align-items:center;gap:9px;font-size:13px;font-weight:700;letter-spacing:.3px;color:var(--fg)}
+  .brand-mark{width:20px;height:20px;display:inline-flex;align-items:center;justify-content:center;color:var(--accent);
+    animation:brandPulse 4s ease-in-out infinite}
+  .brand-mark svg{width:16px;height:16px}
+  @keyframes brandPulse{0%,100%{filter:drop-shadow(0 0 6px rgba(255,255,255,.5))}50%{filter:drop-shadow(0 0 13px rgba(255,255,255,.95))}}
+  .titlebar .sp{flex:1}
+  .upd-chip{display:inline-flex;align-items:center;gap:7px;font-family:var(--mono);font-size:10.5px;font-weight:600;
+    color:var(--green);border:1px solid rgba(94,203,111,.3);background:rgba(94,203,111,.07);padding:4px 10px;border-radius:99px;margin-right:10px}
+  .win-controls{display:flex}
+  .win-btn{width:42px;height:40px;display:grid;place-items:center;background:none;border:none;color:var(--fg-muted);cursor:pointer;transition:.15s}
+  .win-btn svg{width:15px;height:15px}
+  .win-btn:hover{background:rgba(255,255,255,.07);color:var(--fg)}
+  .win-btn.close:hover{background:#e81123;color:#fff}
+
+  .app-body{display:flex;flex:1;min-height:0}
+
+  /* ===== sidebar (как в лаунчере, не трогаем) ===== */
+  .sidebar{width:216px;flex-shrink:0;display:flex;flex-direction:column;gap:2px;padding:14px 10px 12px;
+    border-right:1px solid var(--border);background:linear-gradient(180deg,rgba(0,0,0,.45),rgba(0,0,0,.25));overflow-y:auto}
+  .nav-item{position:relative;padding:9px 12px;border-radius:10px;color:var(--fg-muted);cursor:pointer;display:flex;
+    align-items:center;gap:11px;font-size:13.5px;font-weight:500;transition:background .12s,color .12s;user-select:none}
+  .nav-item svg{width:16px;height:16px;flex-shrink:0;stroke-width:1.75}
+  .nav-item::before{content:"";position:absolute;left:0;top:50%;transform:translateY(-50%) scaleY(0);width:3px;height:18px;
+    background:linear-gradient(180deg,var(--accent-bright,#fff),var(--accent-deep,#d4d4d4));border-radius:0 3px 3px 0;transition:transform .18s}
+  .nav-item:hover{background:rgba(255,255,255,.05);color:var(--fg)}
+  .nav-item.active{background:linear-gradient(180deg,rgba(255,255,255,.16),rgba(255,255,255,.05));color:var(--fg-bright);
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,.3)}
+  .nav-item.active::before{transform:translateY(-50%) scaleY(1)}
+  .nav-item.active svg{color:var(--accent-bright,#fff)}
+  /* ===== sidebar v3: «Главная» — hero-карточка на самом верху ===== */
+  .nav-hero{position:relative;display:flex;align-items:center;gap:12px;padding:11px 12px;margin-bottom:6px;
+    border-radius:13px;cursor:pointer;user-select:none;border:1px solid var(--accent-border);
+    background:linear-gradient(135deg,rgba(var(--accent-rgb),.16),rgba(var(--accent-rgb),.05));color:var(--fg-bright);
+    transition:background .12s,border-color .12s,transform .12s,box-shadow .12s}
+  .nav-hero:hover{border-color:var(--accent);transform:translateY(-1px)}
+  .nav-hero .hero-ico{width:34px;height:34px;flex-shrink:0;border-radius:10px;display:grid;place-items:center;
+    background:linear-gradient(135deg,var(--accent-bright),var(--accent-deep));color:var(--accent-fg);
+    box-shadow:0 8px 20px -8px rgba(var(--accent-rgb),.7)}
+  .nav-hero .hero-ico svg{width:16px;height:16px}
+  .nav-hero .hero-txt{min-width:0;display:flex;flex-direction:column}
+  .nav-hero .hero-txt b{font-family:var(--display);font-size:14px;font-weight:700;letter-spacing:.2px}
+  .nav-hero .hero-txt .sub{font-size:10.5px;font-weight:500;margin-top:2px;color:var(--fg-muted)}
+  .nav-hero.active{background:linear-gradient(135deg,var(--accent-bright),var(--accent-deep));border-color:transparent;
+    color:var(--accent-fg);box-shadow:0 12px 30px -12px rgba(var(--accent-rgb),.8),inset 0 0 0 1px rgba(255,255,255,.25)}
+  .nav-hero.active .hero-ico{background:rgba(0,0,0,.22);color:var(--accent-fg);box-shadow:none}
+  .nav-hero.active .hero-txt .sub{color:color-mix(in srgb,var(--accent-fg) 68%,transparent)}
+  .nav-divider{height:1px;background:linear-gradient(90deg,transparent,var(--border),transparent);margin:8px}
+  .nav-group{display:flex;flex-direction:column;gap:2px}
+  .nav-group-label{font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--fg-subtle);padding:0 12px;margin-bottom:4px;user-select:none}
+  .nav-item-label{flex:1}
+  .nav-item-count{font-size:10.5px;font-weight:600;color:var(--fg-muted);background:var(--surface-2);border:1px solid var(--border);padding:1px 6px;border-radius:8px;min-width:18px;text-align:center}
+  .nav-item.active .nav-item-count{color:var(--accent-bright,#fff);background:rgba(255,255,255,.14);border-color:transparent}
+  .nav-item-dot{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 6px rgba(94,203,111,.6);flex-shrink:0}
+  .sidebar .sp{flex:1}
+  .account-chip{margin-top:10px;padding:10px 11px;border-radius:10px;background:var(--surface);border:1px solid var(--border);
+    display:flex;align-items:center;gap:10px;cursor:pointer;transition:.15s;width:100%;text-align:left;color:inherit;font:inherit}
+  .account-chip:hover{border-color:var(--border-strong);background:var(--surface-3)}
+  .avatar-sm{width:32px;height:32px;border-radius:9px;flex-shrink:0;image-rendering:pixelated;position:relative;overflow:hidden;
+    border:1px solid rgba(255,255,255,.14);box-shadow:0 0 0 2px var(--surface),0 0 0 3.5px var(--accent-border)}
+  .avatar-sm::before{content:"";position:absolute;inset:0;background:linear-gradient(180deg,#2b1d10 0 26%,#c69c6d 26%)}
+  .avatar-sm::after{content:"";position:absolute;left:7px;top:17px;width:4px;height:4px;background:#fff;box-shadow:14px 0 0 #fff,7px 0 0 -1px #3d3d9e,14px 0 0 -1px #3d3d9e}
+  .account-chip .info{flex:1;min-width:0}
+  .account-chip .name{font-size:13px;font-weight:600;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .account-chip .role{font-size:11px;color:var(--fg-subtle)}
+
+  /* ===== content (НОВЫЙ стиль) ===== */
+  .content{flex:1;min-width:0;overflow-y:auto;position:relative;padding:28px 32px 40px}
+  .content::before{content:"";position:absolute;inset:0;pointer-events:none;background:var(--ambient)}
+
+  /* GlobalActivityBar — плавающие плашки сверху справа */
+  .gab{position:sticky;top:0;z-index:15;display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;margin:-6px 0 14px}
+  .gab-pill{display:inline-flex;align-items:center;gap:8px;font-family:var(--mono);font-size:11px;font-weight:600;
+    padding:7px 13px;border-radius:99px;border:1px solid var(--border);background:color-mix(in srgb,var(--surface) 88%,transparent);
+    backdrop-filter:blur(10px);color:var(--fg-muted);cursor:pointer;transition:.18s;animation:cardIn .5s var(--ease) backwards}
+  .gab-pill:hover{border-color:var(--border-bright);color:var(--fg);transform:translateY(-1px)}
+  .gab-pill.success{color:var(--green);border-color:rgba(94,203,111,.3)}
+  .gab-pill .meter{width:52px;height:4px;border-radius:99px;background:var(--surface-4);overflow:hidden}
+  .gab-pill .meter i{display:block;height:100%;background:var(--accent);border-radius:99px}
+
+  /* компактная версия вкладки "Установленные" внутри каркаса */
+  .irow{display:flex;align-items:center;gap:15px;padding:16px 18px;border-radius:15px;background:var(--surface-2);
+    border:1px solid var(--border);transition:.22s var(--ease);animation:cardIn .5s var(--ease) backwards;position:relative;overflow:hidden}
+  .irow:hover{transform:translateY(-3px);border-color:var(--border-bright);background:var(--surface-3);box-shadow:var(--card-shadow)}
+  .irow:nth-child(2){animation-delay:.08s}.irow:nth-child(3){animation-delay:.16s}
+  .irow.is-last{border-color:rgba(94,203,111,.35);background:linear-gradient(120deg,rgba(94,203,111,.06),var(--surface-2) 55%)}
+  .irow.is-last::after{content:"последняя";position:absolute;top:0;right:0;font-family:var(--mono);font-size:9px;font-weight:700;
+    letter-spacing:1.5px;text-transform:uppercase;color:var(--accent-fg);background:var(--green);padding:4px 11px;border-radius:0 14px 0 10px}
+  .icube{width:44px;height:44px;flex-shrink:0;display:grid;place-items:center;border-radius:11px;background:var(--surface-3);
+    border:1px solid var(--border-strong);color:var(--fg-muted);transition:.3s var(--ease)}
+  .irow:hover .icube{transform:rotate(-8deg) scale(1.07);color:var(--fg-bright)}
+  .irow.modded .icube{color:var(--amber);border-color:rgba(245,168,60,.3)}
+  .icube svg{width:20px;height:20px}
+  .i-body{flex:1;min-width:0}
+  .i-top{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+  .i-id{font-family:var(--display);font-weight:700;font-size:17px;color:var(--fg-bright);letter-spacing:-.4px}
+  .i-sub{font-size:12px;color:var(--fg-muted);margin-top:3px}
+  .shell-note{margin-top:22px;font-family:var(--mono);font-size:11px;color:var(--fg-subtle);line-height:1.7;
+    padding:14px 16px;border-radius:12px;border:1px dashed var(--border-strong)}
+  .shell-note b{color:var(--fg-muted)}
+</style>
+</head>
+<body>
+
+<div class="preview-bar">
+  <span class="tag-prev">ПРЕВЬЮ · КАРКАС</span>
+  <span style="color:#888">новая вкладка внутри реального лаунчера (titlebar + панель v3)</span>
+</div>
+
+<div class="app">
+  <!-- titlebar -->
+  <div class="titlebar">
+    <div class="brand"><span class="brand-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l1.9 5.7L19.6 10l-5.7 1.9L12 17.6l-1.9-5.7L4.4 10l5.7-1.9L12 3Z"/></svg></span>Trel</div>
+    <div class="sp"></div>
+    <span class="upd-chip">● v0.4.0 актуален</span>
+    <div class="win-controls">
+      <button class="win-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/></svg></button>
+      <button class="win-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="5" width="14" height="14" rx="2"/></svg></button>
+      <button class="win-btn close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </div>
+  </div>
+
+  <div class="app-body">
+    <!-- sidebar v3: «Главная» — hero-карточка -->
+    <aside class="sidebar">
+      <div class="nav-hero"><span class="hero-ico"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></span><span class="hero-txt"><b>Главная</b><span class="sub">пуск и продолжение</span></span></div>
+      <div class="nav-divider"></div>
+      <div class="nav-group">
+        <div class="nav-group-label">Найти</div>
+        <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 8 12 3 3 8v8l9 5 9-5V8Z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg><span class="nav-item-label">Каталог</span></div>
+        <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 8v13H3V8M1 3h22v5H1zM10 12h4"/></svg><span class="nav-item-label">Модпаки</span></div>
+        <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 21h16"/></svg><span class="nav-item-label">Импорт</span></div>
+      </div>
+      <div class="nav-divider"></div>
+      <div class="nav-group">
+        <div class="nav-group-label">Играть</div>
+        <div class="nav-item active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="m5 12 5 5 9-11"/></svg><span class="nav-item-label">Установленные</span><span class="nav-item-count">4</span></div>
+        <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="2" y="3" width="20" height="7" rx="2"/><rect x="2" y="14" width="20" height="7" rx="2"/><path d="M6 6.5h.01M6 17.5h.01"/></svg><span class="nav-item-label">Серверы</span><span class="nav-item-dot"></span></div>
+      </div>
+      <div class="nav-divider"></div>
+      <div class="nav-group">
+        <div class="nav-group-label">Хранить</div>
+        <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18 15 15 0 0 1 0-18Z"/></svg><span class="nav-item-label">Миры</span></div>
+        <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 8v13H3V8M1 3h22v5H1zM10 12h4"/></svg><span class="nav-item-label">Контент</span></div>
+        <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg><span class="nav-item-label">Скриншоты</span></div>
+        <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 3v18h18"/><path d="m7 14 4-4 3 3 5-6"/></svg><span class="nav-item-label">Статистика</span></div>
+      </div>
+      <div class="nav-divider"></div>
+      <div class="nav-group">
+        <div class="nav-group-label">Настроить</div>
+        <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg><span class="nav-item-label">Аккаунты</span></div>
+        <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M9 8h6M9 12h6"/></svg><span class="nav-item-label">Скин</span></div>
+        <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 9v4m0 4h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg><span class="nav-item-label">Диагностика</span></div>
+        <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.01a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.01a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.55 1Z"/></svg><span class="nav-item-label">Настройки</span></div>
+      </div>
+      <div class="sp"></div>
+      <button class="account-chip"><span class="avatar-sm"></span><span class="info"><span class="name">Steve</span><span class="role">оффлайн</span></span><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;color:var(--fg-subtle)"><path d="m9 18 6-6-6-6"/></svg></button>
+    </aside>
+
+    <!-- content: новая вкладка -->
+    <main class="content">
+      <div class="gab">
+        <span class="gab-pill success">● Игра запущена</span>
+        <span class="gab-pill">Загрузка: ассеты <span class="meter"><i style="width:62%"></i></span> 62%</span>
+      </div>
+
+      <span class="eyebrow">Библиотека</span>
+      <h1 class="page-title" style="font-size:clamp(24px,3.4vw,34px)">Установленные <span class="count">4</span></h1>
+      <p class="page-sub" style="margin-bottom:22px">Так новая вкладка выглядит рядом с нетронутым сайдбаром.</p>
+
+      <div style="display:flex;flex-direction:column;gap:11px">
+        <div class="irow is-last modded">
+          <div class="icube"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M21 8 12 3 3 8v8l9 5 9-5V8Z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg></div>
+          <div class="i-body">
+            <div class="i-top"><span class="i-id">1.20.1</span><span class="chip amber">FABRIC 0.16.0</span><span class="chip green">релиз</span></div>
+            <div class="i-sub">модов: 14 · 628 МБ · Java 17 ✓</div>
+          </div>
+          <button class="btn primary sm"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>Играть</button>
+        </div>
+        <div class="irow">
+          <div class="icube"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M21 8 12 3 3 8v8l9 5 9-5V8Z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg></div>
+          <div class="i-body">
+            <div class="i-top"><span class="i-id">1.21.4</span><span class="chip green">релиз</span></div>
+            <div class="i-sub">ваниль · 412 МБ · Java 21 ✓</div>
+          </div>
+          <button class="btn primary sm"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>Играть</button>
+        </div>
+        <div class="irow">
+          <div class="icube" style="color:var(--cyan);border-color:rgba(74,237,217,.3)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M12 18h.01"/></svg></div>
+          <div class="i-body">
+            <div class="i-top"><span class="i-id">1.15</span><span class="chip cyan">bedrock</span></div>
+            <div class="i-sub">Buzzy Bees · APK 94 МБ · TrelEmu ✓</div>
+          </div>
+          <button class="btn primary sm"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>Играть</button>
+        </div>
+      </div>
+
+      <div class="shell-note">
+        <b>Зачем это превью:</b> панель навигации теперь v3 — «Главная» вынесена hero-карточкой на самый верх и в активном состоянии заливается акцентом, чип аккаунта получил кольцо и шеврон. Здесь видно, что новая вкладка (белый акцент, Unbounded, карточки) стоит рядом с новой панелью и не конфликтует — у них один акцент и одна типографика. Плашки сверху — глобальный индикатор активности (игра/серверы/загрузки), он уже есть в лаунчере.
+      </div>
+    </main>
+  </div>
+</div>
+
+<script src="trel-preview.js"></script>
+</body>
+</html>

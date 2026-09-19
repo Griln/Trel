@@ -3,6 +3,8 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as crypto from 'node:crypto';
 import * as os from 'node:os';
+import * as http from 'node:http';
+import * as https from 'node:https';
 import { BrowserWindow } from 'electron';
 import AdmZip from 'adm-zip';
 import { DownloadProgress } from '../shared/types';
@@ -11,7 +13,23 @@ import { isUrlAllowed, scanDownloadedFileAsync, verifyDownloadSource } from './d
 
 const MANIFEST_URL = 'https://launchermeta.mojang.com/mc/game/version_manifest_v2.json';
 const RESOURCES_HOST = 'https://resources.download.minecraft.net';
+
+// Keep-alive агенты для пула соединений. Ассеты Minecraft — тысячи мелких
+// файлов с одного CDN-хоста; без переиспользований каждый запрос делал бы
+// полный TCP+TLS handshake. Держим maxSockets с запасом под конкуренцию,
+// maxFreeSockets — чтобы idle-соединения не закрывались между запросами.
+// Работает одинаково на Windows и Linux (чистый HTTP-уровень).
+// Агенты — через agentsForDownload(): при включённом прокси keepalive-агенты
+// отдавать нельзя, они игнорят proxy-конфиг axios (туннеля нет).
+import { agentsForDownload } from './http-proxy';
 const S3_LEGACY_HOST = 'https://s3.amazonaws.com/Minecraft.Download';
+
+// Временный отладочный лог установки (в обход stdout — пишем прямо в файл,
+// чтобы видеть реальные ошибки независимо от того, как запущен AppImage).
+const DBG_LOG = path.join(os.tmpdir(), 'trel-installer-debug.log');
+function dbg(msg: string): void {
+  try { fs.appendFileSync(DBG_LOG, `[${new Date().toISOString()}] ${msg}\n`); } catch {}
+}
 
 export { isUrlAllowed } from './download-security';
 
@@ -105,7 +123,7 @@ function atomicWriteJson(filePath: string, data: unknown): void {
   safeRenameSync(tmp, filePath);
 }
 
-async function downloadWithRetry(
+export async function downloadWithRetry(
   url: string, dest: string, expectedSha1: string | undefined,
   attempts = 5, expectedSize?: number,
   onProgress?: (bytesDownloadedForFile: number, deltaBytes: number) => void,
@@ -133,6 +151,10 @@ async function downloadWithRetry(
   // auto-confirmed; unknown hosts stay blocked.
   const initialTrust = verifyDownloadSource(url);
   if (!initialTrust.allowed) throw new Error(`${initialTrust.reason}: ${url}`);
+  // Глобальный слот очереди: весь лаунчер качает максимум в 3 потока.
+  const { acquireDownloadSlot } = await import('./http-proxy');
+  const releaseSlot = await acquireDownloadSlot();
+  try {
   let currentUrl = url;
   const CHAIN_DEADLINE_MS = 300000; // 5 minutes max for entire redirect chain + download
   for (let i = 0; i < attempts; i++) {
@@ -143,6 +165,7 @@ async function downloadWithRetry(
       let resp = await axios.get(currentUrl, {
         responseType: 'stream', timeout: 60000, maxRedirects: 0,
         validateStatus: (s) => s >= 200 && s < 400,
+        ...agentsForDownload(),
       });
       // Follow redirects manually with host validation
       let redirectHops = 0;
@@ -160,11 +183,28 @@ async function downloadWithRetry(
         resp = await axios.get(currentUrl, {
           responseType: 'stream', timeout: 60000, maxRedirects: 0,
           validateStatus: (s) => s >= 200 && s < 400,
+          ...agentsForDownload(),
         });
       }
-      let currentFileBytes = 0;
+      // Докачка: .part с прошлой попытки продолжаем Range-запросом.
+      let resumeFrom = 0;
+      try {
+        const pst = fs.statSync(tmp);
+        if (pst.isFile() && pst.size > 0) resumeFrom = pst.size;
+      } catch { /* ignore */ }
+      if (resumeFrom > 0) {
+        const r = await axios.get(currentUrl, {
+          responseType: 'stream', timeout: 60000, maxRedirects: 0,
+          validateStatus: (s) => s === 206,
+          headers: { Range: `bytes=${resumeFrom}-` },
+          ...agentsForDownload(),
+        }).catch(() => null);
+        if (r) resp = r;
+        else resumeFrom = 0; // сервер без Range — качаем заново
+      }
+      let currentFileBytes = resumeFrom;
       await new Promise<void>((resolve, reject) => {
-        const out = fs.createWriteStream(tmp);
+        const out = fs.createWriteStream(tmp, resumeFrom > 0 ? { flags: 'a' } : undefined);
         resp.data.on('data', (chunk: Buffer) => {
           currentFileBytes += chunk.length;
           if (onProgress) {
@@ -175,6 +215,20 @@ async function downloadWithRetry(
         out.on('error', reject);
         out.on('finish', () => resolve());
         resp.data.pipe(out);
+        // Внешняя пауза: стрим на hold (файл цел), снятие — resume.
+        // Проверка флага раз в 200мс: дешевле некуда, висит только пока качаем.
+        const pauseWatcher = setInterval(() => {
+          import('./http-proxy').then(({ isDownloadsPaused }) => {
+            try {
+              if (isDownloadsPaused()) { if (!resp.data.isPaused()) resp.data.pause(); }
+              else if (resp.data.isPaused()) resp.data.resume();
+            } catch { /* ignore */ }
+          }).catch(() => {});
+        }, 200);
+        const clearWatcher = () => clearInterval(pauseWatcher);
+        resp.data.on('end', clearWatcher);
+        resp.data.on('close', clearWatcher);
+        resp.data.on('error', clearWatcher);
       });
       if (expectedSha1) {
         const actual = await sha1File(tmp);
@@ -189,12 +243,21 @@ async function downloadWithRetry(
       return;
     } catch (e) {
       lastErr = e;
-      try { fs.unlinkSync(dest + '.part'); } catch {}
+      // .part НЕ удаляем: следующая попытка и следующий запуск докачают.
+      // Удаляем только при расхождении хеша (битый кусок).
+      if ((e as Error)?.message?.startsWith('sha1 mismatch')) {
+        try { fs.unlinkSync(dest + '.part'); } catch {}
+      }
       if (i < attempts - 1) {
         await new Promise((r) => setTimeout(r, 300 * Math.pow(2, i)));
       }
     }
   }
+  } finally {
+    releaseSlot();
+  }
+  dbg(`download FAILED after retries: ${url} :: ${(lastErr as Error)?.message ?? lastErr}`);
+  console.error('[installer] download failed after retries:', url, (lastErr as Error)?.message ?? lastErr);
   throw new Error(`Failed to download ${url}: ${(lastErr as Error)?.message ?? lastErr}`);
 }
 
@@ -214,6 +277,17 @@ export function getDynamicConcurrency(): number {
     return Math.min(16, Math.max(4, cores * 2));
   } catch {
     return 8;
+  }
+}
+
+/** Конкурентность для ассетов: их тысячи и они мелкие, упор в latency,
+ *  поэтому потоков даём больше чем для библиотек. */
+export function getAssetConcurrency(): number {
+  try {
+    const cores = os.cpus().length;
+    return Math.min(32, Math.max(8, cores * 3));
+  } catch {
+    return 16;
   }
 }
 
@@ -431,17 +505,21 @@ export class MinecraftInstaller {
   }
 
   async install(versionId: string, win?: BrowserWindow): Promise<VersionJson> {
+    dbg(`install() called: versionId=${versionId} gameDir=${this.gameDir}`);
     if (!isSafeVersionId(versionId)) throw new Error(`Invalid versionId: ${versionId}`);
     // Install mutex: wait if same version is already being installed
     const existing = this.installing.get(versionId);
     if (existing) return existing;
     const promise = this.doInstall(versionId, win);
     this.installing.set(versionId, promise);
-    try { return await promise; } finally { this.installing.delete(versionId); }
+    try { return await promise; }
+    catch (e) { dbg(`install FAILED ${versionId}: ${(e as Error)?.message ?? e}`); throw e; }
+    finally { this.installing.delete(versionId); }
   }
 
   private async doInstall(versionId: string, win?: BrowserWindow): Promise<VersionJson> {
     await ensureDir(this.gameDir);
+    dbg(`doInstall start: ${versionId}, gameDir=${this.gameDir}`);
 
     let totalBytes = 0;
     let downloadedBytes = 0;
@@ -454,6 +532,7 @@ export class MinecraftInstaller {
 
     this.report(win, { stage: 'Чтение метаданных версии', current: 0, total: 1, percent: 2, bytesDownloaded: 0, bytesTotal: 0 });
     const ver = await this.fetchVersionJson(versionId);
+    dbg(`versionJson ok: ${versionId}, clientUrl=${ver.downloads?.client?.url ?? 'none'}, libs=${ver.libraries?.length ?? 0}`);
 
     // --- Client JAR ---
     const versionDir = path.join(this.gameDir, 'versions', versionId);
@@ -513,15 +592,24 @@ export class MinecraftInstaller {
     const nativeArtifacts: MojangLibraryArtifact[] = [];
     const nativeExcludes: Record<string, string[]> = {};
 
+    // Путь назначения обязан лежать внутри libraries: `..` в art.path или
+    // groupId из чужого json иначе даёт запись за пределы gameDir.
+    const insideLibs = (dest: string): string | null => {
+      const norm = path.resolve(dest);
+      return norm === librariesRoot || norm.startsWith(librariesRoot + path.sep) ? norm : null;
+    };
     for (const lib of libs) {
       const art = lib.downloads?.artifact;
       if (art) {
         if (!isUrlAllowed(art.url)) continue;
-        const dest = path.join(librariesRoot, art.path);
+        const dest = insideLibs(path.join(librariesRoot, art.path));
+        if (!dest) continue;
         libDownloadTasks.push({ run: (onProgress) => downloadWithRetry(art.url, dest, art.sha1, 5, art.size, onProgress), dest, size: art.size ?? 0, sha1: art.sha1 });
       } else if (lib.name && lib.url) {
         if (!isUrlAllowed(lib.url)) continue;
         const [group, artifact, version] = lib.name.split(':');
+        // Maven-координаты — строгий алфавит, иначе `..` уезжает из libraries.
+        if (!group || !artifact || !version || !/^[a-zA-Z0-9._-]+$/.test(group) || !/^[a-zA-Z0-9._-]+$/.test(artifact) || !/^[a-zA-Z0-9._-]+$/.test(version)) continue;
         const rel = `${group.replace(/\./g, '/')}/${artifact}/${version}/${artifact}-${version}.jar`;
         const url = lib.url.replace(/\/$/, '') + '/' + rel;
         const dest = path.join(librariesRoot, rel);
@@ -533,7 +621,8 @@ export class MinecraftInstaller {
         nativeArtifacts.push(nat);
         if (lib.extract?.exclude) nativeExcludes[nat.path] = lib.extract.exclude;
         if (!isUrlAllowed(nat.url)) continue;
-        const dest = path.join(librariesRoot, nat.path);
+        const dest = insideLibs(path.join(librariesRoot, nat.path));
+        if (!dest) continue;
         libDownloadTasks.push({ run: (onProgress) => downloadWithRetry(nat.url, dest, nat.sha1, 5, nat.size, onProgress), dest, size: nat.size ?? 0, sha1: nat.sha1 });
       }
     }
@@ -597,9 +686,22 @@ export class MinecraftInstaller {
         try {
           const zip = new AdmZip(jarPath);
           const excludes = nativeExcludes[nat.path] || ['META-INF/'];
+          let extractedBytes = 0;
           for (const entry of zip.getEntries()) {
             if (entry.isDirectory) continue;
             if (excludes.some((ex) => entry.entryName.startsWith(ex))) continue;
+            // Симлинк внутри natives-архива: распаковка создала бы ссылку наружу.
+            // Unix file type из external attributes: 0120000 = symlink.
+            if (((entry.header.attr >>> 16) & 0o170000) === 0o120000) {
+              console.warn(`[installer] Zip Slip: symlink blocked: ${entry.entryName}`);
+              continue;
+            }
+            // Zip-бомба: кап на суммарный и единичный размер.
+            if (entry.header.size > 100 * 1024 * 1024 || extractedBytes > 500 * 1024 * 1024) {
+              console.warn(`[installer] Zip bomb guard: skipped ${entry.entryName}`);
+              continue;
+            }
+            extractedBytes += entry.header.size;
             const name = entry.entryName;
             // Zip Slip protection
             if (path.isAbsolute(name)) { console.warn(`[installer] Zip Slip: absolute path blocked: ${name}`); continue; }
@@ -709,7 +811,7 @@ export class MinecraftInstaller {
         });
 
       let assetDone = assetsAlreadyDone;
-      await parallelPool(assetTasks, (t) => t(), getDynamicConcurrency(), () => {
+      await parallelPool(assetTasks, (t) => t(), getAssetConcurrency(), () => {
         assetDone++;
         if (assetDone % 10 === 0 || assetDone === total) {
           const overall = downloadedBytes + currentFileBytes + libsInFlight + assetsInFlight;
@@ -721,9 +823,8 @@ export class MinecraftInstaller {
       });
     }
 
-    for (const sub of ['mods', 'shaderpacks', 'resourcepacks', 'texturepacks']) {
-      try { await ensureDir(path.join(versionDir, sub)); } catch {}
-    }
+    // Папки контента (mods/resourcepacks/…) создаются только для лоадерных
+    // версий — см. loaders.ensureContentFolders. Ванили они не нужны.
 
     this.report(win, { stage: 'Установка завершена', current: 1, total: 1, percent: 100, bytesDownloaded: totalBytes, bytesTotal: totalBytes });
     return ver;

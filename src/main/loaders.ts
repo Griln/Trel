@@ -141,6 +141,10 @@ export class LoaderService {
     loaderVersion: string,
     win: BrowserWindow,
   ): Promise<InstallLoaderResult> {
+    // mc/lv едут в maven-пути и имена файлов: строгая проверка на входе,
+    // иначе `../../` уезжает из библиотек.
+    if (!isSafeVersionId(mc)) throw new Error(`Unsafe MC version: ${mc}`);
+    if (!/^[a-zA-Z0-9._-]+$/.test(loaderVersion)) throw new Error(`Unsafe loader version: ${loaderVersion}`);
     // Make sure base MC is installed first.
     this.report(win, { stage: `Установка Minecraft ${mc}`, current: 0, total: 1, percent: 5 });
     await this.installer.install(mc, win);
@@ -372,7 +376,10 @@ export class LoaderService {
     lv: string,
     win: BrowserWindow,
   ): Promise<InstallLoaderResult> {
-    const tmpFile = path.join(os.tmpdir(), `${loader}-installer-${Date.now()}.jar`);
+    // mkdtemp вместо предсказуемого имени: чужой процесс в /tmp иначе
+    // подкладывает свой jar между созданием и записью.
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), `${loader}-installer-`));
+    const tmpFile = path.join(tmpDir, 'installer.jar');
     this.report(win, {
       stage: `Загрузка ${loader} installer`,
       current: 0, total: 100, percent: 30,
@@ -381,11 +388,14 @@ export class LoaderService {
 
     const resp = await axios.get(installerUrl, { responseType: 'stream', timeout: 120000, maxRedirects: 10 });
     const total = Number(resp.headers['content-length']) || 0;
+    // Инсталлеры Forge/NeoForge — десятки МБ; кап 512МБ против disk-fill.
+    if (total > 512 * 1024 * 1024) throw new Error('Loader installer too large');
     let downloaded = 0;
     await new Promise<void>((resolve, reject) => {
       const out = fs.createWriteStream(tmpFile);
       resp.data.on('data', (c: Buffer) => {
         downloaded += c.length;
+        if (downloaded > 512 * 1024 * 1024) { out.destroy(); reject(new Error('Loader installer too large')); return; }
         if (total > 0) {
           this.report(win, {
             stage: `Загрузка ${loader} installer`,
@@ -401,11 +411,20 @@ export class LoaderService {
       resp.data.pipe(out);
     });
 
-    // Verify installer jar integrity (basic check: it's a real jar)
-    const jarBuf = fs.readFileSync(tmpFile);
-    if (jarBuf.length < 1000 || jarBuf[0] !== 0x50 || jarBuf[1] !== 0x4b) {
-      try { fs.unlinkSync(tmpFile); } catch {}
-      throw new Error(`Downloaded ${loader} installer is not a valid JAR`);
+    // Verify installer jar integrity (basic check: it's a real jar).
+    // Только первые байты и stat — грузить 30МБ в RAM ради магии не нужно.
+    {
+      const st = fs.statSync(tmpFile);
+      const fd = fs.openSync(tmpFile, 'r');
+      try {
+        const head = Buffer.alloc(4);
+        fs.readSync(fd, head, 0, 4, 0);
+        if (st.size < 1000 || head[0] !== 0x50 || head[1] !== 0x4b) {
+          try { fs.unlinkSync(tmpFile); } catch {}
+          try { fs.rmdirSync(tmpDir); } catch {}
+          throw new Error(`Downloaded ${loader} installer is not a valid JAR`);
+        }
+      } finally { fs.closeSync(fd); }
     }
 
     // Need Java to run the installer. Подбираем под версию MC:
@@ -424,6 +443,7 @@ export class LoaderService {
       // Раньше это делалось только при success, и ~30 МБ оставались в %TEMP%
       // после каждой неудачной установки.
       try { fs.unlinkSync(tmpFile); } catch {}
+      try { fs.rmdirSync(tmpDir); } catch {}
     }
 
     // Determine resulting version id by scanning versions/ for new entry
@@ -526,10 +546,40 @@ function mcToNeoForgePrefix(mc: string): string | null {
  * Какая версия Java нужна для запуска Forge/NeoForge installer-а под данную
  * версию MC. 1.18+ — Java 17, всё что старше — Java 8.
  */
-function mcRequiredJavaMajor(mc: string): number {
-  const m = /^1\.(\d+)/.exec(mc);
+/**
+ * Требуемая Java для версии: сначала локальный json (без сети — мгновенно),
+ * потом цепочка inheritsFrom, в конце эвристика по id. Раньше план всегда
+ * ходил в сеть за манифестом и падал на 8 — старые кастомные json без
+ * javaVersion получали неверную восьмёрку вместо 17/21.
+ */
+export function requiredJavaMajorForVersion(gameDir: string, versionId: string): number {
+  try {
+    let current: string | undefined = versionId;
+    const seen = new Set<string>();
+    for (let i = 0; i < 5 && current && !seen.has(current); i++) {
+      seen.add(current);
+      const fp = path.join(gameDir, 'versions', current, current + '.json');
+      let j: Record<string, unknown> | null = null;
+      try { j = JSON.parse(fs.readFileSync(fp, 'utf-8')); } catch { break; }
+      if (!j || typeof j !== 'object') break;
+      const mj = (j.javaVersion as { majorVersion?: number } | undefined)?.majorVersion;
+      if (typeof mj === 'number' && mj >= 8 && mj <= 30) return mj;
+      current = typeof j.inheritsFrom === 'string' ? j.inheritsFrom : undefined;
+    }
+  } catch { /* эвристика ниже */ }
+  return mcRequiredJavaMajor(versionId);
+}
+
+export function mcRequiredJavaMajor(mc: string): number {
+  // 1.20.5+ и 1.21+ требуют Java 21; будущие 2x (26.x) — тоже 21, а не 17.
+  const m = /^(\d+)\.(\d+)(?:\.(\d+))?/.exec(mc);
   if (!m) return 17;
-  const minor = parseInt(m[1], 10);
+  const major = parseInt(m[1], 10);
+  if (major >= 2) return 21;
+  if (major !== 1) return 17;
+  const minor = parseInt(m[2], 10);
+  const patch = m[3] !== undefined ? parseInt(m[3], 10) : 0;
+  if (minor >= 21 || (minor === 20 && patch >= 5)) return 21;
   if (minor >= 18) return 17;
   return 8;
 }

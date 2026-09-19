@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trel — Контент · превью</title>
+<link rel="stylesheet" href="trel-design.css">
+<style>
+  /* ===== кастомный пикер версий ===== */
+  .vpick{position:relative;margin-bottom:20px;animation:cardIn .5s var(--ease) backwards}
+  .vpick-btn{display:flex;align-items:center;gap:14px;width:100%;padding:15px 18px;border-radius:15px;cursor:pointer;
+    background:var(--surface-2);border:1px solid var(--border);transition:.2s;text-align:left}
+  .vpick-btn:hover{border-color:var(--border-bright);background:var(--surface-3)}
+  .vpick.open .vpick-btn{border-color:var(--accent);box-shadow:0 0 0 3px rgba(127,127,127,.12)}
+  .vpick-cube{width:42px;height:42px;flex-shrink:0;border-radius:11px;display:grid;place-items:center;
+    background:var(--surface-3);border:1px solid var(--border-strong);color:var(--amber)}
+  .vpick-cube svg{width:20px;height:20px}
+  .vpick-info{flex:1;min-width:0}
+  .vpick-info b{font-family:var(--display);font-weight:700;font-size:15px;color:var(--fg-bright);display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+  .vpick-info span{font-family:var(--mono);font-size:10.5px;color:var(--fg-subtle);margin-top:3px;display:block}
+  .vpick-arrow{width:16px;height:16px;color:var(--fg-subtle);transition:transform .25s var(--ease);flex-shrink:0}
+  .vpick.open .vpick-arrow{transform:rotate(180deg)}
+  .vpick-panel{position:absolute;left:0;right:0;top:calc(100% + 8px);z-index:50;display:none;overflow:hidden;
+    background:var(--surface-2);border:1px solid var(--border-strong);border-radius:15px;
+    box-shadow:0 24px 60px -18px rgba(0,0,0,.85);animation:panelIn .28s var(--ease)}
+  .vpick.open .vpick-panel{display:block}
+  @keyframes panelIn{from{opacity:0;transform:translateY(-8px) scale(.99)}to{opacity:1;transform:none}}
+  .vpick-item{display:flex;align-items:center;gap:13px;width:100%;padding:13px 17px;border:none;background:none;
+    cursor:pointer;text-align:left;transition:.15s;border-bottom:1px solid var(--border)}
+  .vpick-item:last-child{border-bottom:none}
+  .vpick-item:hover{background:var(--surface-3)}
+  .vpick-item .vi-cube{width:34px;height:34px;flex-shrink:0;border-radius:9px;display:grid;place-items:center;
+    background:var(--surface-3);border:1px solid var(--border);color:var(--fg-muted)}
+  .vpick-item.bedrock .vi-cube{color:var(--cyan)}
+  .vpick-item.modded .vi-cube{color:var(--amber)}
+  .vpick-item .vi-cube svg{width:16px;height:16px}
+  .vpick-item .vi-body{flex:1;min-width:0}
+  .vpick-item .vi-body b{font-size:13.5px;color:var(--fg);display:block}
+  .vpick-item .vi-body span{font-family:var(--mono);font-size:10px;color:var(--fg-subtle)}
+  .vpick-item .vi-check{width:18px;height:18px;color:var(--accent);opacity:0;flex-shrink:0}
+  .vpick-item.sel .vi-check{opacity:1}
+
+  /* ===== фильтры контента ===== */
+  .cfilters{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:18px}
+  .cf{font-family:var(--mono);font-size:11.5px;font-weight:600;padding:8px 15px;border-radius:99px;cursor:pointer;
+    border:1px solid var(--border);background:var(--surface-2);color:var(--fg-muted);transition:.18s;
+    display:inline-flex;align-items:center;gap:7px}
+  .cf .cnt{font-size:9.5px;background:var(--surface-3);color:var(--fg-subtle);padding:1px 7px;border-radius:99px;transition:.18s}
+  .cf:hover{border-color:var(--border-bright);color:var(--fg);transform:translateY(-1px)}
+  .cf.on{background:var(--accent);color:var(--accent-fg);border-color:var(--accent);font-weight:700}
+  .cf.on .cnt{background:rgba(127,127,127,.28);color:var(--accent-fg)}
+  .cf-hint{margin-left:auto;font-family:var(--mono);font-size:10.5px;color:var(--fg-subtle)}
+
+  /* ===== единая лента контента ===== */
+  .c-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:13px}
+  .ccard{padding:17px 18px;border-radius:15px;background:var(--surface-2);border:1px solid var(--border);
+    transition:transform .22s var(--ease),border-color .22s,background .22s,box-shadow .22s,opacity .25s;
+    animation:cardIn .5s var(--ease) backwards;position:relative}
+  .ccard:nth-child(1){animation-delay:.04s}.ccard:nth-child(2){animation-delay:.09s}.ccard:nth-child(3){animation-delay:.14s}
+  .ccard:nth-child(4){animation-delay:.19s}.ccard:nth-child(5){animation-delay:.24s}.ccard:nth-child(6){animation-delay:.29s}
+  .ccard:nth-child(7){animation-delay:.34s}.ccard:nth-child(8){animation-delay:.39s}
+  .ccard:hover{transform:translateY(-4px);border-color:var(--border-bright);background:var(--surface-3);
+    box-shadow:var(--card-shadow)}
+  .ccard.off{opacity:.5}
+  .ccard.hide{display:none}
+  .c-top{display:flex;align-items:flex-start;gap:12px;margin-bottom:10px}
+  .c-ico{width:42px;height:42px;flex-shrink:0;border-radius:10px;display:grid;place-items:center;
+    background:var(--surface-3);border:1px solid var(--border-strong);color:var(--fg-muted);transition:.25s var(--ease)}
+  .ccard:hover .c-ico{transform:rotate(-8deg) scale(1.08)}
+  .c-ico.mod{color:var(--amber);border-color:rgba(245,168,60,.3)}
+  .c-ico.shader{color:var(--cyan);border-color:rgba(74,237,217,.3)}
+  .c-ico.pack{color:var(--purple);border-color:rgba(155,122,212,.3)}
+  .c-ico svg{width:19px;height:19px}
+  .c-name{flex:1;min-width:0}
+  .c-name b{font-size:14.5px;color:var(--fg-bright);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .c-name span{font-family:var(--mono);font-size:10.5px;color:var(--fg-subtle)}
+  .c-desc{font-size:12.5px;color:var(--fg-muted);line-height:1.5;margin-bottom:11px;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .c-foot{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .c-foot .size{margin-left:auto;font-family:var(--mono);font-size:10.5px;color:var(--fg-subtle)}
+  .cwarn{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--amber);margin-top:9px;
+    padding:7px 10px;border-radius:8px;background:rgba(245,168,60,.07);border:1px dashed rgba(245,168,60,.3)}
+  .cwarn svg{width:13px;height:13px;flex-shrink:0}
+
+  .drop-hint{border:1px dashed var(--border-strong);border-radius:16px;padding:22px;text-align:center;
+    color:var(--fg-muted);margin-bottom:18px;background:var(--surface-2);transition:.2s;cursor:pointer}
+  .drop-hint:hover{border-color:var(--border-bright);color:var(--fg)}
+  .drop-hint b{color:var(--fg);font-size:13.5px}
+</style>
+</head>
+<body>
+
+<div class="preview-bar">
+  <span class="tag-prev">ПРЕВЬЮ · КОНТЕНТ</span>
+  <button class="on" data-t="java">① Java-версия</button>
+  <button data-t="bedrock">② Bedrock-аддоны</button>
+</div>
+
+<div class="page-frame">
+
+  <div class="page-head">
+    <span class="eyebrow">Контент</span>
+    <h1 class="page-title">Контент</h1>
+    <p class="page-sub">Моды, шейдеры, ресурс-паки и текстур-паки — у каждой версии свои</p>
+  </div>
+
+  <!-- ① JAVA -->
+  <section class="pane show" id="java">
+    <!-- кастомный пикер версий -->
+    <div class="vpick" id="vpick">
+      <button class="vpick-btn" onclick="togglePick()">
+        <span class="vpick-cube"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M21 8 12 3 3 8v8l9 5 9-5V8Z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg></span>
+        <span class="vpick-info">
+          <b id="vpickName">1.20.1 + Fabric 0.16.0 <span class="chip amber">FABRIC</span></b>
+          <span id="vpickSub">модов: 6 · шейдеров: 3 · 628 МБ</span>
+        </span>
+        <svg class="vpick-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m6 9 6 6 6-6"/></svg>
+      </button>
+      <div class="vpick-panel">
+        <button class="vpick-item modded sel" onclick="pickVersion(this,'1.20.1 + Fabric 0.16.0','модов: 6 · шейдеров: 3 · 628 МБ')">
+          <span class="vi-cube"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M21 8 12 3 3 8v8l9 5 9-5V8Z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg></span>
+          <span class="vi-body"><b>1.20.1 + Fabric 0.16.0</b><span>FABRIC · модов: 6 · шейдеров: 3</span></span>
+          <svg class="vi-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="m5 12 5 5 9-11"/></svg>
+        </button>
+        <button class="vpick-item" onclick="pickVersion(this,'1.21.4 (ваниль)','модов: 0 · шейдеров: 0 · 412 МБ')">
+          <span class="vi-cube"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M21 8 12 3 3 8v8l9 5 9-5V8Z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg></span>
+          <span class="vi-body"><b>1.21.4 (ваниль)</b><span>без лоадера · 412 МБ</span></span>
+          <svg class="vi-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="m5 12 5 5 9-11"/></svg>
+        </button>
+        <button class="vpick-item modded" onclick="pickVersion(this,'1.12.2 + Forge 14.23','модов: 38 · шейдеров: 1 · 540 МБ')">
+          <span class="vi-cube"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M21 8 12 3 3 8v8l9 5 9-5V8Z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg></span>
+          <span class="vi-body"><b>1.12.2 + Forge 14.23</b><span>FORGE · модов: 38 · шейдеров: 1</span></span>
+          <svg class="vi-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="m5 12 5 5 9-11"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <div class="drop-hint"><b>Перетащите .jar-мод или шейдер-пак сюда</b> — файл попадёт в папку текущей версии. Или <span style="text-decoration:underline">выберите файл</span>.</div>
+
+    <!-- лента: моды + шейдеры + ресурс-паки + текстур-паки -->
+    <div class="cfilters">
+      <button class="cf on" data-f="mod">Моды <span class="cnt">5</span></button>
+      <button class="cf" data-f="shader">Шейдеры <span class="cnt">3</span></button>
+      <button class="cf" data-f="resourcepack">Ресурс-паки <span class="cnt">1</span></button>
+      <button class="cf" data-f="texturepack">Текстур-паки <span class="cnt">0</span></button>
+      <span class="cf-hint">Моды и шейдеры вместе — фильтруйте чипами</span>
+      <button class="btn ghost sm" style="margin-left:auto">Проверить обновления</button>
+    </div>
+    <div style="display:flex;gap:8px;margin:10px 0;align-items:center">
+      <select class="select" style="max-width:220px"><option>Все моды как есть</option><option>выживание (38)</option><option>тесты (12)</option></select>
+      <input class="input sm" style="max-width:170px" placeholder="Имя набора…">
+      <button class="btn ghost sm">Запомнить набор</button>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center">
+      <button class="btn primary sm">+ Добавить файлы</button>
+      <button class="btn ghost sm">Открыть папку</button>
+      <button class="btn ghost sm">Обновить</button>
+      <span class="hint" style="margin-left:auto">2 файла · 596 Б</span>
+    </div>
+
+    <div class="c-grid" id="cgrid">
+      <div class="ccard" data-k="mod">
+        <div class="c-top">
+          <div class="c-ico mod"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M21 8 12 3 3 8v8l9 5 9-5V8Z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg></div>
+          <div class="c-name"><b>Sodium</b><span>sodium.jar</span></div>
+          <label class="toggle"><input type="checkbox" checked><span class="track"></span></label>
+        </div>
+        <div class="c-actions" style="margin-top:8px"><button class="icon-btn" title="Удалить">🗑</button></div>
+        <div class="c-foot"><span class="chip amber">fabric</span><span class="size">1,2 МБ</span></div>
+      </div>
+
+      <div class="ccard" data-k="shader">
+        <div class="c-top">
+          <div class="c-ico shader"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M12 3l1.9 5.7L19.6 10l-5.7 1.9L12 17.6l-1.9-5.7L4.4 10l5.7-1.9L12 3Z"/><path d="M19 15l.9 2.6L22.5 18.5l-2.6.9L19 22l-.9-2.6-2.6-.9 2.6-.9L19 15Z"/></svg></div>
+          <div class="c-name"><b>BSL Shaders</b><span>bsl.zip</span></div>
+          <label class="toggle"><input type="checkbox" checked><span class="track"></span></label>
+        </div>
+        <div class="c-actions" style="margin-top:8px"><button class="icon-btn" title="Удалить">🗑</button></div>
+        <div class="c-foot"><span class="chip cyan">шейдер</span><span class="size">2,4 МБ</span></div>
+      </div>
+
+      <div class="ccard" data-k="mod">
+        <div class="c-top">
+          <div class="c-ico mod"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M21 8 12 3 3 8v8l9 5 9-5V8Z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg></div>
+          <div class="c-name"><b>Lithium</b><span>lithium.jar</span></div>
+          <label class="toggle"><input type="checkbox" checked><span class="track"></span></label>
+        </div>
+        <div class="c-actions" style="margin-top:8px"><button class="icon-btn" title="Удалить">🗑</button></div>
+        <div class="c-foot"><span class="chip amber">fabric</span><span class="size">412 КБ</span></div>
+      </div>
+
+      <div class="ccard" data-k="shader">
+        <div class="c-top">
+          <div class="c-ico shader"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M12 3l1.9 5.7L19.6 10l-5.7 1.9L12 17.6l-1.9-5.7L4.4 10l5.7-1.9L12 3Z"/><path d="M19 15l.9 2.6L22.5 18.5l-2.6.9L19 22l-.9-2.6-2.6-.9 2.6-.9L19 15Z"/></svg></div>
+          <div class="c-name"><b>Complementary Reimagined</b><span>comp.zip</span></div>
+          <label class="toggle"><input type="checkbox" checked><span class="track"></span></label>
+        </div>
+        <div class="c-actions" style="margin-top:8px"><button class="icon-btn" title="Удалить">🗑</button></div>
+        <div class="c-foot"><span class="chip cyan">шейдер</span><span class="size">3,1 МБ</span></div>
+      </div>
+
+      <div class="ccard" data-k="mod">
+        <div class="c-top">
+          <div class="c-ico mod"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M21 8 12 3 3 8v8l9 5 9-5V8Z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg></div>
+          <div class="c-name"><b>Create</b><span>create.jar</span></div>
+          <label class="toggle"><input type="checkbox" checked><span class="track"></span></label>
+        </div>
+        <div class="c-actions" style="margin-top:8px"><button class="icon-btn" title="Удалить">🗑</button></div>
+        <div class="c-foot"><span class="chip amber">forge</span><span class="size">14,8 МБ</span></div>
+        <div class="cwarn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4m0 4h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>Мод для forge, а выбрана версия fabric</div>
+      </div>
+
+      <div class="ccard off" data-k="shader">
+        <div class="c-top">
+          <div class="c-ico shader"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M12 3l1.9 5.7L19.6 10l-5.7 1.9L12 17.6l-1.9-5.7L4.4 10l5.7-1.9L12 3Z"/><path d="M19 15l.9 2.6L22.5 18.5l-2.6.9L19 22l-.9-2.6-2.6-.9 2.6-.9L19 15Z"/></svg></div>
+          <div class="c-name"><b>SEUS PTGI</b><span>HRR 3</span></div>
+          <label class="toggle"><input type="checkbox"><span class="track"></span></label>
+        </div>
+        <div class="c-actions" style="margin-top:8px"><button class="icon-btn" title="Удалить">🗑</button></div>
+        <div class="c-foot"><span class="chip cyan">шейдер</span><span class="chip">выключен</span><span class="size">5,8 МБ</span></div>
+      </div>
+
+      <div class="ccard" data-k="mod">
+        <div class="c-top">
+          <div class="c-ico mod"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M21 8 12 3 3 8v8l9 5 9-5V8Z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg></div>
+          <div class="c-name"><b>Fabric API</b><span>0.91.0 · fabric · обязательный</span></div>
+          <label class="toggle"><input type="checkbox" checked><span class="track"></span></label>
+        </div>
+        <div class="c-actions" style="margin-top:8px"><button class="icon-btn" title="Удалить">🗑</button></div>
+        <div class="c-foot"><span class="chip amber">fabric</span><span class="size">1,9 МБ</span></div>
+      </div>
+
+      <div class="ccard" data-k="pack">
+        <div class="c-top">
+          <div class="c-ico pack"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M21 8v13H3V8M1 3h22v5H1zM10 12h4"/></svg></div>
+          <div class="c-name"><b>Faithful 32x</b><span>ресурс-пак</span></div>
+          <label class="toggle"><input type="checkbox" checked><span class="track"></span></label>
+        </div>
+        <div class="c-actions" style="margin-top:8px"><button class="icon-btn" title="Удалить">🗑</button></div>
+        <div class="c-foot"><span class="chip purple">ресурс-пак</span><span class="size">6,3 МБ</span></div>
+      </div>
+
+      <div class="ccard" data-k="mod">
+        <div class="c-top">
+          <div class="c-ico mod"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M21 8 12 3 3 8v8l9 5 9-5V8Z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg></div>
+          <div class="c-name"><b>unknown_mod.jar</b><span>метаданные не найдены</span></div>
+          <label class="toggle"><input type="checkbox" checked><span class="track"></span></label>
+        </div>
+        <div class="c-actions" style="margin-top:8px"><button class="icon-btn" title="Удалить">🗑</button></div>
+        <div class="c-foot"><span class="chip">без метаданных</span><span class="size">88 КБ</span></div>
+        <div class="cwarn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4m0 4h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>Выбрана версия без загрузчика модов</div>
+      </div>
+    </div>
+    <p class="note">* моды и шейдеры лежат в одной ленте — так видно всю сборку сразу. Чипы сверху фильтруют по типу. Шейдеры работают только если установлен Iris/OptiFine.</p>
+  </section>
+
+  <!-- ② BEDROCK -->
+  <section class="pane" id="bedrock">
+    <div class="vpick">
+      <button class="vpick-btn">
+        <span class="vpick-cube" style="color:var(--cyan)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M12 18h.01"/></svg></span>
+        <span class="vpick-info">
+          <b>1.15 (Bedrock) <span class="chip cyan">BEDROCK</span></b>
+          <span>аддонов: 2 · TrelEmu запущен · ADB :5555</span>
+        </span>
+        <svg class="vpick-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m6 9 6 6 6-6"/></svg>
+      </button>
+    </div>
+
+    <div class="drop-hint"><b>Перетащи .mcaddon / .mcpack / .mcworld</b> — Trel распакует и через ADB положит в Android-папку игры.</div>
+
+    <div class="cfilters">
+      <button class="cf on">всё <span class="cnt">3</span></button>
+      <button class="cf">аддоны <span class="cnt">2</span></button>
+      <button class="cf">ресурс-паки <span class="cnt">1</span></button>
+      <button class="cf">миры <span class="cnt">0</span></button>
+    </div>
+
+    <div class="c-grid">
+      <div class="ccard">
+        <div class="c-top">
+          <div class="c-ico pack"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M21 8v13H3V8M1 3h22v5H1zM10 12h4"/></svg></div>
+          <div class="c-name"><b>Furniture Addon</b><span>manifest.json найден · v2.3</span></div>
+          <label class="toggle"><input type="checkbox" checked><span class="track"></span></label>
+        </div>
+        <div class="c-actions" style="margin-top:8px"><button class="icon-btn" title="Удалить">🗑</button></div>
+        <div class="c-foot"><span class="chip cyan">behavior_packs</span><span class="size">8,2 МБ</span></div>
+      </div>
+      <div class="ccard">
+        <div class="c-top">
+          <div class="c-ico pack"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M21 8v13H3V8M1 3h22v5H1zM10 12h4"/></svg></div>
+          <div class="c-name"><b>True Survival</b><span>manifest.json найден</span></div>
+          <label class="toggle"><input type="checkbox" checked><span class="track"></span></label>
+        </div>
+        <div class="c-actions" style="margin-top:8px"><button class="icon-btn" title="Удалить">🗑</button></div>
+        <div class="c-foot"><span class="chip cyan">behavior_packs</span><span class="size">3,4 МБ</span></div>
+      </div>
+      <div class="ccard">
+        <div class="c-top">
+          <div class="c-ico pack"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M21 8v13H3V8M1 3h22v5H1zM10 12h4"/></svg></div>
+          <div class="c-name"><b>Default HD</b><span>ресурс-пак</span></div>
+          <label class="toggle"><input type="checkbox" checked><span class="track"></span></label>
+        </div>
+        <div class="c-actions" style="margin-top:8px"><button class="icon-btn" title="Удалить">🗑</button></div>
+        <div class="c-foot"><span class="chip cyan">resource_packs</span><span class="size">4,1 МБ</span></div>
+      </div>
+    </div>
+    <p class="note">* после установки Trel делает force-stop Minecraft, чтобы игра перечитала паки при следующем запуске. Zip Slip защита включена.</p>
+  </section>
+
+</div>
+<script src="trel-preview.js"></script>
+<script>
+  function togglePick(){document.getElementById('vpick').classList.toggle('open');}
+  function pickVersion(el,name,sub){
+    document.querySelectorAll('.vpick-item').forEach(x=>x.classList.toggle('sel',x===el));
+    document.getElementById('vpickName').innerHTML=name+(name.includes('Fabric')?' <span class="chip amber">FABRIC</span>':name.includes('Forge')?' <span class="chip amber">FORGE</span>':'');
+    document.getElementById('vpickSub').textContent=sub;
+    togglePick();
+  }
+  document.addEventListener('click',e=>{
+    const p=document.getElementById('vpick');
+    if(p && p.classList.contains('open') && !p.contains(e.target)) p.classList.remove('open');
+  });
+  // фильтры
+  document.querySelectorAll('#java .cf').forEach(f=>f.addEventListener('click',()=>{
+    document.querySelectorAll('#java .cf').forEach(x=>x.classList.toggle('on',x===f));
+    const k=f.dataset.f;
+    document.querySelectorAll('#cgrid .ccard').forEach(c=>{
+      c.classList.toggle('hide', k!=='all' && c.dataset.k!==k);
+    });
+  }));
+  // тумблеры
+  document.querySelectorAll('.ccard .toggle input').forEach(t=>t.addEventListener('change',()=>{
+    t.closest('.ccard').classList.toggle('off',!t.checked);
+  }));
+</script>
+</body>
+</html>

@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trel — Первый запуск · превью</title>
+<link rel="stylesheet" href="trel-design.css">
+<style>
+  /* переключатель превью всегда должен оставаться кликабельным, даже поверх тура онбординга */
+  .preview-bar{position:sticky;z-index:401}
+
+  /* ===== интро ===== */
+  .intro{position:fixed;inset:0;z-index:400;background:#050505;display:flex;align-items:center;justify-content:center;overflow:hidden}
+  .intro-track{position:absolute;left:-120%;white-space:nowrap;animation:mono-slide 2.4s cubic-bezier(.22,1,.36,1) forwards}
+  .intro-word{font-family:var(--display);font-size:52px;font-weight:800;letter-spacing:26px;color:#fff;text-transform:uppercase}
+  @keyframes mono-slide{0%{left:-120%}70%{left:50%;transform:translateX(-50%)}85%{left:48%;transform:translateX(-48%)}100%{left:50%;transform:translateX(-50%)}}
+  .intro.gone{opacity:0;pointer-events:none;transition:opacity .7s ease}
+
+  /* ===== welcome ===== */
+  .welcome-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:30px;position:relative}
+  .welcome-wrap::before{content:"";position:absolute;inset:0;pointer-events:none;
+    background:radial-gradient(800px 480px at 50% -8%, rgba(255,255,255,.07), transparent 60%),
+               radial-gradient(600px 400px at 12% 90%, rgba(94,203,111,.05), transparent 60%)}
+  .wcard{position:relative;width:min(440px,100%);padding:40px 38px 34px;border-radius:24px;border:1px solid var(--border);
+    background:linear-gradient(165deg,var(--surface-2),var(--surface));box-shadow:0 40px 100px -30px rgba(0,0,0,.9);
+    text-align:center;animation:wIn .7s var(--ease) .2s backwards;overflow:hidden}
+  @keyframes wIn{from{opacity:0;transform:translateY(30px) scale(.97)}to{opacity:1;transform:none}}
+  .wlogo{width:64px;height:64px;margin:0 auto 22px;border-radius:18px;display:grid;place-items:center;position:relative;
+    background:linear-gradient(140deg,var(--surface-3),var(--surface-4));border:1px solid var(--border-strong);
+    color:var(--accent);animation:logoFloat 4s ease-in-out infinite}
+  .wlogo svg{width:30px;height:30px}
+  .wlogo::after{content:"";position:absolute;inset:-1px;border-radius:18px;
+    box-shadow:0 0 30px -4px var(--accent-glow-strong);opacity:.7;animation:pulse 3s ease-in-out infinite}
+  @keyframes logoFloat{0%,100%{transform:translateY(0) rotate(0)}50%{transform:translateY(-6px) rotate(-3deg)}}
+  .wtitle{font-family:var(--display);font-weight:900;font-size:30px;letter-spacing:-.8px;color:var(--fg-bright);line-height:1.1}
+  .wsub{color:var(--fg-muted);font-size:14px;margin-top:10px;line-height:1.6}
+  .wfield{text-align:left;margin-top:26px}
+  .winput-wrap{position:relative}
+  .winput-wrap .input{padding-left:46px;height:50px;font-size:15px;border-radius:13px}
+  .winput-wrap .face{position:absolute;left:10px;top:50%;transform:translateY(-50%);width:30px;height:30px;border-radius:8px;
+    image-rendering:pixelated;position:absolute;overflow:hidden;border:1px solid rgba(255,255,255,.14)}
+  .winput-wrap .face::before{content:"";position:absolute;inset:0;background:linear-gradient(180deg,#2b1d10 0 26%,#c69c6d 26%)}
+  .winput-wrap .face::after{content:"";position:absolute;left:6px;top:16px;width:4px;height:4px;background:#fff;
+    box-shadow:13px 0 0 #fff,6px 0 0 -1px #3d3d9e,13px 0 0 -1px #3d3d9e}
+  .wbtn{width:100%;justify-content:center;margin-top:16px;height:50px;font-size:15.5px;border-radius:13px}
+  .wbtn svg{width:17px;height:17px;transition:transform .2s}
+  .wbtn:hover svg{transform:translateX(4px)}
+  .wstorage{margin-top:20px;font-size:11.5px;color:var(--fg-subtle);line-height:1.6}
+  .wsteps{display:flex;justify-content:center;gap:22px;margin-top:24px}
+  .wstep{display:flex;flex-direction:column;align-items:center;gap:7px;font-family:var(--mono);font-size:10px;color:var(--fg-subtle)}
+  .wstep i{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font-style:normal;font-weight:700;font-size:11px;
+    border:1px solid var(--border-strong);color:var(--fg-muted);transition:.2s}
+  .wstep.now i{background:var(--accent);color:var(--accent-fg);border-color:var(--accent);box-shadow:0 0 14px var(--accent-glow)}
+  .grain{border-radius:24px}
+
+  /* ===== onboarding ===== */
+  .ob{position:fixed;inset:0;z-index:300;background:rgba(4,4,4,.78);backdrop-filter:blur(8px);display:none;
+    align-items:flex-end;justify-content:center;padding:0 0 46px;animation:ovIn .3s ease}
+  .ob.show{display:flex}
+  .ob-card{width:min(560px,92vw);padding:26px 28px;border-radius:20px;border:1px solid var(--border-strong);
+    background:var(--surface-2);box-shadow:0 40px 100px -20px rgba(0,0,0,.95);animation:modIn .4s var(--ease);position:relative}
+  .ob-eyebrow{font-family:var(--mono);font-size:10.5px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--fg-subtle)}
+  .ob-title{font-family:var(--display);font-weight:700;font-size:21px;color:var(--fg-bright);margin:9px 0 7px;letter-spacing:-.3px}
+  .ob-text{font-size:13.5px;color:var(--fg-muted);line-height:1.6}
+  .ob-foot{display:flex;align-items:center;gap:12px;margin-top:20px}
+  .ob-dots{display:flex;gap:7px;margin-right:auto}
+  .ob-dots i{width:7px;height:7px;border-radius:50%;background:var(--surface-4);transition:.25s var(--ease)}
+  .ob-dots i.on{background:var(--accent);width:22px;border-radius:99px}
+  .ob-illo{height:120px;border-radius:14px;margin-bottom:18px;display:grid;place-items:center;position:relative;overflow:hidden;
+    background:radial-gradient(400px 160px at 50% 0%, rgba(255,255,255,.08), transparent 70%),var(--surface-3);border:1px solid var(--border)}
+  .ob-illo .mini-poster{width:200px;height:84px;border-radius:10px;position:relative;overflow:hidden;border:1px solid var(--border-strong);
+    background:linear-gradient(180deg,#141b33,#7a5a4a 55%,#22301f);box-shadow:0 12px 30px -8px rgba(0,0,0,.7)}
+  .ob-illo .mini-poster::after{content:"Играть";position:absolute;left:10px;bottom:8px;font-family:var(--body);font-weight:800;font-size:10px;
+    background:#fff;color:#000;padding:4px 12px;border-radius:7px}
+</style>
+</head>
+<body>
+
+<div class="preview-bar">
+  <span class="tag-prev">ПРЕВЬЮ · ПЕРВЫЙ ЗАПУСК</span>
+  <button class="on" data-t="welcome">① приветствие</button>
+  <button data-t="onb">② обучение</button>
+  <button id="replayIntro" style="margin-left:8px">↻ интро</button>
+</div>
+
+<!-- интро-анимация -->
+<div class="intro" id="intro"><div class="intro-track"><span class="intro-word">TREL</span></div></div>
+
+<div class="welcome-wrap">
+  <section class="pane show" id="welcome" style="width:100%;display:flex;justify-content:center">
+    <div class="wcard">
+      <div class="wlogo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l1.9 5.7L19.6 10l-5.7 1.9L12 17.6l-1.9-5.7L4.4 10l5.7-1.9L12 3Z"/><path d="M19 15l.9 2.6L22.5 18.5l-2.6.9L19 22l-.9-2.6-2.6-.9 2.6-.9L19 15Z"/></svg></div>
+      <h1 class="wtitle">Добро пожаловать<br>в Trel</h1>
+      <p class="wsub">Простой лаунчер для Minecraft. Без рекламы и регистрации — введи ник и играй.</p>
+
+      <div class="wfield">
+        <label class="field-label">Твой никнейм</label>
+        <div class="winput-wrap">
+          <span class="face"></span>
+          <input class="input" placeholder="Steve" value="Steve" maxlength="16">
+        </div>
+        <div class="hint">3–16 символов. Потом можно создать ещё профили и переключаться.</div>
+      </div>
+
+      <button class="btn primary wbtn" onclick="switchPane('onb');document.querySelector('.ob').classList.add('show')">
+        Начать играть <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12h14m-6-6 6 6-6 6"/></svg>
+      </button>
+
+      <div class="wstorage">Всё хранится локально в <span class="mono" style="color:var(--fg-muted)">%APPDATA%\Trel</span>.<br>Токены и пароли никуда не отправляются.</div>
+
+      <div class="wsteps">
+        <div class="wstep now"><i>1</i>ник</div>
+        <div class="wstep"><i>2</i>обучение</div>
+        <div class="wstep"><i>3</i>выбор версии</div>
+      </div>
+      <div class="grain"></div>
+    </div>
+  </section>
+
+  <section class="pane" id="onb" style="width:100%"></section>
+</div>
+
+<!-- onboarding-тур -->
+<div class="ob" id="ob">
+  <div class="ob-card">
+    <div class="ob-illo"><div class="mini-poster"></div></div>
+    <div class="ob-eyebrow">Шаг 1 из 6 · Главная</div>
+    <div class="ob-title">Твой дом игрока</div>
+    <div class="ob-text">Здесь живёт последняя версия — большой кинопостер с кнопкой «Играть». Фон подставится из твоего последнего скриншота. Ниже — быстрые карточки миров.</div>
+    <div class="ob-foot">
+      <div class="ob-dots"><i class="on"></i><i></i><i></i><i></i><i></i><i></i></div>
+      <button class="btn ghost sm" onclick="document.querySelector('.ob').classList.remove('show')">Пропустить</button>
+      <button class="btn primary sm">Дальше <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></button>
+    </div>
+  </div>
+</div>
+
+<script src="trel-preview.js"></script>
+<script>
+  // интро: проигрывается один раз при загрузке, потом скрывается
+  setTimeout(()=>{document.getElementById('intro').classList.add('gone');},2600);
+  document.getElementById('replayIntro').addEventListener('click',()=>{
+    const i=document.getElementById('intro');
+    i.classList.remove('gone');
+    const t=i.querySelector('.intro-track');
+    t.style.animation='none';void t.offsetWidth;t.style.animation='';
+    setTimeout(()=>i.classList.add('gone'),2600);
+  });
+  // верхний переключатель состояний тоже должен открывать/закрывать тур онбординга,
+  // а не просто схлопывать пустую секцию #onb
+  document.querySelector('[data-t="onb"]').addEventListener('click',()=>{
+    document.querySelector('.ob').classList.add('show');
+  });
+  document.querySelector('[data-t="welcome"]').addEventListener('click',()=>{
+    document.querySelector('.ob').classList.remove('show');
+  });
+  // точки онбординга
+  let step=0;const dots=document.querySelectorAll('.ob-dots i');
+  document.querySelector('.ob .btn.primary').addEventListener('click',()=>{
+    step=(step+1)%dots.length;
+    dots.forEach((d,i)=>d.classList.toggle('on',i===step));
+    document.querySelector('.ob-eyebrow').textContent='Шаг '+(step+1)+' из 6 · '+['Главная','Каталог','Установленные','Контент','Скины','Настройки'][step];
+  });
+</script>
+</body>
+</html>

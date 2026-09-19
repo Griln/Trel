@@ -3,6 +3,8 @@ import * as fsp from 'node:fs/promises';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import * as crypto from 'node:crypto';
+import * as zlib from 'node:zlib';
+import * as importOps from './import-ops';
 
 const WIN_LONG_PATH_PREFIX = '\\\\?\\';
 const MAX_WIN_PATH = 240;
@@ -54,7 +56,15 @@ export type ImportCategory =
   | 'libraries'
   | 'skin-cache'
   | 'log-configs'
-  | 'version-install';
+  | 'version-install'
+  | 'schematics'
+  | 'replays'
+  | 'minimap'
+  | 'coremods'
+  | 'openloader'
+  | 'debug'
+  | 'behaviorpacks'
+  | 'skinpacks';
 
 export type SourceKind = 'java' | 'bedrock';
 
@@ -67,6 +77,43 @@ export interface DetectedSource {
   kind: SourceKind;
   installableVersions?: string[];
   mojangOnlyBedrock?: boolean;
+  /** Доп. папки, где лежат файлы аккаунтов (корень лаунчера и т.п.). */
+  accountsRoots?: string[];
+  /**
+   * Сборка распознана как модпак Modrinth/CurseForge и может быть
+   * переустановлена штатным механизмом Trel (с обновлениями), а не
+   * скопирована файлами. Заполняется из modrinth.index.json / manifest.json.
+   */
+  modpack?: DetectedModpack;
+  /** Память и JVM-аргументы, заданные в исходном лаунчере (instance.cfg и др.). */
+  launcherTweaks?: LauncherTweaks;
+  /** Это выгруженный .zip сборки, а не папка: сначала распаковать. */
+  isArchive?: boolean;
+}
+
+/** Что удалось вычитать из метаданных модпака рядом с инстансом. */
+export interface DetectedModpack {
+  /** 'modrinth' — modrinth.index.json, 'curseforge' — manifest.json, 'packwiz' — packwiz.toml, 'mmc' — mmc-pack.json. */
+  origin: 'modrinth' | 'curseforge' | 'packwiz' | 'mmc';
+  name: string;
+  /** Версия сборки, если указана (не версия игры). */
+  version?: string;
+  mc: string;
+  loader: 'vanilla' | 'fabric' | 'quilt' | 'forge' | 'neoforge';
+  loaderVersion?: string;
+  /** Количество файлов, которые лаунчер докачивал бы сам. */
+  fileCount: number;
+}
+
+/** Настройки исходного лаунчера, которые стоит перенести вручную. */
+export interface LauncherTweaks {
+  /** -Xmx в мегабайтах. */
+  maxMemoryMb?: number;
+  minMemoryMb?: number;
+  jvmArgs?: string;
+  javaPath?: string;
+  /** Требуемая мажорная Java из версионного json (17, 21…). */
+  javaMajor?: number;
 }
 
 export interface ImportPlan {
@@ -74,6 +121,23 @@ export interface ImportPlan {
   sourceRootDir?: string;
   categories: ImportCategory[];
   deduplicate?: boolean;
+  /**
+   * Переносить файлы жёсткими ссылками вместо копирования. Мгновенно и без
+   * расхода места, но файл становится общим с исходным лаунчером: правка в
+   * одном месте видна в другом. Только для одного тома; иначе — копия.
+   */
+  useHardlinks?: boolean;
+  /** Не трогать аккаунты и токены (accounts, usercache): только игровой контент. */
+  skipSecrets?: boolean;
+  /** Удалить файлы источника после успешной verified-копии (переезд, не копия). */
+  moveSource?: boolean;
+  /** Упаковать текущие миры Trel в .zip перед импортом чужих. */
+  archiveWorlds?: boolean;
+  /**
+   * Временная распаковка (только trel-pack-* в tmp): удалить после импорта.
+   * Ставит fromArchive-флоу, руками не задавать.
+   */
+  cleanupDir?: string;
 }
 
 export interface ImportReport {
@@ -83,18 +147,90 @@ export interface ImportReport {
   installedVersions: string[];
   errors: string[];
   warnings: string[];
+  /** Длительность по категориям в мс — видно, где узкое место. */
+  durationsMs?: Partial<Record<ImportCategory, number>>;
+  /** Всего записано байт и общая длительность (для «МБ/с» в UI). */
+  bytesWritten?: number;
+  totalMs?: number;
+  /** Импорт был прерван пользователем: скопированное осталось на месте. */
+  aborted?: boolean;
+  /** Был на паузе (мс суммарно) — честная скорость считается без них. */
+  pausedMs?: number;
+  /** Сколько раз ставили на паузу. */
+  pauses?: number;
+  /** Сколько байт сэкономила дедупликация (уже было в Trel). */
+  savedBytes?: number;
+  /** Файлы, откаченные журналом (категория упала целиком). */
+  rolledBackFiles?: number;
+  /** Источник удалён после переезда (moveSource). */
+  movedSource?: boolean;
+  /** Путь к zip-архиву миров перед импортом. */
+  archivedWorlds?: string;
+  /** Подозрительные моды (карантин): "файл — причина". */
+  quarantine?: string[];
+  /** Один мод в нескольких версиях: "modid — файлы". */
+  duplicateMods?: string[];
+  /** Authlib/ely endpoints, найденные у источника (сами не переносим). */
+  authServers?: string[];
+  /** Секреты пропущены по skipSecrets. */
+  secretsSkipped?: boolean;
+  /** Путь к лог-файлу этого импорта. */
+  logPath?: string;
 }
 
-type ProgressCallback = (current: number, total: number, stage: string) => void;
+/** Предпросмотр плана до запуска импорта. */
+export interface ImportPreview {
+  /** Файлов по категориям (для крупных папок — оценка сверху). */
+  files: Partial<Record<ImportCategory, number>>;
+  /** Байт по категориям. */
+  bytes: Partial<Record<ImportCategory, number>>;
+  totalFiles: number;
+  totalBytes: number;
+  /** Свободно на томе игры (0, если прочитать не удалось). */
+  freeBytes: number;
+  /** Статистика тома недоступна — проверка места не выполнялась. */
+  freeSpaceUnknown: boolean;
+  /** Места не хватает — импорт лучше не начинать. */
+  notEnoughSpace: boolean;
+  /** Версии, которые будут скопированы или скачаны. */
+  versions: string[];
+  warnings: string[];
+  /** Серверы из servers.dat источника (имя+адрес, первые 20). */
+  servers?: Array<{ name: string; ip: string }>;
+  /** Что изменится: новое / перезапишется / уже есть (оценка по same-name+size). */
+  diff?: { fresh: number; overwrite: number; identical: number };
+  /** Сколько байт уже есть в Trel (оценка экономии дедупа). */
+  savedBytesEstimate?: number;
+  /** Оценка времени по прошлой скорости (с), если известна. */
+  etaSecondsEstimate?: number;
+  /** Первые файлы очереди (rel-пути, кап) — видно, что именно поедет. */
+  fileTree?: Array<{ path: string; bytes: number }>;
+}
+
+/** Краткая сводка о прошлом импорте в эту папку игры (.trel_import.json). */
+export interface LastImportInfo {
+  /** Время завершения (мс). */
+  at: number;
+  sourceId: string;
+  categories: string[];
+  copiedFiles: number;
+  aborted: boolean;
+  hardlinks: boolean;
+  /** Средняя скорость прошлого импорта (Б/с) — для оценки времени до старта. */
+  lastSpeedBps?: number;
+}
+
+type ProgressCallback = (current: number, total: number, stage: string, bytes?: number, bytesPerSecond?: number, etaSeconds?: number, currentFile?: string) => void;
 type VersionInstaller = (versionId: string) => Promise<void>;
 
 interface CacheEntry {
   sources: DetectedSource[];
   timestamp: number;
+  key: string;
 }
 
 let _detectCache: CacheEntry | null = null;
-const DETECT_CACHE_TTL = 30_000;
+const DETECT_CACHE_TTL = 120_000;
 
 // ─── Helpers ────────────────────────────────────────────────────────────
 
@@ -124,23 +260,36 @@ function readJson(p: string): unknown | null {
 interface CopySpec {
   from: string[];
   to?: string[];
+  /** Запасные раскладки (TLauncher держит моды в TLMods/ и т.п.). */
+  altFrom?: string[][];
+  /**
+   * Маска соседних папок: [сегменты родителя..., префикс]. Badlion хранит
+   * конфиги в BLClient-Mod-Profiles-<версия>/ — точное имя заранее неизвестно.
+   */
+  globFrom?: { parent: string[]; prefix: string };
 }
 
-const CATEGORY_DIRS: Record<string, CopySpec[]> = {
+export const CATEGORY_DIRS: Record<string, CopySpec[]> = {
   worlds: [{ from: ['saves'] }],
-  mods: [{ from: ['mods'] }],
-  shaderpacks: [{ from: ['shaderpacks'] }],
+  mods: [{ from: ['mods'], altFrom: [['TLMods']] }],
+  schematics: [{ from: ['schematics'] }, { from: ['blueprints'] }],
+  replays: [{ from: ['replay_recordings'] }],
+  minimap: [{ from: ['xaero'] }, { from: ['journeymap'] }, { from: ['voxelmap'] }],
+  coremods: [{ from: ['coremods'] }],
+  openloader: [{ from: ['openloader'] }, { from: ['globalresources'] }],
+  debug: [{ from: ['debug'] }],
+  shaderpacks: [{ from: ['shaderpacks'], altFrom: [['shaders']] }],
   resourcepacks: [{ from: ['resourcepacks'] }],
   texturepacks: [{ from: ['texturepacks'] }],
   screenshots: [{ from: ['screenshots'] }],
-  config: [{ from: ['config'] }],
+  config: [{ from: ['config'], globFrom: { parent: [], prefix: 'BLClient-Mod-Profiles' } }],
   datapacks: [{ from: ['datapacks'] }],
   stats: [{ from: ['stats'] }],
   advancements: [{ from: ['advancements'] }],
   logs: [{ from: ['logs'] }, { from: ['crash-reports'] }],
   scripts: [{ from: ['scripts'] }, { from: ['kubejs'] }],
   defaultconfigs: [{ from: ['defaultconfigs'] }],
-  backups: [{ from: ['backups'] }],
+  backups: [{ from: ['backups'], altFrom: [['Backups']] }],
   local: [{ from: ['local'] }],
   world_templates: [{ from: ['world_templates'] }],
   resources: [{ from: ['resources'] }],
@@ -161,7 +310,68 @@ const CATEGORY_DIRS: Record<string, CopySpec[]> = {
 const BEDROCK_DIRS: Record<string, CopySpec[]> = {
   worlds: [{ from: ['minecraftWorlds'] }],
   resourcepacks: [{ from: ['resource_packs'] }],
+  behaviorpacks: [{ from: ['behavior_packs'] }],
+  skinpacks: [{ from: ['skin_packs'] }],
+  world_templates: [{ from: ['world_templates'] }],
 };
+
+/** Пофайловые категории: имя категории → файлы в корне источника. */
+export const FILE_CATS: Record<string, string[]> = {
+  servers: ['servers.dat', 'servers.dat_old'],
+  options: ['options.txt', 'controls.txt', 'hotbar.nbt', 'optionsshaders.txt',
+    'optionsof.txt', 'resourcepacks.txt', 'user_jvm_args.txt', 'note.txt',
+    'splashes.txt', 'allowed_symlinks.txt'],
+  usercache: ['usercache.json', 'usernamecache.json'],
+  'pack-meta': ['mmc-pack.json', 'instance.cfg', 'manifest.json', 'minecraftinstance.json', 'modrinth.index.json'],
+};
+
+/**
+ * Каталоги-источники для одной категории.
+ *
+ * Нюанс CurseForge: инстанс, который ни разу не запускали, содержит контент
+ * только внутри overrides/ (моды, конфиги и т.д. распаковываются оттуда при
+ * первом старте). Если целевой папки в корне инстанса нет — берём её из
+ * overrides/, чтобы такие «не запущенные» сборки тоже импортировались.
+ */
+function specSourceDirs(rootDir: string, spec: CopySpec, allowOverrides: boolean): string[] {
+  const main = path.join(rootDir, ...spec.from);
+  if (safeStat(main)?.isDirectory()) return [main];
+  for (const alt of spec.altFrom ?? []) {
+    const altDir = path.join(rootDir, ...alt);
+    if (safeStat(altDir)?.isDirectory()) return [altDir];
+  }
+  if (spec.globFrom) {
+    // Все соседние папки с префиксом (каждая версия Badlion — своя папка).
+    const parent = path.join(rootDir, ...spec.globFrom.parent);
+    const out: string[] = [];
+    for (const name of safeReaddir(parent)) {
+      if (name.startsWith(spec.globFrom.prefix) && safeStat(path.join(parent, name))?.isDirectory()) {
+        out.push(path.join(parent, name));
+      }
+    }
+    if (out.length > 0) return out.sort();
+  }
+  if (allowOverrides) {
+    const ov = path.join(rootDir, 'overrides', ...spec.from);
+    if (safeStat(ov)?.isDirectory()) return [ov];
+  }
+  return [];
+}
+
+/**
+ * Подпапки внутри versions/<id>, которые несёт с собой профиль.
+ *
+ * Нюанс TLauncher «изоляция версий»: в этом режиме миры лежат в
+ * versions/<v>/saves. Trel читает сохранения только из общей gameDir/saves,
+ * поэтому такие миры импортируем в общую папку — но только если у источника
+ * нет собственной общей saves (иначе versions/<v>/saves — просто остатки,
+ * а не изоляция, и тащить их не нужно).
+ */
+function versionContentSubs(rootDir: string): string[] {
+  const subs = [...VERSION_CONTENT_SUBS];
+  if (!safeStat(path.join(rootDir, 'saves'))?.isDirectory()) subs.push('saves');
+  return subs;
+}
 
 function dirSize(dir: string, maxDepth: number): number {
   if (maxDepth <= 0) return 0;
@@ -190,13 +400,76 @@ function countFilesRecursive(dir: string, depth: number): number {
   return count;
 }
 
-function rmTrelTmps(dir: string): void {
+/**
+ * Файлы и байты одним обходом.
+ *
+ * Предпросмотр раньше вызывал countFilesRecursive и dirSize отдельно — два
+ * полных обхода одного дерева. На assets/libraries (десятки тысяч файлов) это
+ * заметно. Глубина по умолчанию совпадает с глубиной копирования, иначе
+ * предпросмотр занижал бы объём именно на глубоких деревьях — а он нужен
+ * ровно для того, чтобы предсказать нехватку места.
+ */
+export interface DirScan { files: number; bytes: number; top: Array<{ rel: string; bytes: number }>; truncated: boolean }
+/**
+ * Один обход: счётчики + первые topCap файлов (rel-путь, размер) для дерева
+ * превью и diff-оценки. Два отдельных walk (measure + листинг) удваивали бы
+ * время превью на больших сборках.
+ */
+export const SCAN_MAX_FILES = 200_000;
+export function scanDir(dir: string, depth: number, topCap = 300, maxFiles = SCAN_MAX_FILES): DirScan {
+  const top: Array<{ rel: string; bytes: number }> = [];
+  let files = 0; let bytes = 0; let truncated = false;
+  let stopped = false;
+  const walk = (d: string, rel: string, dep: number) => {
+    if (dep <= 0 || stopped) return;
+    for (const name of safeReaddir(d)) {
+      if (stopped) return;
+      if (JUNK_NAMES.has(name)) continue;
+      const full = path.join(d, name);
+      const st = safeStat(full);
+      if (!st) continue;
+      if (st.isDirectory()) walk(full, rel ? `${rel}/${name}` : name, dep - 1);
+      else {
+        files++; bytes += st.size;
+        if (files >= maxFiles) { stopped = true; truncated = true; return; }
+        if (top.length < topCap) top.push({ rel: rel ? `${rel}/${name}` : name, bytes: st.size });
+        else truncated = true;
+      }
+    }
+  };
+  walk(dir, '', depth);
+  return { files, bytes, top, truncated };
+}
+
+function measureTree(dir: string, depth: number): { files: number; bytes: number } {
+  let files = 0;
+  let bytes = 0;
+  if (depth <= 0) return { files, bytes };
+  for (const name of safeReaddir(dir)) {
+    if (JUNK_NAMES.has(name)) continue;
+    const full = path.join(dir, name);
+    const st = safeStat(full);
+    if (!st) continue;
+    if (st.isDirectory()) {
+      const sub = measureTree(full, depth - 1);
+      files += sub.files;
+      bytes += sub.bytes;
+    } else {
+      files++;
+      bytes += st.size;
+    }
+  }
+  return { files, bytes };
+}
+
+function rmTrelTmps(dir: string, maxDepth = 16): void {
+  if (maxDepth <= 0) return;
   if (!safeStat(dir)?.isDirectory()) return;
   if (dir.length < 5) return;  // safety: don't scan filesystem roots
   for (const n of safeReaddir(dir)) {
     const full = path.join(dir, n);
     if (n.endsWith('.trel_tmp')) { try { fs.unlinkSync(ntPath(full)); } catch {} }
-    else if (safeStat(full)?.isDirectory()) rmTrelTmps(full);
+    else if (safeStat(full)?.isDirectory()) rmTrelTmps(full, maxDepth - 1);
   }
 }
 
@@ -233,7 +506,7 @@ function isInsideDir(candidate: string, root: string): boolean {
   return real === resolvedRoot || real.startsWith(resolvedRoot + sep);
 }
 
-function resolveDestPath(destDir: string, name: string, taken?: Set<string>): string {
+export function resolveDestPath(destDir: string, name: string, taken?: Set<string>): string {
   let to = path.join(destDir, name);
   const ci = process.platform === 'win32' || process.platform === 'darwin';
   const norm = ci ? to.toLowerCase() : to;
@@ -249,6 +522,194 @@ function resolveDestPath(destDir: string, name: string, taken?: Set<string>): st
   return to;
 }
 
+// ─── Dedup / copy depth constants ────────────────────────────────────────
+
+/**
+ * Предел рекурсии при копировании и хешировании. Объявлен до первого
+ * использования (APPROX_DEPTH ниже читает его на этапе инициализации модуля).
+ */
+const MAX_COPY_DEPTH = 32;
+const DEDUP_HASH_DEPTH = MAX_COPY_DEPTH;
+
+/**
+ * Глубина обхода при быстрой оценке размера для списка источников.
+ *
+ * Плоские категории (mods, config, screenshots) укладываются в 2–3 уровня, и
+ * мелкая глубина экономит время детекта. Но у кэша структура принципиально
+ * глубокая: `assets/objects/ab/<hash>`, `libraries/com/mojang/authlib/1.0/x.jar`
+ * — с глубиной 2 карточка источника показывала 449 МБ там, где реально 2 ГБ.
+ * У миров глубина нужна на DIM-1/region и датапаки внутри мира.
+ */
+const APPROX_DEPTH: Partial<Record<ImportCategory, number>> = {
+  assets: MAX_COPY_DEPTH,
+  libraries: MAX_COPY_DEPTH,
+  'skin-cache': MAX_COPY_DEPTH,
+  'log-configs': MAX_COPY_DEPTH,
+  worlds: 5,
+};
+
+/** Путь `child` лежит строго внутри `parent` (оба — массивы сегментов). */
+function isUnder(child: string[], parent: string[]): boolean {  if (child.length <= parent.length) return false;
+  return parent.every((seg, i) => seg === child[i]);
+}
+
+/**
+ * Конфликты регистра имён: на Windows/macOS `Mod.jar` и `mod.jar` — один файл,
+ * и второй тихо перезапишет первый (или уедет в ` (1)`). Сканируем только
+ * верхний уровень папок категорий — дёшево и ловит 99% случаев.
+ */
+export function findCaseConflicts(rootDir: string, categories: ImportCategory[], bedrock = false): string[] {
+  if (process.platform !== 'win32' && process.platform !== 'darwin') return [];
+  const DIRS = bedrock ? BEDROCK_DIRS : CATEGORY_DIRS;
+  const out: string[] = [];
+  for (const cat of categories) {
+    for (const spec of DIRS[cat] ?? []) {
+      const from = specSourceDirs(rootDir, spec, true)[0];
+      if (!from) continue;
+      const seen = new Map<string, string>();
+      for (const name of safeReaddir(from)) {
+        const low = name.toLowerCase();
+        const prev = seen.get(low);
+        if (prev !== undefined && prev !== name) out.push(`${cat}/${prev} vs ${cat}/${name}`);
+        else seen.set(low, name);
+      }
+      if (out.length >= 10) return out;
+    }
+  }
+  return out;
+}
+
+/**
+ * Крошечный NBT-ридер только для servers.dat: список серверов (name/ip) в
+ * превью. Полный NBT не нужен — читаем Compound/List/String/Long/Byte,
+ * остальное пропускаем по типам. servers.dat — сырой big-endian NBT.
+ */
+export function parseServersDat(filePath: string): Array<{ name: string; ip: string }> {
+  const out: Array<{ name: string; ip: string }> = [];
+  let buf: Buffer;
+  try {
+    const raw = fs.readFileSync(ntPath(filePath));
+    // На всякий случай пробуем gzip (старые версии): gzip-магия 1f 8b.
+    try {
+      buf = raw.length > 2 && raw[0] === 0x1f && raw[1] === 0x8b ? zlib.gunzipSync(raw) : raw;
+    } catch { buf = raw; }
+    // Корень: 1 байт TAG_Compound (10) + u16 имя. Именно байт: чтение u16
+    // давало 0x0A00 и молча отбрасывало любой валидный файл.
+    if (buf.length < 3 || buf[0] !== 10) return out;
+  } catch { return out; }
+  let off = 1;
+  const readU16 = () => { const v = buf.readUInt16BE(off); off += 2; return v; };
+  const readStr = () => { const n = readU16(); const v = buf.toString('utf-8', off, off + n); off += n; return v; };
+  const skipPayload = (type: number): void => {
+    if (type === 1) off += 1;
+    else if (type === 2) off += 2;
+    else if (type === 3 || type === 4) off += 4;
+    else if (type === 5 || type === 6) off += 8;
+    else if (type === 7) off += 4 + buf.readInt32BE(off); // byte array
+    else if (type === 8) off += readU16();
+    else if (type === 9) {
+      const et = buf[off]; const n = buf.readInt32BE(off + 1); off += 5;
+      for (let i = 0; i < n; i++) {
+        if (et === 10) skipCompoundBody();
+        else skipPayload(et);
+      }
+    } else if (type === 10) skipCompoundBody();
+    else if (type === 11) off += 4 + buf.readInt32BE(off) * 4;
+    else if (type === 12) off += 4 + buf.readInt32BE(off) * 8; // long array
+  };
+  const skipCompoundBody = (): void => {
+    for (;;) {
+      const t = buf[off++];
+      if (t === 0) return;
+      readStr();
+      skipPayload(t);
+    }
+  };
+  try {
+    readStr(); // имя корня
+    // Корень — compound: ищем servers.
+    for (;;) {
+      const t = buf[off++];
+      if (t === 0) break;
+      const name = readStr();
+      if (t === 9 && name === 'servers') {
+        const et = buf[off]; const n = Math.min(buf.readInt32BE(off + 1), 50); off += 5;
+        for (let i = 0; i < n && out.length < 20; i++) {
+          let srvName = ''; let srvIp = '';
+          if (et !== 10) { skipPayload(et); continue; }
+          for (;;) {
+            const ft = buf[off++];
+            if (ft === 0) break;
+            const fname = readStr();
+            if (ft === 8) {
+              const v = readStr();
+              if (fname === 'name') srvName = v.slice(0, 64);
+              else if (fname === 'ip') srvIp = v.slice(0, 128);
+            } else skipPayload(ft);
+          }
+          if (srvName || srvIp) out.push({ name: srvName || srvIp, ip: srvIp });
+        }
+      } else skipPayload(t);
+    }
+  } catch { /* битый dat — превью без серверов */ }
+  return out;
+}
+
+/** Первые 4КБ двух файлов совпадают (дешёвая защита от однофамильцев на FAT). */
+export function sameHead(a: string, b: string): boolean {
+  try {
+    const fa = fs.openSync(ntPath(a), 'r');
+    try {
+      const fb = fs.openSync(ntPath(b), 'r');
+      try {
+        const ba = Buffer.alloc(4096); const bb = Buffer.alloc(4096);
+        const na = fs.readSync(fa, ba, 0, 4096, 0); const nb = fs.readSync(fb, bb, 0, 4096, 0);
+        return na === nb && ba.subarray(0, na).equals(bb.subarray(0, nb));
+      } finally { fs.closeSync(fb); }
+    } finally { fs.closeSync(fa); }
+  } catch { return false; }
+}
+
+/** Битый JSON переносим как есть, но честно предупреждаем (иначе сюрприз в игре). */
+function warnIfJsonBroken(destPath: string, warnings: string[]): void {
+  if (!destPath.endsWith('.json')) return;
+  try {
+    JSON.parse(fs.readFileSync(ntPath(destPath), 'utf-8'));
+  } catch {
+    warnings.push(`possibly corrupt JSON copied as-is: ${path.basename(destPath)}`);
+  }
+}
+
+/**
+ * Убирает категории, целиком вложенные в другую выбранную категорию.
+ *
+ * `assets` включает в себя `skin-cache` (assets/skins) и `log-configs`
+ * (assets/log_configs). Если выбрать всё вместе, вложенные категории копируют
+ * то же содержимое второй раз, а resolveDestPath, честно избегая перезаписи,
+ * раскладывает его рядом под именами `skins/ab (1)/…` и `client (1).xml`.
+ * Пользователь получал мусор и двойное время копирования. Раньше это было
+ * недостижимо (кэш-категории не показывались в UI), теперь — достижимо.
+ */
+export function dropNestedCategories(categories: ImportCategory[], bedrock = false): ImportCategory[] {
+  const DIRS = bedrock ? BEDROCK_DIRS : CATEGORY_DIRS;
+  return categories.filter((cat) => {
+    const specs = DIRS[cat];
+    // Файловые категории (accounts/servers/options/…) папок не копируют.
+    if (!specs || specs.length === 0) return true;
+    for (const other of categories) {
+      if (other === cat) continue;
+      const otherSpecs = DIRS[other];
+      if (!otherSpecs || otherSpecs.length === 0) continue;
+      // Категория лишняя, только если КАЖДЫЙ её путь накрыт другой категорией —
+      // и в источнике, и в назначении (spec.to может отличаться от spec.from).
+      const covered = specs.every((s) => otherSpecs.some((o) =>
+        isUnder(s.from, o.from) && isUnder(s.to ?? s.from, o.to ?? o.from)));
+      if (covered) return false;
+    }
+    return true;
+  });
+}
+
 function approxSizeOf(rootDir: string, categories: ImportCategory[], bedrock = false): number {
   let total = 0;
   const DIRS = bedrock ? BEDROCK_DIRS : CATEGORY_DIRS;
@@ -259,18 +720,47 @@ function approxSizeOf(rootDir: string, categories: ImportCategory[], bedrock = f
       continue;
     }
     for (const spec of DIRS[cat] ?? []) {
-      const dir = path.join(rootDir, ...spec.from);
-      total += dirSize(dir, cat === 'worlds' ? 3 : 2);
+      const dir = specSourceDirs(rootDir, spec, !bedrock)[0];
+      if (!dir) continue;
+      total += dirSize(dir, APPROX_DEPTH[cat] ?? 2);
     }
   }
   return total;
 }
 
-function fileSizeInRoot(rootDir: string, cat: ImportCategory): number {
+/**
+ * Файлы с аккаунтами разных лаунчеров. Единый список для детекта, оценки размера и самого импорта:
+ * раньше детект знал только о четырёх файлах, из-за чего Prism/PolyMC (accounts.json) и
+ * Microsoft Store-вариант вообще не предлагали категорию «аккаунты» и они молча не импортировались.
+ * hmcl.json — HMCL; config/account.json и config/accounts.json — ATLauncher
+ * (лежат в корне лаунчера, до которого добираемся через accountsRoots).
+ */
+const ACCOUNT_FILES = [
+  'launcher_accounts.json',
+  'launcher_accounts_microsoft_store.json',
+  'launcher_profiles.json',
+  'TLauncherProfile.json',
+  'TLauncherProfiles.json',
+  'sklauncher_accounts.json',
+  'accounts.json',
+  'hmcl.json',
+  'config/account.json',
+  'config/accounts.json',
+] as const;
+
+/**
+ * Размер «файловых» категорий (те, что не описываются CATEGORY_DIRS).
+ *
+ * `maxVersions` ограничивает обход versions/ при быстрой оценке для списка
+ * источников: там важна скорость детекта, а не точность до байта. Предпросмотр
+ * передаёт Infinity — его цифра идёт в проверку свободного места, и на
+ * источнике с 40 профилями усечение до 15 занижало объём в разы.
+ */
+function fileSizeInRoot(rootDir: string, cat: ImportCategory, maxVersions = 15): number {
   switch (cat) {
     case 'accounts': {
       let total = 0;
-      for (const f of ['launcher_accounts.json', 'launcher_profiles.json', 'TLauncherProfile.json', 'sklauncher_accounts.json']) {
+      for (const f of ACCOUNT_FILES) {
         const st = safeStat(path.join(rootDir, f));
         if (st) total += st.size;
       }
@@ -307,7 +797,7 @@ function fileSizeInRoot(rootDir: string, cat: ImportCategory): number {
       const vDir = path.join(rootDir, 'versions');
       if (safeStat(vDir)?.isDirectory()) {
         for (const ver of safeReaddir(vDir)) {
-          for (const sub of VERSION_CONTENT_SUBS) {
+          for (const sub of versionContentSubs(rootDir)) {
             const subDir = path.join(vDir, ver, sub);
             if (safeStat(subDir)?.isDirectory()) total += dirSize(subDir, 2);
           }
@@ -327,9 +817,10 @@ function fileSizeInRoot(rootDir: string, cat: ImportCategory): number {
       const vDir = path.join(rootDir, 'versions');
       if (!safeStat(vDir)?.isDirectory()) return 0;
       let bytes = 0;
-      for (const ver of safeReaddir(vDir)) {
+      const names = safeReaddir(vDir);
+      for (const ver of Number.isFinite(maxVersions) ? names.slice(0, maxVersions) : names) {
         const verDir = path.join(vDir, ver);
-        if (safeStat(verDir)?.isDirectory()) bytes += dirSize(verDir, 3);
+        if (safeStat(verDir)?.isDirectory()) bytes += dirSize(verDir, MAX_COPY_DEPTH);
       }
       return bytes;
     }
@@ -339,7 +830,16 @@ function fileSizeInRoot(rootDir: string, cat: ImportCategory): number {
 
 // ─── Per-version content ────────────────────────────────────────────────
 
-const VERSION_CONTENT_SUBS = ['mods', 'shaderpacks', 'resourcepacks', 'texturepacks', 'config', 'datapacks'];
+const VERSION_CONTENT_SUBS = ['mods', 'shaderpacks', 'resourcepacks', 'texturepacks', 'config', 'datapacks', 'screenshots'];
+/**
+ * Изолированный контент версий, который Trel читает только из общих папок:
+ * миры — из saves, скрины — из screenshots. Остальное едет в versions/<v>/.
+ */
+function versionContentDest(gameDir: string, vDir: string, ver: string, sub: string): string {
+  if (sub === 'saves') return path.join(gameDir, 'saves');
+  if (sub === 'screenshots') return path.join(gameDir, 'screenshots');
+  return path.join(vDir, ver, sub);
+}
 
 const JUNK_NAMES = new Set(['.git', '.svn', '.hg', '__MACOSX', '.DS_Store', 'Thumbs.db', 'desktop.ini', 'node_modules']);
 
@@ -364,7 +864,7 @@ function hasVersionContent(rootDir: string): boolean {
   const vDir = path.join(rootDir, 'versions');
   if (!safeStat(vDir)?.isDirectory()) return false;
   for (const ver of safeReaddir(vDir)) {
-    for (const sub of VERSION_CONTENT_SUBS) {
+    for (const sub of versionContentSubs(rootDir)) {
       const subDir = path.join(vDir, ver, sub);
       if (safeStat(subDir)?.isDirectory() && safeReaddir(subDir).some(n => !JUNK_NAMES.has(n))) return true;
     }
@@ -388,10 +888,8 @@ function availableCategories(rootDir: string, bedrock = false): ImportCategory[]
     return out;
   }
 
-  // Accounts from multiple launcher files
-  for (const f of ['launcher_accounts.json', 'launcher_profiles.json', 'TLauncherProfile.json', 'sklauncher_accounts.json']) {
-    if (safeStat(path.join(rootDir, f))) { out.push('accounts'); break; }
-  }
+  // Accounts from multiple launcher files (только если там реально есть аккаунты)
+  if (hasAccountFiles([rootDir]) || extractOfflineNames(rootDir).length > 0) out.push('accounts');
 
   // Servers
   if (safeStat(path.join(rootDir, 'servers.dat')) || safeStat(path.join(rootDir, 'servers.dat_old'))) out.push('servers');
@@ -414,13 +912,13 @@ function availableCategories(rootDir: string, bedrock = false): ImportCategory[]
   // Per-version content
   if (hasVersionContent(rootDir)) out.push('version-content');
 
-  // Subfolder checks
+  // Subfolder checks (включая CurseForge overrides/-fallback)
   for (const [cat, specs] of Object.entries(CATEGORY_DIRS)) {
     if (cat === 'accounts' || cat === 'servers' || cat === 'options' || cat === 'usercache' ||
         cat === 'version-content' || cat === 'pack-meta') continue;
     for (const spec of specs) {
-      const dir = path.join(rootDir, ...spec.from);
-      if (safeStat(dir)?.isDirectory() && safeReaddir(dir).some(n => !JUNK_NAMES.has(n))) {
+      const dir = specSourceDirs(rootDir, spec, !bedrock)[0];
+      if (dir && safeReaddir(dir).some(n => !JUNK_NAMES.has(n))) {
         if (!out.includes(cat as ImportCategory)) out.push(cat as ImportCategory);
       }
     }
@@ -504,22 +1002,107 @@ export function detectInstallableVersions(rootDir: string): string[] {
 }
 
 
-// ─── Dedup / copy depth constants ────────────────────────────────────────
-const MAX_COPY_DEPTH = 32;
-const DEDUP_HASH_DEPTH = MAX_COPY_DEPTH;
-
 // ─── SHA-1 dedup (async) ────────────────────────────────────────────────
 
 async function fileSha1(filePath: string): Promise<string | null> {
   try {
     const hash = crypto.createHash('sha1');
-    const stream = fs.createReadStream(ntPath(filePath));
-    for await (const chunk of stream) hash.update(chunk as Buffer);
+    // 512 КБ чанки: меньше сисколлов на больших jar. Уступка циклу событий —
+    // раз в ~8 МБ: UI жив, а скорость почти как без уступок.
+    const stream = fs.createReadStream(ntPath(filePath), { highWaterMark: 512 * 1024 });
+    let chunks = 0;
+    for await (const chunk of stream) {
+      hash.update(chunk as Buffer);
+      if (++chunks % 16 === 0) await new Promise<void>((r) => setImmediate(r));
+    }
     return hash.digest('hex');
   } catch { return null; }
 }
 
-async function buildExistingHashes(dir: string, depth: number): Promise<Set<string>> {
+/**
+ * Размеры файлов-источников. Идентичный контент ⇒ идентичный размер, поэтому
+ * существующий файл назначения имеет смысл хешировать для дедупликации только
+ * если его размер совпадает хотя бы с одним исходным. На свежей установке
+ * пре-скан дедупликации становится почти бесплатным.
+ */
+function collectSourceSizes(dir: string, depth: number, sizes: Set<number>): void {
+  if (depth <= 0 || !safeStat(dir)?.isDirectory()) return;
+  for (const name of safeReaddir(dir)) {
+    if (JUNK_NAMES.has(name)) continue;
+    const full = path.join(dir, name);
+    const st = safeStat(full);
+    if (!st) continue;
+    if (st.isDirectory()) collectSourceSizes(full, depth - 1, sizes);
+    else sizes.add(st.size);
+  }
+}
+
+/**
+ * Кеш SHA-1 между запусками импорта.
+ *
+ * Дедупликация хеширует каждый файл в папке назначения, и при повторном
+ * импорте того же источника вся эта работа повторялась с нуля: на 10 ГБ модов
+ * и ресурспаков это минуты чтения диска. Ключ — путь + размер + mtime: если
+ * файл тронули, запись просто не совпадёт и хеш пересчитается.
+ *
+ * Кеш — ускорение, а не источник истины: любая ошибка чтения/записи молча
+ * игнорируется, worst case — прежнее поведение.
+ */
+const HASH_CACHE_FILE = '.trel_hash_cache.json';
+const HASH_CACHE_MAX_ENTRIES = 200_000;
+
+type HashCache = Map<string, string>;
+
+function hashCacheKey(file: string, size: number, mtimeMs: number): string {
+  return `${file}|${size}|${Math.floor(mtimeMs)}`;
+}
+
+function loadHashCache(gameDir: string): HashCache {
+  const cache: HashCache = new Map();
+  const raw = readJson(path.join(gameDir, HASH_CACHE_FILE));
+  if (raw && typeof raw === 'object') {
+    for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+      if (typeof v === 'string' && v.length === 40) cache.set(k, v);
+    }
+  }
+  return cache;
+}
+
+async function saveHashCache(gameDir: string, cache: HashCache): Promise<void> {
+  try {
+    // Огромный кеш сам становится проблемой (память + время парсинга), поэтому
+    // держим только свежий хвост: он и так перестроится при следующем импорте.
+    const entries = cache.size > HASH_CACHE_MAX_ENTRIES
+      ? [...cache.entries()].slice(-HASH_CACHE_MAX_ENTRIES)
+      : [...cache.entries()];
+    await fsp.writeFile(
+      ntPath(path.join(gameDir, HASH_CACHE_FILE)),
+      JSON.stringify(Object.fromEntries(entries)),
+      'utf-8',
+    );
+  } catch { /* кеш необязателен */ }
+}
+
+/**
+ * SHA-1 файла с опорой на кеш. Ключ — путь + размер + mtime, поэтому тронутый
+ * файл автоматически пересчитывается. Используется и для папки назначения
+ * (пре-скан дедупликации), и для файлов источника: при повторном импорте того
+ * же лаунчера обе стороны берутся из кеша, и дедупликация почти ничего не стоит.
+ */
+async function fileSha1Cached(file: string, cache?: HashCache, st?: fs.Stats): Promise<string | null> {
+  const stat = st ?? safeStat(file);
+  if (!stat) return fileSha1(file);
+  const key = hashCacheKey(file, stat.size, stat.mtimeMs);
+  const hit = cache?.get(key);
+  if (hit) return hit;
+  const h = await fileSha1(file);
+  if (h) cache?.set(key, h);
+  return h;
+}
+
+async function buildExistingHashes(
+  dir: string, depth: number, sizeFilter?: Set<number>, cache?: HashCache,
+): Promise<Set<string>> {
   const hashes = new Set<string>();
   if (depth <= 0 || !safeStat(dir)?.isDirectory()) return hashes;
   for (const name of safeReaddir(dir)) {
@@ -528,10 +1111,12 @@ async function buildExistingHashes(dir: string, depth: number): Promise<Set<stri
     const st = safeStat(full);
     if (!st) continue;
     if (st.isDirectory()) {
-      const sub = await buildExistingHashes(full, depth - 1);
+      const sub = await buildExistingHashes(full, depth - 1, sizeFilter, cache);
       for (const h of sub) hashes.add(h);
     } else {
-      const h = await fileSha1(full);
+      // Размер не совпадает ни с одним исходным файлом — контент совпадать не может.
+      if (sizeFilter && !sizeFilter.has(st.size)) continue;
+      const h = await fileSha1Cached(full, cache, st);
       if (h) hashes.add(h);
     }
   }
@@ -540,13 +1125,157 @@ async function buildExistingHashes(dir: string, depth: number): Promise<Set<stri
 
 // ─── Async copy with progress ───────────────────────────────────────────
 
-  interface CopyResult { copied: number; skipped: number; errors: string[]; warnings: string[] }
+/**
+ * Ограничитель конкурентности копирования. Раньше копирование шло батчами по
+ * 8 только на верхнем уровне, а вложенные папки (миры!) копировались строго
+ * последовательно. Теперь параллелятся все уровни, но одновременно в полёте
+ * не больше MAX_CONCURRENT_COPIES файлов — рекурсия по папкам слот не занимает,
+ * поэтому взаимоблокировка на глубоких деревьях невозможна.
+ */
+const MAX_CONCURRENT_COPIES = Math.max(8, Math.min(24, (os.availableParallelism?.() ?? os.cpus()?.length ?? 4) * 2));
+
+let _copyActive = 0;
+const _copyWaiters: Array<() => void> = [];
+async function withCopySlot<T>(fn: () => Promise<T>): Promise<T> {
+  while (_copyActive >= MAX_CONCURRENT_COPIES) {
+    await new Promise<void>((resolve) => _copyWaiters.push(resolve));
+  }
+  _copyActive++;
+  try { return await fn(); } finally {
+    _copyActive--;
+    _copyWaiters.shift()?.();
+  }
+}
+
+/**
+ * Пауза импорта: UI ставит флаг, копирующие циклы замирают на месте (файл не
+ * рвётся пополам — пауза проверяется между файлами), отмена работает и на паузе.
+ */
+let _importPaused = false;
+export function setImportPaused(paused: boolean): void {
+  if (paused && !_importPaused) _pauseCount++;
+  _importPaused = paused;
+}
+export function isImportPaused(): boolean { return _importPaused; }
+let _pausedMs = 0;
+export function takePausedMs(): number { const v = _pausedMs; _pausedMs = 0; return v; }
+async function respectPause(signal?: AbortSignal): Promise<void> {
+  while (_importPaused && !signal?.aborted) {
+    const t = Date.now();
+    await new Promise((r) => setTimeout(r, 120));
+    _pausedMs += Date.now() - t;
+  }
+}
+
+/**
+ * Ограниченный пул вместо `Promise.all(items.map(...))`.
+ *
+ * Раньше на папку в 14к файлов создавалось 14к промисов разом: каждый держит
+ * замыкание и ждёт слота, память пухнет, а «Остановить» ждёт пока очередь
+ * досервится. Теперь в полёте не больше MAX_CONCURRENT_COPIES воркеров,
+ * каждый тянет следующую задачу из общего индекса. Отмена проверяется между
+ * задачами, а не только внутри них.
+ */
+async function runPooled<T>(items: T[], fn: (item: T) => Promise<void>, signal?: AbortSignal): Promise<void> {
+  let next = 0;
+  let failed = false;
+  const workers: Promise<void>[] = [];
+  const n = Math.min(MAX_CONCURRENT_COPIES, items.length);
+  for (let w = 0; w < n; w++) {
+    workers.push((async () => {
+      for (;;) {
+        if (signal?.aborted || failed) return;
+        await respectPause(signal);
+        if (signal?.aborted || failed) return;
+        const idx = next++;
+        if (idx >= items.length) return;
+        try {
+          await fn(items[idx]);
+        } catch (e) {
+          // Первый упавший останавливает очередь: иначе после reject
+          // Promise.all остальные воркеры дописывали бы файлы в фоне.
+          failed = true;
+          throw e;
+        }
+      }
+    })());
+  }
+  await Promise.all(workers);
+}
+
+interface CopyResult { copied: number; skipped: number; errors: string[]; warnings: string[] }
+
+type CopyOutcome = 'copied' | 'skipped' | 'aborted';
+
+/**
+ * Контекст дедупликации на время одного импорта.
+ *
+ * `known` — снимок содержимого папки назначения ДО импорта, и он намеренно не
+ * пополняется скопированными файлами. Иначе два разных файла с одинаковым
+ * содержимым (десяток пустых конфигов, дефолтные .toml, один и тот же мод под
+ * двумя именами) сворачивались бы в один: первый копировался, остальные
+ * «пропускались как дубликаты». Причём непредсказуемо — пока файлов мало, они
+ * хешируются параллельно и не видят друг друга, а на большой папке очередь
+ * сериализуется и часть файлов молча терялась. Обещание в UI простое:
+ * пропускаем то, что уже есть в Trel.
+ */
+interface DedupContext {
+  known: Set<string>;
+  /** Кеш «путь|размер|mtime → sha1», переживающий перезапуск лаунчера. */
+  cache?: HashCache;
+}
+
+/**
+ * Хеш + копия одного файла внутри слота конкурентности.
+ *
+ * Отмену проверяем ПОСЛЕ получения слота, а не только перед постановкой в
+ * очередь: Promise.all создаёт все задачи разом, поэтому к моменту отмены
+ * тысячи файлов уже прошли внешнюю проверку и ждут своей очереди. Без этой
+ * проверки «Остановить» ждал бы копирования всей папки до конца.
+ */
+async function copyFileMaybeDedup(
+  from: string, to: string, size: number,
+  dedup?: DedupContext, mode: CopyMode = 'copy', signal?: AbortSignal,
+  created?: string[],
+): Promise<CopyOutcome> {
+  return withCopySlot(async () => {
+    if (signal?.aborted) return 'aborted';
+    await respectPause(signal);
+    if (signal?.aborted) return 'aborted';
+    if (dedup) {
+      const h = await fileSha1Cached(from, dedup.cache);
+      if (h && dedup.known.has(h)) {
+        // Сеть и хитрый тулинг умеют менять содержимое с сохранением mtime:
+        // тогда кеш врёт и файл молча теряется. Перепроверяем ~2% попаданий
+        // настоящим перехешированием — дёшево и ловит протухание.
+        if (dedup.cache && Math.random() < 0.02) {
+          const fresh = await fileSha1(from);
+          if (fresh && fresh !== h) {
+            _staleFixed++;
+            for (const [k, v] of dedup.cache) if (v === h) { dedup.cache.delete(k); break; }
+          } else { _bytesSaved += size; return 'skipped'; }
+        } else { _bytesSaved += size; return 'skipped'; }
+      }
+      // Хеширование крупного файла — это ещё десятки миллисекунд, за которые
+      // отмена могла прийти.
+      if (signal?.aborted) return 'aborted';
+    }
+    await copyFileAtomic(from, to, size, mode);
+    created?.push(to);
+    _copyPairs?.set(to, from);
+    return 'copied';
+  });
+}
 
 async function copyTreeNoOverwrite(
   src: string, dest: string,
-  dedupHashes?: Set<string>,
+  dedup?: DedupContext,
   onProgress?: (copied: number) => void,
   signal?: AbortSignal,
+  mode: CopyMode = 'copy',
+  created?: string[],
+  takenReg?: Map<string, Set<string>>,
+  exclude?: Set<string>,
 ): Promise<CopyResult> {
   const errors: string[] = [];
   const warnings: string[] = [];
@@ -556,11 +1285,15 @@ async function copyTreeNoOverwrite(
     errors.push(`mkdir "${dest}": ${(e as Error).message}`);
     return { copied, skipped, errors, warnings };
   }
-  const names = safeReaddir(src).filter(n => !JUNK_NAMES.has(n));
+  const names = safeReaddir(src).filter(n => !JUNK_NAMES.has(n) && !exclude?.has(n));
   if (names.length === 0) { return { copied, skipped, errors, warnings }; }
   // Pre-compute all destinations serially to avoid rename race conditions
-  const entries: Array<{ from: string; to: string; isDir: boolean }> = [];
-  const taken = new Set<string>();
+  const entries: Array<{ from: string; to: string; isDir: boolean; size: number }> = [];
+  // Общий реестр занятых имён на dest: worlds/saves и version-content/saves
+  // пишут в одну папку разными вызовами — без общего набора одинаковые миры
+  // разъезжались бы в «Мир (1)» вместо честного скипа/перезаписи.
+  let taken = takenReg?.get(dest);
+  if (!taken) { taken = new Set<string>(); takenReg?.set(dest, taken); }
   for (const name of names) {
     const from = path.join(src, name);
     const st = safeStat(from);
@@ -575,50 +1308,56 @@ async function copyTreeNoOverwrite(
       warnings.push(`skipping escaped path: ${path.relative(src, from)} -> ${real}`);
       continue;
     }
+    if (!st.isDirectory() && !st.isFile()) {
+      warnings.push(`skipping special file: ${path.relative(src, from)}`);
+      continue;
+    }
+    // Повтор после обрыва без дедупликации: тот же файл уже на месте —
+    // пропускаем без чтения (два stat вместо копии), счётчик skipped честный.
+    // FAT округляет mtime до 2с, поэтому окно — 2с; для файлов < 1МБ сверху
+    // сверяем первые 4КБ содержимого, чтобы не скипнуть чужое однофамильце.
+    if (!dedup && st.isFile()) {
+      const dstSt = safeStat(path.join(dest, name));
+      if (dstSt?.isFile() && dstSt.size === st.size && Math.abs(dstSt.mtimeMs - st.mtimeMs) < 2000
+        && (st.size >= 1024 * 1024 || sameHead(path.join(dest, name), from))) {
+        skipped++;
+        continue;
+      }
+    }
     const to = resolveDestPath(dest, name, taken);
     taken.add(process.platform === 'win32' || process.platform === 'darwin' ? to.toLowerCase() : to);
-    entries.push({ from, to, isDir: st.isDirectory() });
+    entries.push({ from, to, isDir: st.isDirectory(), size: st.size });
   }
-  const BATCH_SIZE = 8;
-  for (let i = 0; i < entries.length; i += BATCH_SIZE) {
-    if (signal?.aborted) { errors.push('Import cancelled by user.'); break; }
-    const batch = entries.slice(i, i + BATCH_SIZE);
-    const results = await Promise.all(batch.map(async (e) => {
-      try {
-        // TOCTOU: re-check symlink right before copy
-        if (isSymlinkOrJunction(e.from)) {
-          warnings.push(`TOCTOU: symlink appeared before copy: ${path.relative(src, e.from)}`);
-          return { c: 0, s: 0, errs: [] as string[] };
-        }
-        if (dedupHashes && !e.isDir) {
-          const h = await fileSha1(e.from);
-          if (h && dedupHashes.has(h)) return { c: 0, s: 1, errs: [] as string[] };
-        }
-        if (e.isDir) await copyDirAtomic(e.from, e.to, MAX_COPY_DEPTH, warnings, dedupHashes, signal);
-        else {
-          await copyFileAtomic(e.from, e.to);
-          if (dedupHashes) {
-            const h = await fileSha1(e.to);
-            if (h) dedupHashes.add(h);
-          }
-        }
-        return { c: 1, s: 0, errs: [] };
-      } catch (e2) { return { c: 0, s: 0, errs: [`cp "${path.relative(path.dirname(src), e.from)}" -> "${path.relative(path.dirname(dest), e.to)}": ${(e2 as Error).message}`] }; }
-    }));
-    for (const r of results) {
-      copied += r.c; skipped += r.s; errors.push(...r.errs);
-    }
-    onProgress?.(copied);
-  }
+  await runPooled(entries, async (e) => {
+    if (signal?.aborted) return;
+    try {
+      if (e.isDir) {
+        await copyDirAtomic(e.from, e.to, MAX_COPY_DEPTH, warnings, dedup, signal, mode, created);
+      } else {
+        const outcome = await copyFileMaybeDedup(e.from, e.to, e.size, dedup, mode, signal, created);
+        // Отменённый файл не считаем ни скопированным, ни пропущенным по
+        // дедупликации: иначе отчёт врёт о проделанной работе.
+        if (outcome === 'aborted') return;
+        if (outcome === 'skipped') { skipped++; return; }
+      }
+      copied++;
+      onProgress?.(copied);
+    } catch (e2) { errors.push(`cp "${path.relative(path.dirname(src), e.from)}" -> "${path.relative(path.dirname(dest), e.to)}": ${(e2 as Error).message}`); }
+  }, signal);
   return { copied, skipped, errors, warnings };
 }
 
-async function copyFileIfExists(src: string, destDir: string, destName?: string, onProgress?: () => void, errors?: string[]): Promise<boolean> {
+async function copyFileIfExists(src: string, destDir: string, destName?: string, onProgress?: () => void, errors?: string[], created?: string[], signal?: AbortSignal): Promise<boolean> {
+  if (signal?.aborted) return false;
   if (!safeStat(src)) return false;
   try {
     await fsp.mkdir(ntPath(destDir), { recursive: true });
     const dest = resolveDestPath(destDir, destName || path.basename(src));
+    await respectPause(signal);
+    if (signal?.aborted) return false;
     await copyFileAtomic(src, dest);
+    created?.push(dest);
+    _copyPairs?.set(dest, src);
     onProgress?.();
     return true;
   } catch (e) {
@@ -629,58 +1368,187 @@ async function copyFileIfExists(src: string, destDir: string, destName?: string,
 
 // ─── Atomic file/dir copy with retry ────────────────────────────────────
 
-async function copyFileAtomic(src: string, dest: string): Promise<void> {
+/**
+ * Стратегия переноса одного файла.
+ *   'copy'     — обычная копия (по умолчанию);
+ *   'hardlink' — жёсткая ссылка: мгновенно и без расхода места, но файл
+ *                становится общим с исходным лаунчером (один inode).
+ * Reflink (copy-on-write) включён всегда: на Btrfs/XFS/ZFS/APFS ядро делает
+ * CoW-копию мгновенно, на остальных ФС флаг молча игнорируется.
+ */
+type CopyMode = 'copy' | 'hardlink';
+
+/** Байты, реально записанные на диск (для замера скорости в отчёте). */
+let _bytesWritten = 0;
+/** Байты, сэкономленные дедупом (файл уже был в Trel и не копировался). */
+let _bytesSaved = 0;
+/**
+ * Пары «куда → откуда» за текущий импорт. Нужны verify и переезду: по одному
+ * имени пару не восстановить — resolveDestPath переименовывает коллизии
+ * в « (n)», и same-name в назначении может быть совсем другим файлом.
+ * Заполняется только во время performImport (IPC держит importLock).
+ */
+let _copyPairs: Map<string, string> | null = null;
+/** Починенных протухших записей кеша (выборочная перепроверка, см. ниже). */
+let _staleFixed = 0;
+export function takeStaleFixed(): number { const v = _staleFixed; _staleFixed = 0; return v; }
+/** Пауз за импорт (для отчёта). */
+let _pauseCount = 0;
+export function takePauseCount(): number { const v = _pauseCount; _pauseCount = 0; return v; }
+export function takeBytesWritten(): number {
+  const v = _bytesWritten;
+  _bytesWritten = 0;
+  return v;
+}
+export function takeBytesSaved(): number {
+  const v = _bytesSaved;
+  _bytesSaved = 0;
+  return v;
+}
+/** Текущее значение счётчика без сброса — для живого прогресса. */
+function peekBytesWritten(): number {
+  return _bytesWritten;
+}
+
+/**
+ * Измеритель скорости копирования.
+ *
+ * Скорость считаем по приращению байт за окно, а не в среднем от старта:
+ * иначе долгая пауза на хешировании (дедупликация) навсегда занижает цифру,
+ * и пользователь видит «2 МБ/с» на копировании, которое давно идёт вдвое
+ * быстрее. Пока окно не закрылось, показываем среднюю от старта — грубее, но
+ * честнее нуля на бегущем копировании. Первые ~50 мс не показываем ничего:
+ * деление на почти нулевой интервал даёт бессмысленные всплески.
+ *
+ * Время передаётся аргументом, чтобы логику можно было проверить тестами без
+ * реального копирования.
+ */
+export function createSpeedMeter(startedAt: number, windowMs = 250, minElapsedMs = 50) {
+  let lastBytes = 0;
+  let lastAt = startedAt;
+  let lastSpeed = 0;
+  return function speedAt(bytes: number, now: number): number {
+    const dt = now - lastAt;
+    if (dt >= windowMs) {
+      const delta = bytes - lastBytes;
+      // Отрицательного приращения быть не может, но мусорному значению в UI
+      // тоже делать нечего.
+      lastSpeed = delta > 0 ? delta / (dt / 1000) : 0;
+      lastBytes = bytes;
+      lastAt = now;
+      return lastSpeed;
+    }
+    if (lastSpeed === 0 && bytes > 0) {
+      const sinceStart = now - startedAt;
+      if (sinceStart >= minElapsedMs) return bytes / (sinceStart / 1000);
+    }
+    return lastSpeed;
+  };
+}
+
+/** Имя файла, который копируется прямо сейчас — для живого прогресса в UI. */
+let _currentCopyFile = '';
+export function peekCurrentCopyFile(): string { return _currentCopyFile; }
+
+async function copyFileAtomic(src: string, dest: string, expectedSize?: number, mode: CopyMode = 'copy'): Promise<void> {
   const tmp = dest + '.trel_tmp';
   const MAX_ATTEMPTS = 3;
-  for (let i = 0; i < MAX_ATTEMPTS; i++) {
-    try {
-      await fsp.copyFile(ntPath(src), ntPath(tmp));
-      await fsp.rename(ntPath(tmp), ntPath(dest));
-      // Post-copy size verification (best-effort)
+  _currentCopyFile = path.basename(src);
+  try {
+    for (let i = 0; i < MAX_ATTEMPTS; i++) {
       try {
-        const ss = await fsp.stat(ntPath(src)), ds = await fsp.stat(ntPath(dest));
-        if (ds.size !== ss.size) throw new Error(`[CORRUPT] size mismatch: ${ss.size} source vs ${ds.size} dest`);
-      } catch (ve) {
-        if ((ve as Error).message.startsWith('[CORRUPT]')) throw ve;
-        // stat failure itself is not fatal — the file was already written
-      }
-      return;
-    } catch (e) {
-      try { await fsp.unlink(ntPath(tmp)); } catch {}
-      // [CORRUPT] is never transient — remove dest, drop retry
-      if ((e as Error).message.startsWith('[CORRUPT]')) {
-        try { await fsp.unlink(ntPath(dest)); } catch {}
-        throw e;
-      }
-      if (i === MAX_ATTEMPTS - 1) {
+        if (mode === 'hardlink') {
+          // Жёсткая ссылка возможна только внутри одной ФС; при EXDEV/EPERM
+          // (другой том, FAT/exFAT, сетевой диск) откатываемся на копирование.
+          try {
+            await fsp.link(ntPath(src), ntPath(dest));
+            // Ссылка — тот же inode, проверять размер всё равно надо: гонка с
+            // записью в исходный файл даст битую «копию» без единого байта I/O.
+            const [ss, ds] = await Promise.all([fsp.stat(ntPath(src)), fsp.stat(ntPath(dest))]);
+            if (expectedSize !== undefined && ss.size !== expectedSize) {
+              throw new Error(`[CORRUPT] size mismatch: ${expectedSize} source vs ${ss.size} dest`);
+            }
+            if (ds.size !== ss.size) throw new Error(`[CORRUPT] size mismatch: ${ss.size} source vs ${ds.size} dest`);
+            _bytesWritten += ds.size;
+            return;
+          } catch (le) {
+            if ((le as Error).message.startsWith('[CORRUPT]')) {
+              try { await fsp.unlink(ntPath(dest)); } catch {}
+              throw le;
+            }
+            const code = (le as NodeJS.ErrnoException).code;
+            if (code !== 'EXDEV' && code !== 'EPERM' && code !== 'ENOSYS' && code !== 'EMLINK') throw le;
+          }
+        }
+        // COPYFILE_FICLONE: попросить ФС сделать reflink, иначе обычная копия.
+        await fsp.copyFile(ntPath(src), ntPath(tmp), fs.constants.COPYFILE_FICLONE);
+        await fsp.rename(ntPath(tmp), ntPath(dest));
+        // Post-copy size verification (best-effort). Размер источника приходит
+        // из пре-скана — лишний stat не нужен.
+        try {
+          const ds = await fsp.stat(ntPath(dest));
+          const size = expectedSize ?? (await fsp.stat(ntPath(src))).size;
+          if (ds.size !== size) throw new Error(`[CORRUPT] size mismatch: ${size} source vs ${ds.size} dest`);
+          // Исполняемый бит: скрипты (.sh) и нативные либы из чужого лаунчера
+          // иначе тихо теряют +x и потом «не запускаются».
+          if (process.platform !== 'win32' && expectedSize !== undefined) {
+            try {
+              const ss = await fsp.stat(ntPath(src));
+              const execBits = ss.mode & 0o111;
+              if (execBits) await fsp.chmod(ntPath(dest), (ds.mode & 0o7777) | execBits);
+            } catch {}
+          }
+          _bytesWritten += ds.size;
+        } catch (ve) {
+          if ((ve as Error).message.startsWith('[CORRUPT]')) throw ve;
+          // stat failure itself is not fatal — the file was already written
+        }
+        return;
+      } catch (e) {
+        try { await fsp.unlink(ntPath(tmp)); } catch {}
+        // [CORRUPT] is never transient — remove dest, drop retry
+        if ((e as Error).message.startsWith('[CORRUPT]')) {
+          try { await fsp.unlink(ntPath(dest)); } catch {}
+          throw e;
+        }
+        if (i === MAX_ATTEMPTS - 1) {
+          const err = e as NodeJS.ErrnoException;
+          if (err.code === 'ENOSPC') throw new Error(`[DISK_FULL] ${path.basename(src)}: no space left on device`);
+          if (err.code === 'EBUSY' || err.code === 'EPERM' || err.code === 'EACCES') throw new Error(`[LOCKED] ${path.basename(src)}: ${err.message}`);
+          throw e;
+        }
         const err = e as NodeJS.ErrnoException;
-        if (err.code === 'ENOSPC') throw new Error(`[DISK_FULL] ${path.basename(src)}: no space left on device`);
-        if (err.code === 'EBUSY' || err.code === 'EPERM' || err.code === 'EACCES') throw new Error(`[LOCKED] ${path.basename(src)}: ${err.message}`);
-        throw e;
+        if (err.code === 'EBUSY' || err.code === 'EPERM' || err.code === 'EACCES') {
+          await new Promise(r => setTimeout(r, 200 * (i + 1)));
+        } else { throw e; }
       }
-      const err = e as NodeJS.ErrnoException;
-      if (err.code === 'EBUSY' || err.code === 'EPERM' || err.code === 'EACCES') {
-        await new Promise(r => setTimeout(r, 200 * (i + 1)));
-      } else { throw e; }
     }
+  } finally {
+    // В полёте несколько файлов — чужое имя не затираем, пусть висит
+    // последнее актуальное вместо мигания в пустоту.
+    if (_currentCopyFile === path.basename(src)) _currentCopyFile = '';
   }
 }
 
 async function copyDirAtomic(
   src: string, dest: string, maxDepth = MAX_COPY_DEPTH, warnings?: string[],
-  dedupHashes?: Set<string>, signal?: AbortSignal,
+  dedup?: DedupContext, signal?: AbortSignal, mode: CopyMode = 'copy',
+  created?: string[], exclude?: Set<string>,
 ): Promise<void> {
   if (signal?.aborted) return;
   if (maxDepth <= 0) { warnings?.push(`max depth exceeded at ${path.relative(path.dirname(src), src)}`); return; }
   await fsp.mkdir(ntPath(dest), { recursive: true });
-  const names = safeReaddir(src);
+  const names = safeReaddir(src).filter(n => !JUNK_NAMES.has(n) && !exclude?.has(n));
+  if (names.length === 0) return;
+  // Пре-скан: пути назначения считаются серийно (без гонок rename), защита
+  // от symlink/junction выполняется один раз — раньше каждый файл проверялся
+  // дважды, а сами файлы копировались строго последовательно.
+  const entries: Array<{ from: string; to: string; isDir: boolean; size: number }> = [];
+  const taken = new Set<string>();
   for (const name of names) {
-    if (signal?.aborted) return;
-    if (JUNK_NAMES.has(name)) continue;
     const from = path.join(src, name);
     const st = safeStat(from);
     if (!st) continue;
-    // Block symlink / junction (lstat + realpath)
     if (isSymlinkOrJunction(from)) {
       warnings?.push(`skipping symlink/junction: ${path.relative(src, from)}`);
       continue;
@@ -690,29 +1558,145 @@ async function copyDirAtomic(
       warnings?.push(`skipping escaped path: ${path.relative(src, from)} -> ${real}`);
       continue;
     }
-    // TOCTOU: re-check just before copy
-    if (isSymlinkOrJunction(from)) {
-      warnings?.push(`TOCTOU: symlink appeared before copy: ${path.relative(src, from)}`);
+    // Сокеты, FIFO и прочие нерегулярные файлы копировать нечем — молча
+    // падать в copyFile с криптической ошибкой хуже, чем честно пропустить.
+    if (!st.isDirectory() && !st.isFile()) {
+      warnings?.push(`skipping special file: ${path.relative(src, from)}`);
       continue;
     }
-    const to = resolveDestPath(dest, name);
-    if (st.isDirectory()) {
-      await copyDirAtomic(from, to, maxDepth - 1, warnings, dedupHashes, signal);
-    } else {
-      if (dedupHashes) {
-        const h = await fileSha1(from);
-        if (h && dedupHashes.has(h)) continue;
-      }
-      await copyFileAtomic(from, to);
-      if (dedupHashes) {
-        const h = await fileSha1(to);
-        if (h) dedupHashes.add(h);
-      }
+    // Повтор после обрыва без дедупликации: файл с тем же именем, размером и
+    // mtime уже на месте — копировать заново (и плодить «(1)») смысла нет.
+    // Дешёвые два stat вместо чтения всего файла.
+    if (!dedup && st.isFile()) {
+      const dstSt = safeStat(path.join(dest, name));
+      if (dstSt?.isFile() && dstSt.size === st.size && Math.abs(dstSt.mtimeMs - st.mtimeMs) < 2000
+        && (st.size >= 1024 * 1024 || sameHead(path.join(dest, name), from))) continue;
     }
+    const to = resolveDestPath(dest, name, taken);
+    taken.add(process.platform === 'win32' || process.platform === 'darwin' ? to.toLowerCase() : to);
+    entries.push({ from, to, isDir: st.isDirectory(), size: st.size });
   }
+  await runPooled(entries, async (e) => {
+    if (signal?.aborted) return;
+    if (e.isDir) {
+      await copyDirAtomic(e.from, e.to, maxDepth - 1, warnings, dedup, signal, mode, created, exclude);
+      return;
+    }
+    await copyFileMaybeDedup(e.from, e.to, e.size, dedup, mode, signal, created);
+  }, signal);
 }
 
 // ─── Accounts extraction ────────────────────────────────────────────────
+
+export type ImportedAccount = { name: string; uuid?: string; type?: 'offline' | 'online'; accessToken?: string; refreshToken?: string; owned?: boolean };
+
+function normalizeUuid(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const raw = value.replace(/-/g, '').trim();
+  if (!/^[0-9a-f]{32}$/i.test(raw)) return undefined;
+  return `${raw.slice(0, 8)}-${raw.slice(8, 12)}-${raw.slice(12, 16)}-${raw.slice(16, 20)}-${raw.slice(20)}`.toLowerCase();
+}
+
+const VALID_NAME_RE = /^[a-zA-Z0-9_]{1,16}$/;
+
+/** Ключи, по которым объект — это профиль версии (launcher_profiles.profiles), а не аккаунт. */
+const VERSION_PROFILE_KEYS = ['lastVersionId', 'gameDir', 'javaArgs', 'javaDir', 'icon', 'resolution', 'logConfig'];
+
+function isVersionProfile(obj: Record<string, unknown>): boolean {
+  return VERSION_PROFILE_KEYS.some((k) => k in obj);
+}
+
+function str(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() && value !== 'null' ? value : undefined;
+}
+
+/**
+ * Распознаёт один объект-аккаунт. Поддерживаемые формы:
+ *  - Minecraft Launcher (launcher_accounts.json): { accessToken, minecraftProfile: { id, name }, ... }
+ *  - legacy launcher_profiles.authenticationDatabase: { accessToken, username(email), profiles: { <uuid>: { displayName } } }
+ *  - Prism/PolyMC/MultiMC accounts.json: { profile: { id, name }, type: "MSA" | "Offline" }
+ *  - TLauncher / SKlauncher: { username | displayName, uuid, type: "MOJANG"|"ELY"|"FREE" }
+ *  - HMCL (hmcl.json): { type: "offline"|"microsoft", username(email), displayName, uuid }
+ *  - Modrinth App (accounts.json): { <uuid>: { name, access_token, refresh_token } }
+ */
+function accountFromObject(value: unknown, keyHint?: string): ImportedAccount | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const obj = value as Record<string, unknown>;
+  if (isVersionProfile(obj)) return null;
+
+  const nested = (obj.minecraftProfile ?? obj.profile) as Record<string, unknown> | undefined;
+  const profile = nested && typeof nested === 'object' && !Array.isArray(nested) ? nested : undefined;
+
+  // legacy authenticationDatabase: имя игрока лежит в profiles[<uuid>].displayName
+  let legacyName: string | undefined;
+  let legacyUuid: string | undefined;
+  const profiles = obj.profiles;
+  if (profiles && typeof profiles === 'object' && !Array.isArray(profiles)) {
+    for (const [key, val] of Object.entries(profiles as Record<string, unknown>)) {
+      const display = val && typeof val === 'object' ? str((val as Record<string, unknown>).displayName) : undefined;
+      if (display && VALID_NAME_RE.test(display)) { legacyName = display; legacyUuid = normalizeUuid(key); break; }
+    }
+  }
+
+  // Ник — первый валидный кандидат. displayName идёт РАНЬШЕ username:
+  // у HMCL username — это часто email-логин, который проваливает проверку
+  // ников и раньше блокировал всю запись, до displayName дело не доходило.
+  const name = [profile?.name, legacyName, obj.name, obj.displayName, obj.username, obj.userName, obj.playerName, obj.lastUsername]
+    .map((v) => { const s = str(v); return s && VALID_NAME_RE.test(s) ? s : undefined; })
+    .find((s): s is string => !!s);
+  if (!name) return null;
+
+  // Ключ объекта тоже может нести UUID (Modrinth App хранит аккаунты как
+  // { "<uuid>": { name, ... } }).
+  const uuid = normalizeUuid(profile?.id) ?? legacyUuid ?? normalizeUuid(obj.uuid) ?? normalizeUuid(obj.id)
+    ?? normalizeUuid(obj.userid) ?? normalizeUuid(keyHint);
+  const kind = String(obj.type ?? obj.accountType ?? '').toLowerCase();
+  const offlineKind = kind === 'offline' || kind === 'free' || kind === 'legacy_offline';
+  const onlineKind = kind === 'online' || kind === 'msa' || kind === 'microsoft' || kind === 'mojang' || kind === 'ely' || kind === 'premium';
+  // snake_case-варианты токенов — Modrinth App и части GDLauncher-экспортов.
+  const accessToken = str(obj.accessToken) ?? str(obj.access_token);
+  const refreshToken = str(obj.refreshToken) ?? str(obj.msRefreshToken) ?? str(obj.refresh_token);
+  const online = !offlineKind && (onlineKind || !!refreshToken || !!str(obj.xuid) || !!accessToken);
+  // online-аккаунт без UUID бесполезен: игра не примет сессию, а UUID придётся
+  // всё равно получать заново — заводим его как offline с тем же ником
+  const type: 'offline' | 'online' = online && uuid ? 'online' : 'offline';
+  return {
+    name,
+    uuid,
+    type,
+    accessToken: type === 'online' ? accessToken : undefined,
+    refreshToken: type === 'online' ? refreshToken : undefined,
+    owned: type === 'online' ? true : undefined,
+  };
+}
+
+/** Побеждает более информативная запись: online > offline, с UUID > без UUID, с токеном > без. */
+function accountScore(a: ImportedAccount): number {
+  return (a.type === 'online' ? 4 : 0) + (a.uuid ? 2 : 0) + (a.refreshToken ? 1 : 0);
+}
+
+function mergeAccount(out: Map<string, ImportedAccount>, account: ImportedAccount): void {
+  const key = account.name.toLowerCase();
+  const prev = out.get(key);
+  if (!prev) { out.set(key, account); return; }
+  if (accountScore(account) > accountScore(prev)) {
+    out.set(key, { ...prev, ...account, uuid: account.uuid ?? prev.uuid });
+  } else if (!prev.uuid && account.uuid) {
+    out.set(key, { ...prev, uuid: account.uuid });
+  }
+}
+
+function collectImportedAccounts(value: unknown, out: Map<string, ImportedAccount>, depth = 0, keyHint?: string): void {
+  if (depth > 7 || value == null || typeof value !== 'object') return;
+  const account = accountFromObject(value, keyHint);
+  if (account) mergeAccount(out, account);
+  if (Array.isArray(value)) { for (const item of value) collectImportedAccounts(item, out, depth + 1); return; }
+  for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+    // не спускаемся в profiles обработанного аккаунта: там уже разобрано выше
+    if (account && key === 'profiles') continue;
+    collectImportedAccounts(item, out, depth + 1, key);
+  }
+}
 
 function collectNamesDeep(value: unknown, out: Set<string>, depth = 0): void {
   if (depth > 5 || value == null) return;
@@ -723,6 +1707,9 @@ function collectNamesDeep(value: unknown, out: Set<string>, depth = 0): void {
   }
   if (typeof value === 'object') {
     const obj = value as Record<string, unknown>;
+    // Профили версий (launcher_profiles.profiles) тоже имеют поле name ("Forge", "latest-release"),
+    // без этого фильтра импорт создавал фальшивые аккаунты с такими именами.
+    if (isVersionProfile(obj)) return;
     for (const key of ['name', 'username', 'userName', 'displayName', 'playerName', 'lastUsername', 'selectedProfileName']) {
       const v = obj[key];
       if (typeof v === 'string' && /^[a-zA-Z0-9_]{1,16}$/.test(v)) out.add(v);
@@ -734,6 +1721,23 @@ function collectNamesDeep(value: unknown, out: Set<string>, depth = 0): void {
       if (v && typeof v === 'object') collectNamesDeep(v, out, depth + 1);
     }
   }
+}
+
+function extractImportedAccounts(rootDir: string, extraRoots: string[] = []): ImportedAccount[] {
+  const accounts = new Map<string, ImportedAccount>();
+  const roots = [rootDir, ...extraRoots];
+  const seenRoots = new Set<string>();
+  for (const root of roots) {
+    const real = realpathSafe(root) ?? path.resolve(root);
+    if (seenRoots.has(real)) continue;
+    seenRoots.add(real);
+    for (const file of ACCOUNT_FILES) {
+      const data = readJson(path.join(root, file));
+      if (data) collectImportedAccounts(data, accounts);
+    }
+  }
+  for (const name of extractOfflineNames(rootDir)) mergeAccount(accounts, { name, type: 'offline' });
+  return [...accounts.values()];
 }
 
 function extractOfflineNames(rootDir: string): string[] {
@@ -771,85 +1775,643 @@ function extractOfflineNames(rootDir: string): string[] {
 // ─── Source detection ───────────────────────────────────────────────────
 
 
+/** Человекочитаемое имя инстанса из instance.cfg (Prism/MultiMC/PolyMC). */
+function readInstanceName(instRoot: string): string | null {
+  const cfg = readIniLike(path.join(instRoot, 'instance.cfg'));
+  const cfgName = cfg?.name?.trim();
+  if (cfgName) return withGroup(instRoot, cfgName);
+  // FTB App: instance.json → name; Technic: installedPacks.json у родителя.
+  for (const file of ['instance.json', 'minecraftinstance.json', 'manifest.json', 'profile.json']) {
+    const j = readJson(path.join(instRoot, file)) as Record<string, unknown> | null;
+    const n = j && typeof j.name === 'string' ? j.name.trim() : '';
+    if (n) return withGroup(instRoot, n.slice(0, 80));
+    // Modrinth App хранит имя внутри metadata.name.
+    const meta = j && typeof j.metadata === 'object' && j.metadata ? (j.metadata as Record<string, unknown>) : null;
+    const mn = meta && typeof meta.name === 'string' ? meta.name.trim() : '';
+    if (mn) return withGroup(instRoot, mn.slice(0, 80));
+  }
+  // MultiMC instgroups.json: «Группа / Имя» — сортировка групп видна и в Trel.
+  const base = readInstanceBaseName(instRoot);
+  if (base) return withGroup(instRoot, base);
+  // Technic: имя пака в installedPacks.json у корня лаунчера (slug → name).
+  for (let d = instRoot, i = 0; i < 3; i++) {
+    const packs = readJson(path.join(d, 'installedPacks.json')) as Record<string, { name?: string }> | null;
+    if (packs && typeof packs === 'object') {
+      const hit = packs[path.basename(instRoot)];
+      if (hit && typeof hit.name === 'string' && hit.name.trim()) return hit.name.trim().slice(0, 80);
+    }
+    const parent = path.dirname(d);
+    if (parent === d) break;
+    d = parent;
+  }
+  return null;
+}
+
+/** Базовое имя инстанса без группы (для withGroup). */
+function readInstanceBaseName(instRoot: string): string | null {
+  for (const file of ['instance.json', 'minecraftinstance.json', 'manifest.json', 'profile.json']) {
+    const j = readJson(path.join(instRoot, file)) as Record<string, unknown> | null;
+    const n = j && typeof j.name === 'string' ? j.name.trim() : '';
+    if (n) return n.slice(0, 80);
+    const meta = j && typeof j.metadata === 'object' && j.metadata ? (j.metadata as Record<string, unknown>) : null;
+    const mn = meta && typeof meta.name === 'string' ? meta.name.trim() : '';
+    if (mn) return mn.slice(0, 80);
+  }
+  return null;
+}
+
+/** MultiMC instgroups.json: «Имя (Группа)» — группы видно и в списке Trel. */
+function withGroup(instRoot: string, name: string): string {
+  try {
+    const raw = readJson(path.join(path.dirname(instRoot), 'instgroups.json')) as {
+      groups?: Record<string, { instances?: string[] }>;
+    } | null;
+    const groups = raw?.groups;
+    if (groups) {
+      const id = path.basename(instRoot);
+      for (const [g, v] of Object.entries(groups)) {
+        if (Array.isArray(v?.instances) && v.instances.includes(id) && g.trim()) {
+          return `${name} (${g.trim().slice(0, 30)})`;
+        }
+      }
+    }
+  } catch { /* групп нет — обычное имя */ }
+  return name;
+}
+
+/** Простейший разбор key=value файлов (instance.cfg у MultiMC-семейства). */
+function readIniLike(file: string): Record<string, string> | null {
+  try {
+    const raw = fs.readFileSync(ntPath(file), 'utf-8');
+    const out: Record<string, string> = {};
+    for (const line of raw.split(/\r?\n/)) {
+      const m = line.match(/^([A-Za-z0-9_.]+)\s*=\s*(.*)$/);
+      if (m) out[m[1]] = m[2];
+    }
+    return out;
+  } catch { return null; }
+}
+
+/**
+ * Память/JVM-аргументы исходного лаунчера. Trel не применяет их автоматически
+ * (чужие -Xmx могут не влезть в память этой машины), но показывает в отчёте:
+ * иначе сборка на 8 ГБ молча запустится с дефолтными 2 ГБ и будет лагать.
+ */
+function detectLauncherTweaks(instRoot: string, gameRoot: string): LauncherTweaks | undefined {
+  const out: LauncherTweaks = {};
+  // MultiMC / Prism / PolyMC / PollyMC / Fjord
+  const cfg = readIniLike(path.join(instRoot, 'instance.cfg'));
+  if (cfg) {
+    const max = Number(cfg.MaxMemAlloc);
+    const min = Number(cfg.MinMemAlloc);
+    if (Number.isFinite(max) && max > 0) out.maxMemoryMb = max;
+    if (Number.isFinite(min) && min > 0) out.minMemoryMb = min;
+    if (cfg.JvmArgs?.trim()) out.jvmArgs = cfg.JvmArgs.trim().slice(0, 500);
+    if (cfg.JavaPath?.trim()) out.javaPath = cfg.JavaPath.trim().slice(0, 500);
+  }
+  // CurseForge: minecraftinstance.json → allocatedMemory (МБ), jvmArgs
+  const cf = readJson(path.join(instRoot, 'minecraftinstance.json')) as Record<string, unknown> | null;
+  if (cf) {
+    const mem = Number(cf.allocatedMemory);
+    if (Number.isFinite(mem) && mem > 0) out.maxMemoryMb ??= mem;
+    if (typeof cf.jvmArgs === 'string' && cf.jvmArgs.trim()) out.jvmArgs ??= cf.jvmArgs.trim().slice(0, 500);
+  }
+  // Ванильный лаунчер: user_jvm_args.txt / launcher_profiles javaArgs
+  const jvmFile = path.join(gameRoot, 'user_jvm_args.txt');
+  if (!out.jvmArgs && safeStat(jvmFile)) {
+    try {
+      const args = fs.readFileSync(ntPath(jvmFile), 'utf-8')
+        .split(/\r?\n/).filter((l) => l.trim() && !l.trim().startsWith('#')).join(' ').trim();
+      if (args) out.jvmArgs = args.slice(0, 500);
+    } catch {}
+  }
+  if (!out.maxMemoryMb && out.jvmArgs) {
+    const m = out.jvmArgs.match(/-Xmx(\d+)([gGmM])/);
+    if (m) out.maxMemoryMb = m[2].toLowerCase() === 'g' ? Number(m[1]) * 1024 : Number(m[1]);
+  }
+  // Требуемая Java из первого версионного json (HMCL/Mojang пишут javaVersion).
+  if (out.maxMemoryMb || out.jvmArgs || out.javaPath) {
+    try {
+      const vDir = path.join(gameRoot, 'versions');
+      for (const ver of safeReaddir(vDir)) {
+        const vj = readJson(path.join(vDir, ver, `${ver}.json`)) as { javaVersion?: { majorVersion?: number } } | null;
+        const major = vj?.javaVersion?.majorVersion;
+        if (typeof major === 'number' && major >= 8 && major <= 30) { out.javaMajor = major; break; }
+      }
+    } catch {}
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+const LOADER_KEYS: Array<[RegExp, DetectedModpack['loader']]> = [
+  [/neoforge/i, 'neoforge'],
+  [/quilt/i, 'quilt'],
+  [/fabric/i, 'fabric'],
+  [/forge/i, 'forge'],
+];
+
+function loaderFromId(id: string): DetectedModpack['loader'] {
+  for (const [re, loader] of LOADER_KEYS) if (re.test(id)) return loader;
+  return 'vanilla';
+}
+
+/**
+ * Распознаёт модпак рядом с инстансом.
+ *
+ * Смысл: если сборка — это Modrinth/CurseForge модпак, копировать её файлами
+ * бессмысленно. Лучше поставить её штатным механизмом Trel: получится обычная
+ * версия с лоадером, которую можно обновлять. Мы лишь достаём метаданные —
+ * решение принимает пользователь в UI.
+ */
+function detectModpack(rootDir: string, instRoot: string): DetectedModpack | undefined {
+  for (const dir of [rootDir, instRoot]) {
+    // Modrinth App: profile.json с game_version/loader (индекса может не быть).
+    const profile = readJson(path.join(dir, 'profile.json')) as Record<string, unknown> | null;
+    const pgv = profile?.game_version ?? (profile?.metadata as Record<string, unknown> | undefined)?.game_version;
+    if (typeof pgv === 'string' && pgv) {
+      const pl = profile?.loader ?? (profile?.metadata as Record<string, unknown> | undefined)?.loader;
+      const pls = typeof pl === 'string' ? pl : '';
+      const plv = profile?.loader_version ?? (profile?.metadata as Record<string, unknown> | undefined)?.loader_version;
+      return {
+        origin: 'modrinth',
+        name: (typeof profile?.name === 'string' && profile.name.trim() ? profile.name.trim() : path.basename(dir)).slice(0, 120),
+        mc: pgv, loader: loaderFromId(pls),
+        loaderVersion: typeof plv === 'string' ? plv : undefined,
+        fileCount: 0,
+      };
+    }
+    // packwiz: сборка текстом (packwiz.toml). Штатной установки у Trel нет —
+    // копируем файлами, но честно говорим что это packwiz.
+    try {
+      const pw = fs.readFileSync(ntPath(path.join(dir, 'packwiz.toml')), 'utf-8');
+      const pwName = pw.match(/^name\s*=\s*"([^"]+)"/m)?.[1];
+      const pwMc = pw.match(/minecraft\s*=\s*"([^"]+)"/m)?.[1] ?? pw.match(/mc-version\s*=\s*"([^"]+)"/m)?.[1];
+      if (pwMc) {
+        return {
+          origin: 'packwiz',
+          name: (pwName ?? path.basename(dir)).slice(0, 120),
+          mc: pwMc, loader: loaderFromId(pw),
+          fileCount: (pw.match(/^\[\[mods\]\]/gm) ?? []).length,
+        };
+      }
+    } catch { /* не packwiz */ }
+    const mrIndex = readJson(path.join(dir, 'modrinth.index.json')) as Record<string, any> | null;
+    if (mrIndex && typeof mrIndex.name === 'string' && mrIndex.dependencies) {
+      const deps = mrIndex.dependencies as Record<string, string>;
+      const mc = deps.minecraft;
+      if (typeof mc === 'string' && mc) {
+        let loader: DetectedModpack['loader'] = 'vanilla';
+        let loaderVersion: string | undefined;
+        for (const [key, value] of Object.entries(deps)) {
+          if (key === 'minecraft') continue;
+          const l = loaderFromId(key);
+          if (l !== 'vanilla') { loader = l; loaderVersion = value; break; }
+        }
+        return {
+          origin: 'modrinth',
+          name: String(mrIndex.name).slice(0, 120),
+          version: typeof mrIndex.versionId === 'string' ? mrIndex.versionId : undefined,
+          mc, loader, loaderVersion,
+          fileCount: Array.isArray(mrIndex.files) ? mrIndex.files.length : 0,
+        };
+      }
+    }
+    // MultiMC-семейство: mmc-pack.json рядом с инстансом (компоненты).
+    // uid net.minecraft → версия игры, остальные uid → лоадер.
+    try {
+      const mmc = readJson(path.join(dir, 'mmc-pack.json')) as { components?: Array<{ uid?: string; version?: string }> } | null
+        ?? readJson(path.join(dir, '..', 'mmc-pack.json')) as { components?: Array<{ uid?: string; version?: string }> } | null;
+      const comps = Array.isArray(mmc?.components) ? mmc.components : [];
+      const mcComp = comps.find((c) => c?.uid === 'net.minecraft' && typeof c.version === 'string');
+      if (mcComp?.version) {
+        let loader: DetectedModpack['loader'] = 'vanilla';
+        let loaderVersion: string | undefined;
+        for (const c of comps) {
+          if (!c || typeof c.uid !== 'string' || c.uid === 'net.minecraft') continue;
+          const l = loaderFromId(`${c.uid} ${c.version ?? ''}`);
+          if (l !== 'vanilla') { loader = l; loaderVersion = typeof c.version === 'string' ? c.version : undefined; break; }
+        }
+        return {
+          origin: 'mmc',
+          name: path.basename(dir === rootDir ? instRoot : dir).slice(0, 120),
+          mc: mcComp.version, loader, loaderVersion,
+          fileCount: comps.length,
+        };
+      }
+    } catch { /* не mmc */ }
+    const cfManifest = readJson(path.join(dir, 'manifest.json')) as Record<string, any> | null;
+    const mcBlock = cfManifest?.minecraft;
+    if (cfManifest && mcBlock && typeof mcBlock.version === 'string') {
+      const loaderId = Array.isArray(mcBlock.modLoaders) && mcBlock.modLoaders.length > 0
+        ? String(mcBlock.modLoaders[0]?.id ?? '') : '';
+      const loader = loaderFromId(loaderId);
+      // id вида "forge-47.2.0" / "neoforge-21.1.65" / "fabric-0.16.0"
+      const lv = loaderId.includes('-') ? loaderId.slice(loaderId.indexOf('-') + 1) : undefined;
+      return {
+        origin: 'curseforge',
+        name: String(cfManifest.name ?? 'CurseForge modpack').slice(0, 120),
+        version: typeof cfManifest.version === 'string' ? cfManifest.version : undefined,
+        mc: mcBlock.version,
+        loader,
+        loaderVersion: loader === 'vanilla' ? undefined : lv,
+        fileCount: Array.isArray(cfManifest.files) ? cfManifest.files.length : 0,
+      };
+    }
+  }
+  return undefined;
+}
+
+
 function inferJavaSourceLabel(rootDir: string, fallback: string): string {
-  if (safeStat(path.join(rootDir, 'TLauncherProfile.json'))) return 'TLauncher (.minecraft)';
-  if (safeStat(path.join(rootDir, 'sklauncher_accounts.json'))) return 'SKlauncher (.minecraft)';
-  if (safeStat(path.join(rootDir, 'launcher_accounts.json'))) return 'Minecraft Launcher';
+  const has = (f: string) => !!safeStat(path.join(rootDir, f));
+  // Маркеры конкретных лаунчеров — имя должно быть точным, а не «data folder».
+  if (has('TLauncherProfile.json') || has('TLauncherProfiles.json')) return 'TLauncher';
+  if (safeStat(path.join(path.dirname(rootDir), 'tlauncher.properties'))) return 'TLauncher';
+  if (has('sklauncher_accounts.json')) return 'SKlauncher';
+  if (has('launcher_accounts_microsoft_store.json')) return 'Minecraft (Microsoft Store)';
+  if (has('launcher_accounts.json')) return 'Minecraft Launcher';
+  if (safeStat(path.join(path.dirname(rootDir), 'atlauncher.conf'))) return 'ATLauncher';
   const profiles = readJson(path.join(rootDir, 'launcher_profiles.json')) as any;
-  if (profiles?.profiles || profiles?.authenticationDatabase || profiles?.selectedUser) return 'Minecraft data folder (.minecraft)';
-  if (safeStat(path.join(rootDir, 'versions'))?.isDirectory() || safeStat(path.join(rootDir, 'saves'))?.isDirectory()) return 'Minecraft data folder (.minecraft)';
+  if (profiles?.profiles || profiles?.authenticationDatabase || profiles?.selectedUser) return 'Minecraft (.minecraft)';
+  if (safeStat(path.join(rootDir, 'versions'))?.isDirectory() || safeStat(path.join(rootDir, 'saves'))?.isDirectory()) return 'Minecraft (.minecraft)';
   return fallback;
 }
 
+
+/** Есть ли файлы аккаунтов с реальным содержимым хотя бы в одном из корней.
+    Пустые/служебные json (profiles: {}) категорию «аккаунты» не включают. */
+function hasAccountFiles(roots: string[]): boolean {
+  for (const root of roots) {
+    for (const f of ACCOUNT_FILES) {
+      if (!safeStat(path.join(root, f))) continue;
+      const tmp = new Map<string, ImportedAccount>();
+      const data = readJson(path.join(root, f));
+      if (data) collectImportedAccounts(data, tmp);
+      if (tmp.size > 0) return true;
+    }
+  }
+  return false;
+}
 
 function hasRealJavaImportContent(categories: ImportCategory[], installableVersions?: string[]): boolean {
   const realCats = new Set<ImportCategory>([
     'worlds', 'mods', 'shaderpacks', 'resourcepacks', 'texturepacks', 'servers',
     'screenshots', 'config', 'datapacks', 'advancements', 'logs', 'scripts',
     'defaultconfigs', 'backups', 'local', 'world_templates', 'resources', 'pin',
-    'version-content', 'pack-meta', 'version-install',
+    'version-content', 'pack-meta', 'version-install', 'accounts',
   ]);
   return categories.some((c) => realCats.has(c)) || !!installableVersions?.length;
 }
 
-export function detectSources(): DetectedSource[] {
+/**
+ * Нестандартные game dirs из настроек HMCL (.hmcl/game-directories/*.json).
+ * Формат свободный ({ path } / { gameDir } / просто строка), поэтому читаем
+ * терпимо: всё, что похоже на путь к существующей папке, — кандидат.
+ */
+export function hmclExtraGameDirs(bases: string[], home: string): string[] {
+  const out: string[] = [];
+  const roots = [...bases.map((b) => path.join(b, '.hmcl')), path.join(home, '.hmcl')];
+  for (const root of roots) {
+    const gd = path.join(root, 'game-directories');
+    if (!safeStat(gd)?.isDirectory()) continue;
+    for (const name of safeReaddir(gd)) {
+      if (!name.endsWith('.json')) continue;
+      const raw = readJson(path.join(gd, name)) as Record<string, unknown> | string | null;
+      const candidates = typeof raw === 'string' ? [raw]
+        : raw && typeof raw === 'object'
+          ? [raw.path, raw.gameDir, raw.gameDirectory, raw.directory].filter((v): v is string => typeof v === 'string')
+          : [];
+      for (const c of candidates) {
+        if (c.length > 0 && c.length < 1024 && safeStat(c)?.isDirectory()) out.push(c);
+      }
+    }
+  }
+  return [...new Set(out)];
+}
+
+/**
+ * Заметки о клиенте/особенностях рядом с источником. Не блокируют импорт,
+ * но объясняют странности: встроенные моды Feather/Lunar не переносятся,
+ * миры Nostalgia — LevelDB и в Java не поедут, Betacraft гадит в options.txt.
+ */
+export function sourceNotes(source: DetectedSource): string[] {
+  const notes: string[] = [];
+  const { appdata, home } = baseSearchPaths();
+  const hasDir = (p: string) => safeStat(p)?.isDirectory();
+  const near = (...segs: string[]) => hasDir(path.join(source.rootDir, ...segs));
+  if (source.id.startsWith('sk:') || near('..', 'sklauncher') || hasDir(path.join(appdata, 'SKlauncher'))) {
+    notes.push('SKlauncher: isolated profiles live in skprofiles/ — each one is imported separately (custom --workDir can only be added as a custom directory)');
+  }
+  if (near('feather') || hasDir(path.join(appdata, 'Feather'))) {
+    notes.push('Feather Client: its 40+ built-in mods stay in Feather, only saves/config/resourcepacks are imported');
+  }
+  if (hasDir(path.join(home, '.lunarclient'))) {
+    notes.push('Lunar Client detected: accounts and built-in mods are server-side and cannot be imported');
+  }
+  if (near('BLClient-Mod-Profiles') || safeReaddir(source.rootDir).some((n) => n.startsWith('BLClient-Mod-Profiles'))) {
+    notes.push('Badlion Client: mod configs (BLClient-Mod-Profiles-*) and replay_recordings are imported, account stays server-side');
+  }
+  if (source.id.startsWith('betacraft')) {
+    notes.push('Betacraft: legacy versions hardcode .minecraft paths and may pollute options.txt — back it up');
+  }
+  if (/nostalg|nlauncher|ninecraft/i.test(source.rootDir)) {
+    notes.push('Nostalgia/NLauncher worlds are LevelDB (Bedrock alpha) and cannot run on Java — imported as an artifact only');
+  }
+  if (near('TLMods') && !near('mods')) {
+    notes.push('TLauncher keeps mods in TLMods/ instead of mods/ — imported from there');
+  }
+  if (source.id.startsWith('curseforge')) {
+    notes.push('CurseForge custom modding folder: if packs live elsewhere, open Settings > Minecraft in CurseForge and point Trel at that folder via custom directory');
+  }
+  if (/twitch/i.test(source.rootDir)) {
+    notes.push('Twitch App is dead — its tokens are invalid, worlds and mods import fine but the account will not');
+  }
+  if (source.id.startsWith('gdc')) {
+    notes.push('GDLauncher Carbon: the real game dir is instances/<name>/instance/ (runtime_path_override may move it)');
+  }
+  if (source.id.startsWith('betacraft')) {
+    const v2 = source.rootDir.includes('.local/share');
+    notes.push(v2 ? 'Betacraft v2 layout detected' : 'Betacraft v1 layout detected');
+  }
+  if (/\/lunarclient|\.lunarclient/i.test(source.rootDir) || hasDir(path.join(home, '.lunarclient'))) {
+    if (!notes.some((n) => n.includes('Lunar'))) notes.push('Lunar Client: only the default .minecraft content imports; versions live in offline/multiver');
+  }
+  if (near('feather')) {
+    notes.push('Feather is now Dawn (InPvP): check the custom Game Directory in its settings if saves are missing here');
+  }
+  for (const d of ['runtime', 'java', 'jre']) {
+    if (near(d)) { notes.push(`bundled Java (${d}/) is not imported — Trel downloads its own runtime`); break; }
+  }
+  if (source.kind === 'bedrock') {
+    for (const d of ['development_resource_packs', 'development_behavior_packs', 'development_skin_packs']) {
+      if (near(d)) { notes.push('development_* packs are test scaffolding and are skipped'); break; }
+    }
+  }
+  return notes;
+}
+
+/**
+ * Хранилища секретов рядом с источником. Токены никогда не тащим молча:
+ * HMCL держит accessToken открытым текстом, GDLauncher — в sqlite
+ * gdl_conf.db, TLauncher — в accounts.dat. Предупреждаем и предлагаем
+ * импорт без секретов (skipSecrets).
+ */
+export function secretStoreWarnings(source: DetectedSource): string[] {
+  const warns: string[] = [];
+  const roots = new Set<string>([source.rootDir, ...(source.accountsRoots ?? [])].map((r) => path.resolve(r)));
+  const hits: string[] = [];
+  for (const root of roots) {
+    if (!safeStat(root)?.isDirectory()) continue;
+    if (safeStat(path.join(root, 'accounts.json'))?.isFile() && /hmcl/i.test(root + source.id)) {
+      hits.push('HMCL accounts.json (access tokens in plain text)');
+    }
+    if (safeStat(path.join(root, 'gdl_conf.db'))?.isFile()) hits.push('GDLauncher gdl_conf.db (OAuth secrets in sqlite)');
+    if (safeStat(path.join(root, 'accounts.dat'))?.isFile()) hits.push('TLauncher accounts.dat (Microsoft/Ely.by/TL tokens)');
+    if (safeStat(path.join(root, 'TlauncherProfiles.json'))?.isFile()) hits.push('TLauncher TlauncherProfiles.json (profiles + tokens)');
+    if (safeStat(path.join(root, 'legacy.properties'))?.isFile()) hits.push('TLauncher legacy.properties (legacy auth)');
+    if (safeStat(path.join(root, 'launcher_accounts.json'))?.isFile()) {
+      const raw = readJson(path.join(root, 'launcher_accounts.json')) as Record<string, unknown> | null;
+      if (raw && JSON.stringify(raw).includes('accessToken')) hits.push('launcher_accounts.json (access tokens)');
+    }
+  }
+  for (const h of [...new Set(hits)]) {
+    warns.push(`secret store nearby (${h}) — accounts are imported as names only, re-login is required; use "without secrets" to skip them entirely`);
+  }
+  return warns;
+}
+
+/**
+ * Authlib-injector / Ely.by endpoints из конфигов источника (HMCL и др.).
+ * Сами серверы не переносим и не включаем, но показываем список, чтобы
+ * пользователь знал, что ему понадобится после переезда.
+ */
+export function extractAuthServers(source: DetectedSource): string[] {
+  const found = new Set<string>();
+  const roots = [source.rootDir, ...(source.accountsRoots ?? [])];
+  for (const root of roots) {
+    if (!safeStat(root)?.isDirectory()) continue;
+    for (const name of ['hmcl.json', 'authlib-injector.json', 'config.json', 'settings.json', 'launcher_profiles.json']) {
+      const raw = readJson(path.join(root, name)) as Record<string, unknown> | null;
+      if (!raw || typeof raw !== 'object') continue;
+      const text = JSON.stringify(raw);
+      for (const m of text.matchAll(/https?:\/\/[a-zA-Z0-9.-]+(?::\d+)?\/?[a-zA-Z0-9._~:/?#[\]@!$&'()*+,;=-]*/g)) {
+        const url = m[0];
+        if (/auth|ely|yggdrasil|mojang|minecraftservices/i.test(url) && url.length < 200) found.add(url);
+      }
+      const inj = (raw as Record<string, unknown>).authlibInjectorServers;
+      if (Array.isArray(inj)) for (const s of inj) if (typeof s === 'string' && s.length < 200) found.add(s);
+    }
+    if (found.size >= 10) break;
+  }
+  return [...found].slice(0, 10);
+}
+
+export function detectSources(excludeGameDir?: string): DetectedSource[] {
   const now = Date.now();
-  if (_detectCache && (now - _detectCache.timestamp) < DETECT_CACHE_TTL) return _detectCache.sources;
-  const { appdata, userprofile } = baseSearchPaths();
+  const cacheKey = excludeGameDir ? path.resolve(excludeGameDir) : '';
+  if (_detectCache && _detectCache.key === cacheKey && (now - _detectCache.timestamp) < DETECT_CACHE_TTL) return _detectCache.sources;
+  const { appdata, userprofile, home } = baseSearchPaths();
   const sources: DetectedSource[] = [];
 
-  const flatRoots: Array<{ id: string; label: string; dir: string }> = [
-    { id: 'mojang',    label: 'Mojang Launcher',  dir: path.join(appdata, '.minecraft') },
-    { id: 'tlauncher', label: 'TLauncher',        dir: path.join(appdata, 'TLauncher', '.minecraft') },
-    { id: 'atlauncher', label: 'ATLauncher',      dir: path.join(appdata, 'ATLauncher', '.minecraft') },
-    { id: 'legacy',    label: '.minecraft (home)', dir: path.join(userprofile, '.minecraft') },
-    { id: 'sklauncher', label: 'SKlauncher',      dir: path.join(appdata, 'SKlauncher', '.minecraft') },
-    { id: 'crystal',   label: 'Crystal Launcher', dir: path.join(appdata, 'CrystalLauncher', '.minecraft') },
+  // Базы, где лаунчеры хранят данные: Windows/macOS — appdata,
+  // Linux — ещё и ~/.local/share (Prism, MultiMC и др. живут именно там).
+  const bases: string[] = process.platform === 'linux'
+    ? [appdata, path.join(home, '.local', 'share')]
+    : [appdata];
+  const inBases = (sub: string): string[] => bases.map((b) => path.join(b, sub));
+  // Portable-установки живут где угодно, но всегда рядом с бинарём/процессом:
+  // MultiMC/Prism/ATLauncher portable держат instances/ возле exe.
+  const portableNeighbors = (sub: string): string[] => {
+    const out: string[] = [];
+    for (const base of [process.cwd()]) {
+      try { if (safeStat(path.join(base, sub))?.isDirectory()) out.push(path.join(base, sub)); } catch {}
+    }
+    try {
+      const exeDir = path.dirname(process.execPath);
+      if (safeStat(path.join(exeDir, sub))?.isDirectory()) out.push(path.join(exeDir, sub));
+    } catch {}
+    return out;
+  };
+  const firstDir = (dirs: string[]): string | null => {
+    for (const d of dirs) if (safeStat(d)?.isDirectory()) return d;
+    return null;
+  };
+
+  // Плоские лаунчеры: данные игры в .minecraft внутри корня лаунчера,
+  // аккаунты/настройки — в корне лаунчера (учтено через accountsRoots).
+  const flatpakData = (appId: string, rel: string): string => path.join(home, '.var', 'app', appId, 'data', rel);
+  const flatRoots: Array<{ id: string; label: string; dirs: string[] }> = [
+    { id: 'mojang',     label: 'Mojang Launcher',  dirs: [path.join(appdata, '.minecraft')] },
+    { id: 'tlauncher',  label: 'TLauncher',        dirs: [path.join(appdata, 'TLauncher', '.minecraft'), path.join(home, 'TLauncher', '.minecraft'), path.join(home, '.tlauncher', '.minecraft')] },
+    { id: 'atlauncher', label: 'ATLauncher',       dirs: [path.join(appdata, 'ATLauncher', '.minecraft')] },
+    { id: 'legacy',     label: '.minecraft (home)', dirs: [path.join(userprofile, '.minecraft')] },
+    { id: 'sklauncher', label: 'SKlauncher',       dirs: [path.join(appdata, 'SKlauncher', '.minecraft')] },
+    { id: 'crystal',    label: 'Crystal Launcher', dirs: [path.join(appdata, 'CrystalLauncher', '.minecraft')] },
+    { id: 'cristalix',  label: 'Cristalix',          dirs: [path.join(appdata, '.cristalix', 'minecraft'), path.join(home, '.cristalix', 'minecraft')] },
+    // HMCL держит игру в .minecraft рядом с собой: раньше его версии
+    // перечислялись как «инстансы», но папки версий не содержат saves/mods
+    // и отсеивались — HMCL фактически не импортировался.
+    { id: 'hmcl',       label: 'HMCL',             dirs: [path.join(appdata, 'hmcl', '.minecraft'), path.join(home, '.hmcl', '.minecraft')] },
   ];
   for (const r of flatRoots) {
-    if (!safeStat(r.dir)?.isDirectory()) continue;
-    const installableVersions = detectInstallableVersions(r.dir);
-    const cats = availableCategories(r.dir);
+    const dir = firstDir(r.dirs);
+    if (!dir) continue;
+    const installableVersions = detectInstallableVersions(dir);
+    const cats = availableCategories(dir);
     if (cats.length === 0 || !hasRealJavaImportContent(cats, installableVersions)) continue;
-    sources.push({ id: r.id, label: inferJavaSourceLabel(r.dir, r.label), rootDir: r.dir, available: cats, approxSize: approxSizeOf(r.dir, cats), kind: 'java', installableVersions });
+    const accRoots = [dir, path.dirname(dir)];
+    if (!cats.includes('accounts') && hasAccountFiles(accRoots)) cats.push('accounts');
+    sources.push({ id: r.id, label: inferJavaSourceLabel(dir, r.label), rootDir: dir, available: cats, approxSize: approxSizeOf(dir, cats), kind: 'java', installableVersions, accountsRoots: accRoots, launcherTweaks: detectLauncherTweaks(dir, dir) });
   }
 
-  const instanceRoots: Array<{ idPrefix: string; labelPrefix: string; parent: string; instanceSub?: string; recursive?: boolean }> = [
-    { idPrefix: 'prism',      labelPrefix: 'Prism',       parent: path.join(appdata, 'PrismLauncher', 'instances'), instanceSub: '.minecraft' },
-    { idPrefix: 'polymc',     labelPrefix: 'PolyMC',      parent: path.join(appdata, 'PolyMC', 'instances'),        instanceSub: '.minecraft' },
-    { idPrefix: 'pollymc',    labelPrefix: 'PollyMC',     parent: path.join(appdata, 'PollyMC', 'instances'),       instanceSub: '.minecraft' },
-    { idPrefix: 'multimc',    labelPrefix: 'MultiMC',     parent: path.join(appdata, 'MultiMC', 'instances'),        instanceSub: '.minecraft' },
-    { idPrefix: 'curseforge', labelPrefix: 'CurseForge',  parent: path.join(userprofile, 'curseforge', 'minecraft', 'Instances'), recursive: true },
-    { idPrefix: 'gd',         labelPrefix: 'GDLauncher',  parent: path.join(appdata, 'gdlauncher_next', 'instances') },
-    { idPrefix: 'modrinth',   labelPrefix: 'Modrinth',    parent: path.join(appdata, 'com.modrinth.theseus', 'profiles') },
-    { idPrefix: 'hmcl',       labelPrefix: 'HMCL',        parent: path.join(appdata, 'hmcl', '.minecraft', 'versions') },
-    { idPrefix: 'technic',    labelPrefix: 'Technic',     parent: path.join(appdata, 'technic', 'modpacks') },
-    { idPrefix: 'legacyfabric', labelPrefix: 'Legacy Fabric', parent: path.join(appdata, 'LegacyFabric', 'instances'), instanceSub: '.minecraft' },
-    { idPrefix: 'labymod',    labelPrefix: 'LabyMod',     parent: path.join(appdata, 'LabyMod', 'instances'), instanceSub: '.minecraft' },
+  // HMCL хранит игру в произвольных game dirs (настройки → game-directories/*.json).
+  // Дефолтный .minecraft уже покрыт выше, здесь — только нестандартные пути.
+  for (const dir of hmclExtraGameDirs(bases, home)) {
+    const installableVersions = detectInstallableVersions(dir);
+    const cats = availableCategories(dir);
+    if (cats.length === 0 || !hasRealJavaImportContent(cats, installableVersions)) continue;
+    const accRoots = [dir];
+    if (!cats.includes('accounts') && hasAccountFiles(accRoots)) cats.push('accounts');
+    sources.push({ id: 'hmcl', label: inferJavaSourceLabel(dir, 'HMCL'), rootDir: dir, available: cats, approxSize: approxSizeOf(dir, cats), kind: 'java', installableVersions, accountsRoots: accRoots, launcherTweaks: detectLauncherTweaks(dir, dir) });
+  }
+
+  // Инстанс-лаунчеры: каждый инстанс — отдельный источник,
+  // аккаунты берём также из корня лаунчера.
+  const localApp = process.platform === 'win32' ? path.join(userprofile, 'AppData', 'Local') : home;
+  const prismPortable = process.env.PRISMLAUNCHER_DATA_DIR
+    ? [path.join(process.env.PRISMLAUNCHER_DATA_DIR, 'instances')] : [];
+  const instanceRoots: Array<{ idPrefix: string; labelPrefix: string; parents: string[]; instanceSub?: string; recursive?: boolean }> = [
+    { idPrefix: 'prism',      labelPrefix: 'Prism Launcher', parents: inBases('PrismLauncher/instances').concat(flatpakData('org.prismlauncher.PrismLauncher', 'PrismLauncher/instances'), prismPortable, portableNeighbors('instances')), instanceSub: '.minecraft' },
+    { idPrefix: 'polymc',     labelPrefix: 'PolyMC',      parents: inBases('PolyMC/instances').concat(flatpakData('io.github.PolyMC.PolyMC', 'PolyMC/instances')),        instanceSub: '.minecraft' },
+    { idPrefix: 'pollymc',    labelPrefix: 'PollyMC',     parents: inBases('PollyMC/instances').concat(flatpakData('io.github.pollymc.PollyMC', 'PollyMC/instances')),       instanceSub: '.minecraft' },
+    { idPrefix: 'fjord',      labelPrefix: 'Fjord Launcher', parents: inBases('FjordLauncher/instances'), instanceSub: '.minecraft' },
+    { idPrefix: 'multimc',    labelPrefix: 'MultiMC',     parents: inBases('MultiMC/instances').concat(flatpakData('org.multimc.MultiMC', 'MultiMC/instances'), [path.join(home, 'MultiMC', 'instances')], portableNeighbors('instances')),        instanceSub: '.minecraft' },
+    { idPrefix: 'salwyrr',    labelPrefix: 'Salwyrr',     parents: inBases('Salwyrr/instances'),        instanceSub: '.minecraft' },
+    { idPrefix: 'curseforge', labelPrefix: 'CurseForge',  parents: [path.join(userprofile, 'curseforge', 'minecraft', 'Instances'), path.join(appdata, 'Twitch', 'Minecraft', 'Instances'), path.join(userprofile, 'Twitch', 'Minecraft', 'Instances'), path.join(userprofile, 'Documents', 'Curse', 'Minecraft', 'Instances'), path.join(userprofile, 'Documents', 'Twitch', 'Minecraft', 'Instances')], recursive: true },
+    { idPrefix: 'gd',         labelPrefix: 'GDLauncher',  parents: inBases('gdlauncher_next/instances').concat(inBases('gdlauncher/instances'), inBases('gdl/instances'), inBases('gdlauncher_carbon/data/instances')) },
+    { idPrefix: 'gdc',        labelPrefix: 'GDLauncher Carbon', parents: inBases('gdlauncher_carbon/data/instances'), instanceSub: 'instance' },
+    { idPrefix: 'modrinth',   labelPrefix: 'Modrinth App', parents: inBases('com.modrinth.theseus/profiles').concat(inBases('ModrinthApp/profiles')) },
+    { idPrefix: 'technic',    labelPrefix: 'Technic',     parents: inBases('technic/modpacks').concat(inBases('.technic/modpacks')) },
+    { idPrefix: 'ftb',        labelPrefix: 'FTB App',     parents: [path.join(localApp, '.ftba', 'instances'), path.join(home, '.local', 'share', '.ftba', 'instances')], instanceSub: 'minecraft' },
+    { idPrefix: 'sk',         labelPrefix: 'SKlauncher',  parents: inBases('.minecraft/skprofiles').concat([path.join(userprofile, '.minecraft', 'skprofiles')]) },
+    { idPrefix: 'betacraft',  labelPrefix: 'Betacraft',   parents: inBases('.betacraft').concat([path.join(home, '.betacraft'), path.join(home, '.local', 'share', 'betacraft')]), recursive: true },
+    { idPrefix: 'nostalgia',  labelPrefix: 'Nostalgia',   parents: [path.join(home, 'NostalgiaLauncher', 'instances'), path.join(home, '.nostalgia', 'instances')] },
+    { idPrefix: 'atlauncher', labelPrefix: 'ATLauncher',  parents: inBases('ATLauncher/Instances').concat([path.join(home, 'ATLauncher', 'Instances')], portableNeighbors('Instances')), instanceSub: 'minecraft' },
+    { idPrefix: 'legacyfabric', labelPrefix: 'Legacy Fabric', parents: inBases('LegacyFabric/instances'), instanceSub: '.minecraft' },
+    { idPrefix: 'labymod',    labelPrefix: 'LabyMod',     parents: inBases('LabyMod/instances'), instanceSub: '.minecraft' },
   ];
+  // Экспорты сборок (*.zip рядом с инстансами Prism/MultiMC/ATLauncher):
+  // подхватываем как архивные источники — распакуются через fromArchive-флоу.
+  const exportParents = [inBases('PrismLauncher/instances'), inBases('MultiMC/instances'), inBases('ATLauncher/Instances')].flat();
+  for (const parent of exportParents) {
+    if (!safeStat(parent)?.isDirectory()) continue;
+    for (const name of safeReaddir(parent)) {
+      if (!name.toLowerCase().endsWith('.zip')) continue;
+      const zipPath = path.join(parent, name);
+      sources.push({ id: `export:${name}`, label: `Pack export: ${name}`, rootDir: zipPath,
+        available: ['mods', 'worlds', 'config', 'resourcepacks'] as ImportCategory[],
+        approxSize: safeStat(zipPath)?.size ?? 0, kind: 'java', isArchive: true });
+    }
+  }
   for (const r of instanceRoots) {
-    if (!safeStat(r.parent)?.isDirectory()) continue;
-    const names = r.recursive ? collectNestedDirs(r.parent) : safeReaddir(r.parent);
+    const parent = firstDir(r.parents);
+    if (!parent) continue;
+    const launcherRoot = path.dirname(parent);
+    const names = r.recursive ? collectNestedDirs(parent) : safeReaddir(parent);
     for (const name of names) {
-      const instRoot = path.join(r.parent, name);
+      const instRoot = path.join(parent, name);
       if (!safeStat(instRoot)?.isDirectory()) continue;
       const root = r.instanceSub && safeStat(path.join(instRoot, r.instanceSub)) ? path.join(instRoot, r.instanceSub) : instRoot;
       const installableVersions = detectInstallableVersions(root);
       const cats = availableCategories(root);
       if (cats.length === 0 || !hasRealJavaImportContent(cats, installableVersions)) continue;
-      sources.push({ id: `${r.idPrefix}:${name}`, label: `${r.labelPrefix}: ${name}`, rootDir: root, available: cats, approxSize: approxSizeOf(root, cats), kind: 'java', installableVersions });
+      const accRoots = [root, instRoot, launcherRoot];
+      if (!cats.includes('accounts') && hasAccountFiles(accRoots)) cats.push('accounts');
+      // Prism/MultiMC пишут человекочитаемое имя сборки в instance.cfg,
+      // CurseForge — в minecraftinstance.json, Modrinth App — в profile.json:
+      // папка может называться "q7x2fd21", а сборка — "Better MC".
+      const nice = readInstanceName(instRoot);
+      sources.push({
+        id: `${r.idPrefix}:${name}`,
+        label: nice ? `${r.labelPrefix}: ${nice}` : `${r.labelPrefix}: ${name}`,
+        rootDir: root, available: cats, approxSize: approxSizeOf(root, cats), kind: 'java',
+        installableVersions, accountsRoots: accRoots,
+        modpack: detectModpack(root, instRoot),
+        launcherTweaks: detectLauncherTweaks(instRoot, root),
+      });
     }
   }
 
   const bedrockRoot = detectBedrockRoot();
-  if (bedrockRoot) {
+  // Bedrock-источник импорта значим только на Windows: на Linux/macOS
+  // Bedrock/TrelEmu отключён, и импорт worlds/add-ons не имеет куда ложиться.
+  if (bedrockRoot && process.platform === 'win32') {
     const cats = availableCategories(bedrockRoot, true);
     if (cats.length > 0) sources.push({ id: 'bedrock', label: 'Minecraft Bedrock Edition', rootDir: bedrockRoot, available: cats, approxSize: approxSizeOf(bedrockRoot, cats, true), kind: 'bedrock' });
   }
 
-  sources.sort((a, b) => b.approxSize - a.approxSize);
-  _detectCache = { sources, timestamp: now };
-  return sources;
+  // Убираем дубликаты по реальному пути и исключаем собственную папку игры Trel:
+  // импортировать лаунчер «сам в себя» нельзя, а один .minecraft мог попасть
+  // в список дважды под разными id (mojang/legacy и т.п.).
+  const seen = new Set<string>();
+  const filtered = sources.filter((s) => {
+    const real = realpathSafe(s.rootDir) ?? path.resolve(s.rootDir);
+    if (seen.has(real)) return false;
+    seen.add(real);
+    if (excludeGameDir) {
+      const game = realpathSafe(excludeGameDir) ?? path.resolve(excludeGameDir);
+      if (real === game || real.startsWith(game + path.sep) || game.startsWith(real + path.sep)) return false;
+    }
+    return true;
+  });
+
+  filtered.sort((a, b) => b.approxSize - a.approxSize);
+  _detectCache = { sources: filtered, timestamp: now, key: cacheKey };
+  return filtered;
+}
+
+/**
+ * Асинхронная обёртка над detectSources: скан идёт в отдельном потоке, чтобы
+ * не блокировать main-процесс (а с ним — весь UI) на медленных дисках.
+ *
+ * Любая проблема с воркером (нет файла после сборки, asar, запрет на потоки,
+ * зависший диск) не должна ломать импорт: тогда честно считаем синхронно.
+ * Результат кэшируется тем же _detectCache, что и синхронный путь.
+ */
+export async function detectSourcesAsync(excludeGameDir?: string, timeoutMs = 20_000): Promise<DetectedSource[]> {
+  const now = Date.now();
+  const cacheKey = excludeGameDir ? path.resolve(excludeGameDir) : '';
+  if (_detectCache && _detectCache.key === cacheKey && (now - _detectCache.timestamp) < DETECT_CACHE_TTL) return _detectCache.sources;
+
+  // Воркер компилируется рядом с этим файлом (dist-electron/main/import-worker.js).
+  const workerFile = path.join(__dirname, 'import-worker.js');
+  if (!safeStat(workerFile)) return detectSources(excludeGameDir);
+
+  try {
+    const { Worker } = await import('node:worker_threads');
+    const sources = await new Promise<DetectedSource[]>((resolve, reject) => {
+      const worker = new Worker(workerFile, { workerData: { excludeGameDir } });
+      const timer = setTimeout(() => {
+        worker.terminate().catch(() => {});
+        reject(new Error('detect timeout'));
+      }, timeoutMs);
+      const finish = (fn: () => void) => { clearTimeout(timer); fn(); };
+      worker.once('message', (msg: { ok: boolean; sources?: DetectedSource[]; error?: string }) => {
+        finish(() => {
+          if (msg?.ok && Array.isArray(msg.sources)) resolve(msg.sources);
+          else reject(new Error(msg?.error ?? 'worker failed'));
+        });
+        worker.terminate().catch(() => {});
+      });
+      worker.once('error', (e) => finish(() => reject(e)));
+      worker.once('exit', (code) => { if (code !== 0) finish(() => reject(new Error('worker exit ' + code))); });
+    });
+    _detectCache = { sources, timestamp: Date.now(), key: cacheKey };
+    return sources;
+  } catch (e) {
+    console.warn('[import] worker detect failed, falling back to sync:', (e as Error).message);
+    return detectSources(excludeGameDir);
+  }
 }
 
 function collectNestedDirs(parent: string): string[] {
@@ -874,11 +2436,82 @@ export async function performImport(
   installVersion?: VersionInstaller,
   onProgress?: ProgressCallback,
   signal?: AbortSignal,
+  addImportedAccount?: (account: ImportedAccount) => boolean,
 ): Promise<ImportReport> {
-  const report: ImportReport = { copied: {}, skipped: {}, newAccounts: [], installedVersions: [], errors: [], warnings: [] };
+  const report: ImportReport = { copied: {}, skipped: {}, newAccounts: [], installedVersions: [], errors: [], warnings: [], durationsMs: {} };
+  const importStarted = Date.now();
+  takeBytesWritten(); takeBytesSaved();  // сбрасываем счётчики прошлого запуска
+  _copyPairs = new Map();
 
-  // Cleanup orphaned .trel_tmp from previous aborted runs
-  try { rmTrelTmps(gameDir); } catch {}
+  // Вложенные категории (skin-cache внутри assets и т.п.) копировали бы одно и
+  // то же дважды, оставляя рядом «skins/ab (1)». Отбрасываем их здесь, а не в
+  // UI: план приходит и из IPC, и из тестов.
+  const effective = dropNestedCategories(plan.categories, source.kind === 'bedrock');
+  if (effective.length !== plan.categories.length) {
+    const dropped = plan.categories.filter((c) => !effective.includes(c));
+    report.warnings.push(`skipped categories already covered by a broader one: ${dropped.join(', ')}`);
+    // Дальше по функции план читается только на чтение — подменяем целиком,
+    // чтобы ни одна ветка не работала со старым списком.
+    plan = { ...plan, categories: effective };
+  }
+  // Импорт без секретов: аккаунты и usercache вообще не трогаем.
+  if (plan.skipSecrets && (plan.categories.includes('accounts') || plan.categories.includes('usercache'))) {
+    plan = { ...plan, categories: plan.categories.filter((c) => c !== 'accounts' && c !== 'usercache') };
+    report.secretsSkipped = true;
+    report.warnings.push('accounts and tokens skipped ("without secrets" mode)');
+  }
+
+  const logPath = await importOps.appendImportLog(gameDir, `start ${plan.sourceId} cats=[${plan.categories.join(',')}] dedup=${!!plan.deduplicate} hardlinks=${!!plan.useHardlinks} move=${!!plan.moveSource}`);
+  report.logPath = logPath;
+  // Нюансы клиента и хранилища секретов рядом с источником — в отчёт сразу,
+  // чтобы пользователь видел их даже при отмене в середине.
+  for (const n of sourceNotes(source)) report.warnings.push(n);
+  for (const w of secretStoreWarnings(source)) report.warnings.push(w);
+  const authServers = extractAuthServers(source);
+  if (authServers.length > 0) {
+    report.authServers = authServers;
+    report.warnings.push(`auth servers used by the source (not migrated, re-login needed): ${authServers.join(', ')}`);
+  }
+  // Страховка миров Trel перед чужим импортом.
+  if (plan.archiveWorlds && !signal?.aborted) {
+    const savesDir = path.join(gameDir, 'saves');
+    if (safeStat(savesDir)?.isDirectory()) {
+      const zipName = `saves-before-import-${new Date().toISOString().slice(0, 10)}.zip`;
+      const zipPath = path.join(gameDir, 'backups', zipName);
+      const n = await importOps.archiveDirToZip(savesDir, zipPath);
+      if (n > 0) {
+        report.archivedWorlds = zipPath;
+        report.warnings.push(`current worlds archived to backups/${zipName} (${n} files)`);
+      }
+    }
+  }
+
+  const copyMode: CopyMode = plan.useHardlinks ? 'hardlink' : 'copy';
+  if (plan.useHardlinks) {
+    report.warnings.push('hardlink mode: imported files share storage with the source launcher');
+  }
+  // Память исходного лаунчера: Trel не применяет чужой -Xmx автоматически
+  // (он может не влезть в память этой машины), но молчать нельзя — иначе
+  // тяжёлая сборка запустится с дефолтом и будет лагать.
+  if (source.launcherTweaks?.maxMemoryMb) {
+    report.warnings.push(`source launcher allocated ${source.launcherTweaks.maxMemoryMb} MB RAM — set the same value in Trel settings`);
+  }
+  if (source.launcherTweaks?.jvmArgs) {
+    report.warnings.push(`source launcher JVM args: ${source.launcherTweaks.jvmArgs}`);
+  }
+  if (source.launcherTweaks?.javaPath) {
+    report.warnings.push(`source launcher uses its own Java: ${source.launcherTweaks.javaPath} — set the same runtime in Trel if the pack refuses to start`);
+  }
+  if (source.launcherTweaks?.javaMajor) {
+    report.warnings.push(`source pack needs Java ${source.launcherTweaks.javaMajor} — install that runtime or the game will crash on launch`);
+  }
+
+  // Cleanup orphaned .trel_tmp from previous aborted runs. Полный обход
+  // gameDir (assets/libraries — десятки тысяч файлов) был заметной частью
+  // старта импорта, поэтому глубину ограничили: временные файлы живут
+  // только рядом с местом копирования (корень, versions/<id>, папки
+  // категорий). Папки категорий дочищаются отдельно перед своим копированием.
+  try { rmTrelTmps(gameDir, 4); } catch {}
 
   // Self-import / nesting guard: source must not be inside gameDir or vice versa
   const resolvedSource = path.resolve(source.rootDir);
@@ -922,67 +2555,87 @@ export async function performImport(
     if (versionSteps > 0) totalSteps += versionSteps - 1;
   }
   let completedSteps = 0;
-  const step = (stage = '') => { completedSteps++; onProgress?.(completedSteps, totalSteps, stage); };
+  /**
+   * Прогресс со счётчиком байт и мгновенной скоростью.
+   *
+   * Байты уже считались в copyFileAtomic, но попадали только в финальный
+   * отчёт: во время копирования пользователь видел «mods (120/400)» и не мог
+   * понять, идёт перенос или подвис.
+   */
+  const speedAt = createSpeedMeter(importStarted);
+  const emit = (stage: string, etaSeconds?: number) => {
+    const total = peekBytesWritten();
+    onProgress?.(completedSteps, totalSteps, stage, total, speedAt(total, Date.now()), etaSeconds, peekCurrentCopyFile() || undefined);
+  };
+  const step = (stage = '') => { completedSteps++; emit(stage); };
 
   // ── Accounts ──
   if (plan.categories.includes('accounts')) {
     if (source.available.includes('accounts')) {
-      const names = extractOfflineNames(source.rootDir);
-      for (const name of names) { try { if (addAccount(name)) report.newAccounts.push(name); } catch (e) { report.errors.push(`account "${name}": ${(e as Error).message}`); } }
+      const accounts = extractImportedAccounts(source.rootDir, source.accountsRoots ?? []);
+      for (const account of accounts) {
+        try {
+          const added = addImportedAccount ? addImportedAccount(account) : addAccount(account.name);
+          if (added) report.newAccounts.push(account.name);
+          else report.skipped.accounts = (report.skipped.accounts ?? 0) + 1;
+          // Токен доступа в чужих лаунчерах живёт ~24 часа, а refresh-токен Microsoft
+          // обычно лежит в отдельном зашифрованном хранилище и не переносится.
+          // Поэтому лицензионный аккаунт переносим вместе с UUID/именем, но честно
+          // предупреждаем, что для игры на онлайн-серверах нужен повторный вход.
+          if (account.type === 'online' && !account.refreshToken) {
+            report.warnings.push(`account "${account.name}": imported as online (UUID preserved), re-login via Microsoft required to refresh session`);
+          }
+        } catch (e) { report.errors.push(`account "${account.name}": ${(e as Error).message}`); }
+      }
       report.copied.accounts = report.newAccounts.length;
     } else { report.copied.accounts = 0; }
     step('Accounts');
   }
 
-  // ── Servers.dat ──
+  // ── Пофайловые категории (servers/options/usercache/pack-meta) ──
+  // Списки файлов — в FILE_CATS, чтобы переезд (moveSource) знал те же имена.
+  const journalByCat: Record<string, string[]> = {};
+  const copyFileCat = async (cat: ImportCategory, stage: string) => {
+    const files = FILE_CATS[cat] ?? [];
+    const created: string[] = [];
+    journalByCat[cat] = created;
+    let copied = 0;
+    for (let i = 0; i < files.length; i++) {
+      if (signal?.aborted) break;
+      emit(`${stage} (${i + 1}/${files.length})`);
+      const before = created.length;
+      if (await copyFileIfExists(path.join(source.rootDir, files[i]), gameDir, undefined, undefined, report.errors, created, signal)) {
+        copied++;
+        for (let k = before; k < created.length; k++) warnIfJsonBroken(created[k], report.warnings);
+      }
+    }
+    report.copied[cat] = copied;
+    if (created.length > 0) await importOps.journalAdd(gameDir, plan.sourceId, cat, created);
+    if (!signal?.aborted) await importOps.journalComplete(gameDir, cat);
+    step(stage);
+  };
   if (plan.categories.includes('servers')) {
-    let copied = 0;
-    const srvFiles = ['servers.dat', 'servers.dat_old'];
-    for (let i = 0; i < srvFiles.length; i++) {
-      onProgress?.(completedSteps, totalSteps, `Servers (${i + 1}/${srvFiles.length})`);
-      if (await copyFileIfExists(path.join(source.rootDir, srvFiles[i]), gameDir, undefined, undefined, report.errors)) copied++;
+    await copyFileCat('servers', 'Servers');
+    // ATLauncher хранит серверы не в servers.dat, а поштучно в Servers/*.dat.
+    const atServers = path.join(source.rootDir, 'Servers');
+    if (safeStat(atServers)?.isDirectory()) {
+      const created: string[] = [];
+      journalByCat['servers-at'] = created;
+      let n = 0;
+      for (const f of safeReaddir(atServers)) {
+        if (signal?.aborted) break;
+        if (!f.endsWith('.dat')) continue;
+        if (await copyFileIfExists(path.join(atServers, f), gameDir, undefined, undefined, report.errors, created, signal)) n++;
+      }
+      if (n > 0) {
+        report.copied.servers = (report.copied.servers ?? 0) + n;
+        await importOps.journalAdd(gameDir, plan.sourceId, 'servers-at', created);
+      }
     }
-    report.copied.servers = copied;
-    step('Servers');
   }
-
-  // ── Options ──
-  if (plan.categories.includes('options')) {
-    let copied = 0;
-    const optFiles = ['options.txt', 'controls.txt', 'hotbar.nbt', 'optionsshaders.txt',
-      'optionsof.txt', 'resourcepacks.txt', 'user_jvm_args.txt', 'note.txt',
-      'splashes.txt', 'allowed_symlinks.txt'];
-    for (let i = 0; i < optFiles.length; i++) {
-      onProgress?.(completedSteps, totalSteps, `Options (${i + 1}/${optFiles.length})`);
-      if (await copyFileIfExists(path.join(source.rootDir, optFiles[i]), gameDir, undefined, undefined, report.errors)) copied++;
-    }
-    report.copied.options = copied;
-    step('Options');
-  }
-
-  // ── Usercache ──
-  if (plan.categories.includes('usercache')) {
-    let copied = 0;
-    const ucFiles = ['usercache.json', 'usernamecache.json'];
-    for (let i = 0; i < ucFiles.length; i++) {
-      onProgress?.(completedSteps, totalSteps, `User cache (${i + 1}/${ucFiles.length})`);
-      if (await copyFileIfExists(path.join(source.rootDir, ucFiles[i]), gameDir, undefined, undefined, report.errors)) copied++;
-    }
-    report.copied.usercache = copied;
-    step('User cache');
-  }
-
-  // ── Pack meta ──
-  if (plan.categories.includes('pack-meta')) {
-    let copied = 0;
-    const metaFiles = ['mmc-pack.json', 'instance.cfg', 'manifest.json', 'minecraftinstance.json', 'modrinth.index.json'];
-    for (let i = 0; i < metaFiles.length; i++) {
-      onProgress?.(completedSteps, totalSteps, `Pack meta (${i + 1}/${metaFiles.length})`);
-      if (await copyFileIfExists(path.join(source.rootDir, metaFiles[i]), gameDir, undefined, undefined, report.errors)) copied++;
-    }
-    report.copied['pack-meta'] = copied;
-    step('Pack metadata');
-  }
+  if (plan.categories.includes('options')) await copyFileCat('options', 'Options');
+  if (plan.categories.includes('usercache')) await copyFileCat('usercache', 'User cache');
+  if (plan.categories.includes('pack-meta')) await copyFileCat('pack-meta', 'Pack metadata');
 
   // ── Version install ──
   if (plan.categories.includes('version-install')) {
@@ -990,21 +2643,31 @@ export async function performImport(
     if (entries.length > 0) {
       const vDirSrc = path.join(source.rootDir, 'versions');
       const vDirDst = path.join(gameDir, 'versions');
+      try { rmTrelTmps(vDirDst, 4); } catch {}
       for (let i = 0; i < entries.length; i++) {
         const entry = entries[i];
         const vid = entry.id;
-        onProgress?.(completedSteps, totalSteps, `Importing ${vid}...`);
+        emit(`Importing ${vid}...`);
         const srcFolder = path.join(vDirSrc, entry.folder);
         const dstFolder = path.join(vDirDst, entry.folder);
         try {
           if (safeStat(srcFolder)?.isDirectory() && (entry.hasJar || entry.hasJson)) {
             const warnings: string[] = [];
-            await copyDirAtomic(srcFolder, dstFolder, MAX_COPY_DEPTH, warnings, undefined, signal);
+            const created: string[] = [];
+            // natives/ — платформенные .dll/.so под чужую машину: в Trel
+            // докачаются свои, а чужие — мёртвый вес и риск битого рантайма.
+            const excluded = safeStat(path.join(srcFolder, 'natives'))?.isDirectory() ? new Set(['natives']) : undefined;
+            if (excluded) warnings.push(`version "${vid}": natives/ skipped (platform libraries download for this machine)`);
+            await copyDirAtomic(srcFolder, dstFolder, MAX_COPY_DEPTH, warnings, undefined, signal, copyMode, created, excluded);
             report.warnings.push(...warnings);
+            if (created.length > 0) await importOps.journalAdd(gameDir, plan.sourceId, 'version-install', created);
             report.installedVersions.push(entry.folder === vid ? vid : `${entry.folder} → ${vid}`);
             report.copied['version-install'] = (report.copied['version-install'] ?? 0) + 1;
           } else if (installVersion) {
             await installVersion(vid);
+            // Скачанное принадлежит лаунчеру целиком — откат его не удаляет,
+            // но след в журнале остаётся (аудит) и тихо пропускается.
+            await importOps.journalAdd(gameDir, plan.sourceId, 'version-install-downloaded', [`downloaded:${vid}`]);
             report.installedVersions.push(vid);
             report.copied['version-install'] = (report.copied['version-install'] ?? 0) + 1;
           } else {
@@ -1021,27 +2684,57 @@ export async function performImport(
     } else if (versionsToInstall && versionsToInstall.length > 0 && installVersion) {
       for (let i = 0; i < versionsToInstall.length; i++) {
         const vid = versionsToInstall[i];
-        onProgress?.(completedSteps, totalSteps, `Installing ${vid}...`);
+        emit(`Installing ${vid}...`);
         try { await installVersion(vid); report.installedVersions.push(vid); report.copied['version-install'] = (report.copied['version-install'] ?? 0) + 1; }
         catch (e) { report.errors.push(`version "${vid}": ${(e as Error).message}`); }
         completedSteps++;
       }
     } else { report.copied['version-install'] = 0; step(); }
+    if (!signal?.aborted) await importOps.journalComplete(gameDir, 'version-install');
   }
 
   // ── Pre-build dedup hashes ──
-  let dedupHashes: Set<string> | undefined;
+  let dedup: DedupContext | undefined;
+  let hashCache: HashCache | undefined;
   if (plan.deduplicate) {
-    dedupHashes = new Set();
-    onProgress?.(completedSteps, totalSteps, 'Scanning existing files...');
-    const contentCats = ['mods', 'shaderpacks', 'resourcepacks', 'texturepacks', 'config', 'datapacks', 'scripts', 'version-content'];
+    hashCache = loadHashCache(gameDir);
+    dedup = { known: new Set<string>(), cache: hashCache };
+    emit('Scanning existing files...');
+    const contentCats = ['mods', 'shaderpacks', 'resourcepacks', 'texturepacks', 'config', 'datapacks', 'scripts', 'version-content', 'schematics', 'minimap', 'coremods', 'openloader'];
+    // Сначала — размеры файлов-источников: хешировать существующий файл
+    // назначения имеет смысл только если его размер встречается среди
+    // исходных (одинаковый контент ⇒ одинаковый размер).
+    const sourceSizes = new Set<number>();
+    for (const cat of plan.categories) {
+      if (!contentCats.includes(cat)) continue;
+      if (cat === 'version-content') {
+        const vDirSrc = path.join(source.rootDir, 'versions');
+        for (const ver of safeReaddir(vDirSrc)) {
+          for (const sub of versionContentSubs(source.rootDir)) {
+            collectSourceSizes(path.join(vDirSrc, ver, sub), DEDUP_HASH_DEPTH, sourceSizes);
+          }
+        }
+      } else {
+        for (const spec of CATEGORY_DIRS[cat] ?? []) {
+          for (const from of specSourceDirs(source.rootDir, spec, source.kind === 'java')) {
+            collectSourceSizes(from, DEDUP_HASH_DEPTH, sourceSizes);
+          }
+        }
+      }
+    }
     for (const cat of plan.categories) {
       if (!contentCats.includes(cat)) continue;
       if (cat === 'version-content') {
         const vDir = path.join(gameDir, 'versions');
-        for (const ver of safeReaddir(vDir)) { for (const sub of VERSION_CONTENT_SUBS) { const hh = await buildExistingHashes(path.join(vDir, ver, sub), DEDUP_HASH_DEPTH); for (const h of hh) dedupHashes.add(h); } }
+        for (const ver of safeReaddir(vDir)) {
+          for (const sub of versionContentSubs(source.rootDir)) {
+            const destDir = versionContentDest(gameDir, vDir, ver, sub);
+            const hh = await buildExistingHashes(destDir, DEDUP_HASH_DEPTH, sourceSizes, hashCache);
+            for (const h of hh) dedup.known.add(h);
+          }
+        }
       } else {
-        for (const spec of CATEGORY_DIRS[cat] ?? []) { const hh = await buildExistingHashes(path.join(gameDir, ...(spec.to ?? spec.from)), DEDUP_HASH_DEPTH); for (const h of hh) dedupHashes.add(h); }
+        for (const spec of CATEGORY_DIRS[cat] ?? []) { const hh = await buildExistingHashes(path.join(gameDir, ...(spec.to ?? spec.from)), DEDUP_HASH_DEPTH, sourceSizes, hashCache); for (const h of hh) dedup.known.add(h); }
       }
     }
   }
@@ -1051,7 +2744,7 @@ export async function performImport(
   const skipCats = new Set(['accounts', 'servers', 'options', 'usercache', 'pack-meta', 'version-install', 'version-content']);
   const catTotals: Record<string, number> = {};
   if (!signal?.aborted) {
-    onProgress?.(completedSteps, totalSteps, 'Counting files...');
+    emit('Counting files...');
     for (const cat of plan.categories) {
       if (skipCats.has(cat)) continue;
       const specs = DIRS[cat];
@@ -1059,21 +2752,29 @@ export async function performImport(
       const MAX_PRESCAN = 5000;
       let total = 0;
       for (const spec of specs) {
-        const from = path.join(source.rootDir, ...spec.from);
-        if (!safeStat(from)?.isDirectory()) continue;
-        if (safeReaddir(from).length > MAX_PRESCAN) { total = 0; break; }
-        total += countFilesRecursive(from, cat === 'worlds' ? 3 : 2);
+        for (const from of specSourceDirs(source.rootDir, spec, source.kind === 'java')) {
+          if (!safeStat(from)?.isDirectory()) continue;
+          if (safeReaddir(from).length > MAX_PRESCAN) { total = 0; break; }
+          total += countFilesRecursive(from, cat === 'worlds' ? 3 : 2);
+        }
       }
       if (total > 0) catTotals[cat] = total;
     }
   }
 
   // ── Content folders ──
+  // Общий реестр имён: категории с общим назначением (worlds/saves и
+  // version-content/saves) делят один набор, иначе — «Мир (1)».
+  const takenReg = new Map<string, Set<string>>();
+  // Атомарность категории: если копирование категории упало исключением (диск,
+  // права), уже созданное ею откатывается по журналу — никакой «половины mods».
   for (const cat of plan.categories) {
     if (signal?.aborted) break;
     if (skipCats.has(cat)) continue;
     const specs = DIRS[cat];
     if (!specs || specs.length === 0) { step(cat); continue; }
+    const created: string[] = [];
+    journalByCat[cat] = created;
     let catCopied = 0; let catSkipped = 0;
     let lastSubTick = 0;
     const catStart = Date.now();
@@ -1083,28 +2784,54 @@ export async function performImport(
     // Cleanup orphaned .trel_tmp in this category (recursive)
     for (const spec of specs) {
       const catDest = path.join(gameDir, ...(spec.to ?? spec.from));
-      try { rmTrelTmps(catDest); } catch {}
+      try { rmTrelTmps(catDest, 8); } catch {}
     }
     for (const spec of specs) {
       if (signal?.aborted) break;
-      const from = path.join(source.rootDir, ...spec.from);
-      if (!safeStat(from)?.isDirectory()) continue;
+      // Матчей может быть несколько (glob: профили Badlion по версиям) —
+      // едут в одно назначение, коллизии разруливает общий taken-реестр.
+      const froms = specSourceDirs(source.rootDir, spec, source.kind === 'java');
+      if (froms.length === 0) continue;
       const to = path.join(gameDir, ...(spec.to ?? spec.from));
-      const r = await copyTreeNoOverwrite(from, to, dedupHashes, (cnt) => {
-        const now = Date.now();
-        if (now - lastSubTick > 200) {
-          lastSubTick = now;
-          const totalCnt = specAccum + cnt;
-          const elapsed = (now - catStart) / 1000;
-          const suffix = fileTotal ? ` (${totalCnt}/${fileTotal})` : ` (${totalCnt})`;
-          const eta = totalCnt > 0 && fileTotal > 0 ? Math.round((elapsed / totalCnt) * (fileTotal - totalCnt)) : 0;
-          onProgress?.(completedSteps, totalSteps, `${cat}${suffix}${eta > 0 ? ` ~${eta}s` : ''}`);
+      for (const from of froms) {
+      if (signal?.aborted) break;
+      // Показываем в предупреждении, что контент взят из overrides/ —
+      // это значит, что исходный инстанс ни разу не запускался.
+      const mainDir = path.join(source.rootDir, ...spec.from);
+      if (from !== mainDir) report.warnings.push(`${cat}: taken from ${path.relative(source.rootDir, from)}`);
+      try {
+        const r = await copyTreeNoOverwrite(from, to, dedup, (cnt) => {
+          const now = Date.now();
+          if (now - lastSubTick > 200) {
+            lastSubTick = now;
+            const totalCnt = specAccum + cnt;
+            const elapsed = (now - catStart) / 1000;
+            const suffix = fileTotal ? ` (${totalCnt}/${fileTotal})` : ` (${totalCnt})`;
+            const eta = totalCnt > 0 && fileTotal > 0 ? Math.round((elapsed / totalCnt) * (fileTotal - totalCnt)) : 0;
+            emit(`${cat}${suffix}${eta > 0 ? ` ~${eta}s` : ''}`, eta > 0 ? eta : undefined);
+          }
+        }, signal, copyMode, created, takenReg);
+        specAccum += r.copied;
+        catCopied += r.copied; catSkipped += r.skipped; report.errors.push(...r.errors); report.warnings.push(...r.warnings);
+      } catch (e) {
+        // Категория либо вся, либо никак: откатываем созданное и идём дальше.
+        const gone = await importOps.rollbackJournal(gameDir, cat).catch(() => 0);
+        // rollbackJournal читает журнал с диска — а туда мы ещё не писали,
+        // поэтому чистим и живой список напрямую.
+        for (const f of [...created].sort((a, b) => b.length - a.length)) {
+          try { await fsp.unlink(ntPath(f)); } catch {}
         }
-      }, signal);
-      specAccum += r.copied;
-      catCopied += r.copied; catSkipped += r.skipped; report.errors.push(...r.errors); report.warnings.push(...r.warnings);
+        report.rolledBackFiles = (report.rolledBackFiles ?? 0) + gone + created.length;
+        report.errors.push(`${cat}: ${(e as Error).message} (partial files rolled back)`);
+        created.length = 0;
+        break;
+      }
+      } // for from of froms
     }
+    report.durationsMs![cat] = Date.now() - catStart;
     report.copied[cat] = catCopied; report.skipped[cat] = catSkipped;
+    if (created.length > 0) await importOps.journalAdd(gameDir, plan.sourceId, cat, created);
+    if (!signal?.aborted) await importOps.journalComplete(gameDir, cat);
     step(cat);
   }
 
@@ -1113,64 +2840,176 @@ export async function performImport(
     const vDirSrc = path.join(source.rootDir, 'versions');
     const vDirDst = path.join(gameDir, 'versions');
     let catCopied = 0; let catSkipped = 0;
+    const vcStart = Date.now();
+    let worldsDupes = 0;
     if (safeStat(vDirSrc)?.isDirectory()) {
       let lastSubTick = 0;
       for (const ver of safeReaddir(vDirSrc)) {
         if (signal?.aborted) break;
-        for (const sub of VERSION_CONTENT_SUBS) {
+        for (const sub of versionContentSubs(source.rootDir)) {
           const from = path.join(vDirSrc, ver, sub);
           if (!safeStat(from)?.isDirectory()) continue;
-          const to = path.join(vDirDst, ver, sub);
-          const r = await copyTreeNoOverwrite(from, to, dedupHashes, (cnt) => {
+          // TLauncher-isolation: миры из versions/<v>/saves едут в общие saves,
+          // потому что других мест для сохранений Trel не читает.
+          const to = versionContentDest(gameDir, vDirDst, ver, sub);
+          // Тот же мир уже приехал из общих saves: не плодим «Мир (1)»,
+          // а честно пропускаем с предупреждением (источник не трогаем).
+          let exclude: Set<string> | undefined;
+          if (sub === 'saves') {
+            const dupes = safeReaddir(from).filter((w) =>
+              safeStat(path.join(from, w))?.isDirectory() && safeStat(path.join(to, w))?.isDirectory());
+            if (dupes.length > 0) {
+              worldsDupes += dupes.length;
+              catSkipped += dupes.length;
+              exclude = new Set(dupes);
+            }
+          }
+          const r = await copyTreeNoOverwrite(from, to, dedup, (cnt) => {
             const now = Date.now();
             if (now - lastSubTick > 200) {
               lastSubTick = now;
-              onProgress?.(completedSteps, totalSteps, `version-content (${cnt})`);
+              emit(`version-content (${cnt})`);
             }
-          }, signal);
+          }, signal, copyMode, journalByCat['version-content'] ??= [], takenReg, exclude);
           catCopied += r.copied; catSkipped += r.skipped; report.errors.push(...r.errors); report.warnings.push(...r.warnings);
         }
       }
     }
+    if (worldsDupes > 0) report.warnings.push(`${worldsDupes} isolated world(s) already imported from shared saves — skipped, not duplicated`);
+    report.durationsMs!['version-content'] = Date.now() - vcStart;
     report.copied['version-content'] = catCopied; report.skipped['version-content'] = catSkipped;
+    if ((journalByCat['version-content'] ?? []).length > 0) {
+      await importOps.journalAdd(gameDir, plan.sourceId, 'version-content', journalByCat['version-content']);
+    }
+    if (!signal?.aborted) await importOps.journalComplete(gameDir, 'version-content');
     step('version-content');
   }
 
+  report.aborted = signal?.aborted ?? false;
+  if (report.aborted) {
+    // Прерванный импорт — не ошибка, но и не успех: часть файлов уже на месте.
+    // Повтор подхватит пропущенное (skip identical / дедуп), журнал знает что готово.
+    report.warnings.push('import was cancelled: already copied files were kept, re-run resumes where it stopped');
+  }
+
+  // ── Пост-проверки (только при успехе, чтобы не шуметь на отмене) ──
+  if (!report.aborted) {
+    // Case-конфликты на Windows/macOS: два имени в один файл.
+    for (const c of findCaseConflicts(source.rootDir, plan.categories, source.kind === 'bedrock')) {
+      report.warnings.push(`name case conflict (one file may have overwritten the other): ${c}`);
+    }
+    // Карантин + дубли modid + verify целостности модов.
+    if ((report.copied.mods ?? 0) > 0 || (report.skipped.mods ?? 0) > 0) {
+      emit('Checking mods...');
+      const destMods = path.join(gameDir, 'mods');
+      const srcMods = specSourceDirs(source.rootDir, CATEGORY_DIRS.mods[0], source.kind === 'java')[0];
+      let jars: string[] = [];
+      try { jars = fs.readdirSync(ntPath(destMods)).filter((f) => f.endsWith('.jar')).slice(0, 200); } catch {}
+      const quar: string[] = [];
+      let checked = 0;
+      for (const j of jars) {
+        const destJar = path.join(destMods, j);
+        const why = importOps.scanJarSuspicious(destJar);
+        if (why) quar.push(`${j} — ${why}`);
+        // Verify: хеш копии обязан совпасть с хешем её источника. Пару берём
+        // из журнала копий, а не по имени: коллизии лежат рядом как « (n)».
+        const sj = _copyPairs?.get(destJar);
+        if (sj && checked < 50) {
+          const [hs, hd] = await Promise.all([fileSha1Cached(sj, hashCache), fileSha1Cached(destJar, hashCache)]);
+          if (hs && hd && hs !== hd) {
+            report.errors.push(`mod corrupted in transfer: ${j}`);
+            quar.push(`${j} — hash mismatch after copy`);
+          }
+          checked++;
+        }
+      }
+      if (quar.length > 0) {
+        report.quarantine = quar.slice(0, 20);
+        report.warnings.push(`quarantine: ${quar.length} mod(s) look suspicious — check before launching: ${quar.slice(0, 3).join('; ')}`);
+      }
+      if (srcMods) {
+        const dups = importOps.findDuplicateMods(srcMods);
+        if (dups.length > 0) {
+          report.duplicateMods = dups.slice(0, 10);
+          report.warnings.push(`same mod in several versions: ${dups.slice(0, 3).join('; ')} — keep the one your loader needs`);
+        }
+      }
+    }
+    // Экономия дедупа: байты, которые не стали копировать (уже есть в Trel).
+    report.savedBytes = takeBytesSaved() || undefined;
+    // Переезд: удаляем источник только если всё сошлось (нет ошибок/отмены).
+    if (plan.moveSource && report.errors.length === 0) {
+      emit('Moving source files...');
+      let moved = 0;
+      // Удаляем только то, что скопировали в этом запуске (пары из журнала),
+      // и только если размеры сошлись. По имени искать нельзя: « (n)» врёт.
+      for (const [dest, srcFile] of _copyPairs ?? []) {
+        try {
+          const [ss, ds] = await Promise.all([fsp.stat(ntPath(srcFile)), fsp.stat(ntPath(dest))]);
+          if (ss.isFile() && ds.isFile() && ss.size === ds.size) { await fsp.unlink(ntPath(srcFile)); moved++; }
+        } catch { /* близнец не сошёлся — оставляем */ }
+      }
+      const swept = await importOps.sweepMovedSource(
+        [...new Set([...(_copyPairs ?? new Map()).values()].map((f) => path.dirname(f)))].slice(0, 50));
+      if (moved > 0) {
+        report.movedSource = true;
+        let msg = `source files removed after verified move (${moved} files`;
+        if (copyMode === 'hardlink') msg += ', hardlinks: data stays alive through Trel copies';
+        msg += ')';
+        report.warnings.push(msg);
+        if (swept.left > 0) report.warnings.push(`${swept.left} file(s) left in source (dedup-skipped or unverified) — remove manually if the move is complete`);
+      }
+    }
+  }
+
+  // Сводка переименований: « (n)» в созданных путях = коллизии имён.
+  // Отдельно миры: «Мир (1)» означает дубль из другого лаунчера.
+  let renamed = 0;
+  for (const created of Object.values(journalByCat)) {
+    for (const f of created) if (/ \(\d+\)/.test(f)) renamed++;
+  }
+  if (renamed > 0) report.warnings.push(`${renamed} file(s) renamed with ' (n)' suffix due to name collisions — check worlds for duplicates`);
+  const staleFixed = takeStaleFixed();
+  if (staleFixed > 0) report.warnings.push(`${staleFixed} file(s) re-copied: hash cache was stale (content changed with same mtime)`);
+  // Счётчики — после пост-проверок: тик «Checking mods…» обязан нести живые
+  // байты, а не ноль после take. Сами проверки только читают, не пишут.
+  report.bytesWritten = takeBytesWritten();
+  report.totalMs = Date.now() - importStarted;
+  report.pausedMs = takePausedMs();
+  report.pauses = takePauseCount();
+  _copyPairs = null;
+
+  // Кеш хешей пишем после копирования: часть записей появилась во время
+  // дедупликации, и повторный импорт того же источника их переиспользует.
+  // TTL/GC: записям старше 30 дней и хвосту сверх лимита — на выход, иначе
+  // файл кеша растёт бесконечно на живых сборках.
+  if (hashCache) {
+    const CUTOFF = Date.now() - 30 * 24 * 3600 * 1000;
+    for (const [k] of hashCache) {
+      const mtime = Number(k.slice(k.lastIndexOf('|') + 1));
+      if (Number.isFinite(mtime) && mtime < CUTOFF) hashCache.delete(k);
+      if (hashCache.size < 200_000) break;
+    }
+    await saveHashCache(gameDir, hashCache);
+  }
+
   // ── Import manifest ──
+  const avgSpeed = report.totalMs > 0 && (report.bytesWritten ?? 0) > 0
+    ? Math.round((report.bytesWritten ?? 0) / (report.totalMs / 1000)) : undefined;
   try {
     await fsp.writeFile(ntPath(path.join(gameDir, '.trel_import.json')),
       JSON.stringify({ timestamp: new Date().toISOString(), sourceId: plan.sourceId, categories: plan.categories,
         copied: report.copied, skipped: report.skipped, newAccounts: report.newAccounts.length,
         installedVersions: report.installedVersions, errors: report.errors,
-        aborted: signal?.aborted ?? false }, null, 2), 'utf-8');
+        durationsMs: report.durationsMs, bytesWritten: report.bytesWritten, totalMs: report.totalMs,
+        hardlinks: plan.useHardlinks ?? false, deduplicate: plan.deduplicate ?? false,
+        aborted: report.aborted, lastSpeedBps: avgSpeed,
+        quarantine: report.quarantine?.length ?? 0, movedSource: report.movedSource ?? false }, null, 2), 'utf-8');
   } catch { /* skip */ }
+  await importOps.appendImportLog(gameDir,
+    `done ${plan.sourceId} copied=${Object.values(report.copied).reduce((a, b) => a + (b ?? 0), 0)} errors=${report.errors.length} aborted=${report.aborted}`);
 
   return report;
-}
-
-// ─── Cache import (legacy) ─────────────────────────────────────────────
-
-export type CacheCategory = 'assets' | 'libraries' | 'skin-cache' | 'versions';
-
-export interface DetectedCache { sourceDir: string; available: CacheCategory[]; approxSize: number }
-export interface CacheImportPlan { sourceDir: string; categories: CacheCategory[] }
-
-const CACHE_SUBDIRS: Record<CacheCategory, string[]> = { assets: ['assets'], libraries: ['libraries'], 'skin-cache': ['assets', 'skins'], versions: ['versions'] };
-
-function approxCacheSizeOf(sourceDir: string, categories: CacheCategory[]): number {
-  let total = 0;
-  for (const cat of categories) { const subdirs = CACHE_SUBDIRS[cat]; if (!subdirs) continue; total += dirSize(path.join(sourceDir, ...subdirs), 2); }
-  return total;
-}
-
-export function detectCache(sourceDir: string): DetectedCache {
-  const available: CacheCategory[] = [];
-  if (!safeStat(sourceDir)?.isDirectory()) return { sourceDir, available, approxSize: 0 };
-  for (const cat of ['assets', 'libraries', 'skin-cache', 'versions'] as CacheCategory[]) {
-    const subdirs = CACHE_SUBDIRS[cat]; if (!subdirs) continue;
-    const dir = path.join(sourceDir, ...subdirs); if (safeStat(dir)?.isDirectory() && safeReaddir(dir).some(n => !JUNK_NAMES.has(n))) available.push(cat);
-  }
-  return { sourceDir, available, approxSize: approxCacheSizeOf(sourceDir, available) };
 }
 
 export function detectFromDir(dir: string): DetectedSource | null {
@@ -1181,18 +3020,238 @@ export function detectFromDir(dir: string): DetectedSource | null {
   if (cats.length === 0) return null;
   const installableVersions = isBedrock ? undefined : detectInstallableVersions(dir);
   if (!isBedrock && !hasRealJavaImportContent(cats, installableVersions)) return null;
-  return { id: 'custom', label: isBedrock ? 'Minecraft Bedrock Edition' : inferJavaSourceLabel(dir, path.basename(dir) + ' (' + dir + ')'), rootDir: dir, available: cats, approxSize: approxSizeOf(dir, cats, isBedrock), kind: isBedrock ? 'bedrock' : 'java', installableVersions };
+  const accRoots = isBedrock ? [] : [dir, path.dirname(dir)];
+  if (!isBedrock && !cats.includes('accounts') && hasAccountFiles(accRoots)) cats.push('accounts');
+  // Метаданные инстанса (instance.cfg, minecraftinstance.json) лежат уровнем
+  // выше только у MultiMC-семейства, где внутри инстанса есть .minecraft.
+  // Смотреть в родителя всегда нельзя: пользователь может выбрать папку,
+  // рядом с которой оказался чужой instance.cfg — и мы подпишем сборку
+  // чужим именем и чужим -Xmx.
+  const base = path.basename(dir).toLowerCase();
+  const instRoot = (base === '.minecraft' || base === 'minecraft') ? path.dirname(dir) : dir;
+  const nice = isBedrock ? null : (readInstanceName(dir) ?? (instRoot !== dir ? readInstanceName(instRoot) : null));
+  return {
+    id: 'custom',
+    label: isBedrock ? 'Minecraft Bedrock Edition' : (nice ?? inferJavaSourceLabel(dir, path.basename(dir) + ' (' + dir + ')')),
+    rootDir: dir, available: cats, approxSize: approxSizeOf(dir, cats, isBedrock),
+    kind: isBedrock ? 'bedrock' : 'java', installableVersions,
+    accountsRoots: isBedrock ? undefined : accRoots,
+    modpack: isBedrock ? undefined : detectModpack(dir, instRoot),
+    launcherTweaks: isBedrock ? undefined : detectLauncherTweaks(instRoot, dir),
+  };
 }
 
-export async function performCacheImport(plan: CacheImportPlan, gameDir: string, onProgress?: ProgressCallback): Promise<{ copied: Partial<Record<CacheCategory, number>>; bytesCopied: number; errors: string[] }> {
-  try { rmTrelTmps(gameDir); } catch {}
-  const copied: Partial<Record<CacheCategory, number>> = {}; let bytesCopied = 0; const errors: string[] = []; let done = 0; const total = plan.categories.length;
-  for (const cat of plan.categories) {
-    const subdirs = CACHE_SUBDIRS[cat]; if (!subdirs) continue;
-    const from = path.join(plan.sourceDir, ...subdirs); if (!safeStat(from)?.isDirectory()) { done++; continue; }
-    for (const name of safeReaddir(from)) { const st = safeStat(path.join(from, name)); if (st) bytesCopied += st.size; }
-    const r = await copyTreeNoOverwrite(from, path.join(gameDir, ...subdirs));
-    copied[cat] = r.copied; errors.push(...r.errors); if (r.warnings.length) console.warn(`[import] cache warnings: ${r.warnings.join('; ')}`); done++; onProgress?.(done, total, cat);
+// ─── Preview / free space ───────────────────────────────────────────────
+
+/**
+ * Свободные байты на томе, где лежит (или будет лежать) папка игры.
+ * null — статистика тома недоступна (нет statfsSync, экзотическая ФС): тогда
+ * проверку места нельзя выдать за успешную, о ней надо честно сообщить.
+ */
+function freeSpaceFor(dir: string): number | null {
+  // Папки может ещё не быть — поднимаемся к первому существующему родителю.
+  let probe = path.resolve(dir);
+  for (let i = 0; i < 8; i++) {
+    if (safeStat(probe)?.isDirectory()) break;
+    const parent = path.dirname(probe);
+    if (parent === probe) break;
+    probe = parent;
   }
-  return { copied, bytesCopied, errors };
+  try {
+    const st = (fs as unknown as { statfsSync?: (p: string) => { bsize: number; bavail: number } }).statfsSync?.(probe);
+    if (st) return st.bsize * st.bavail;
+  } catch {}
+  return null;
+}
+
+/**
+ * Предпросмотр плана: сколько файлов и байт поедет по каждой категории и
+ * хватит ли места. Раньше пользователь видел только приблизительный размер
+ * всего источника, а на нехватку места натыкался посреди копирования (ENOSPC).
+ *
+ * В отличие от approxSizeOf (быстрая оценка для списка источников) здесь
+ * дерево обходится на полную глубину копирования: цифра идёт в проверку
+ * свободного места, и занижать её нельзя.
+ */
+export function previewImport(plan: ImportPlan, source: DetectedSource, gameDir: string): ImportPreview {
+  const files: Partial<Record<ImportCategory, number>> = {};
+  const bytes: Partial<Record<ImportCategory, number>> = {};
+  const warnings: string[] = [];
+  const DIRS = source.kind === 'bedrock' ? BEDROCK_DIRS : CATEGORY_DIRS;
+  const allowOverrides = source.kind === 'java';
+
+  // Та же чистка, что и в performImport: иначе превью насчитает assets/skins
+  // дважды (и в assets, и в skin-cache) и напугает нехваткой места.
+  const categories = dropNestedCategories(plan.categories, source.kind === 'bedrock');
+  if (categories.length !== plan.categories.length) {
+    const dropped = plan.categories.filter((c) => !categories.includes(c));
+    warnings.push(`categories already covered by a broader one (not counted twice): ${dropped.join(', ')}`);
+  }
+
+  const add = (cat: ImportCategory, m: { files: number; bytes: number }) => {
+    if (m.files) files[cat] = (files[cat] ?? 0) + m.files;
+    if (m.bytes) bytes[cat] = (bytes[cat] ?? 0) + m.bytes;
+  };
+  // Первые файлы для дерева превью + diff-оценка (same-name+size).
+  // Один обход на категорию: scanDir уже считает файлы/байты.
+  const tree: Array<{ path: string; bytes: number }> = [];
+  let diffFresh = 0; let diffOverwrite = 0; let diffIdentical = 0; let savedEst = 0;
+  let scanTruncated = false;
+  // Дерево делим поровну между папками: иначе первая же assets съедает весь
+  // кап в 300, а mods в превью вообще не видно.
+  const dirCatCount = Math.max(1, categories.filter((c) => {
+    if (c === 'version-install') return false;
+    const specs = DIRS[c];
+    return !!specs && specs.length > 0;
+  }).length + (categories.includes('version-content') ? 1 : 0));
+  const TREE_PER_CAT = Math.max(20, Math.ceil(300 / dirCatCount));
+  const scanInto = (cat: ImportCategory, from: string, destBase: string) => {
+    const sc = scanDir(from, MAX_COPY_DEPTH, TREE_PER_CAT);
+    if (sc.truncated) scanTruncated = true;
+    add(cat, sc);
+    for (const t of sc.top) {
+      if (tree.filter((x) => x.path.startsWith(`${cat}/`)).length < TREE_PER_CAT) {
+        tree.push({ path: `${cat}/${t.rel}`, bytes: t.bytes });
+      }
+      // Diff по близнецу в назначении: нет / тот же размер / другой размер.
+      const twin = path.join(destBase, t.rel);
+      const dst = safeStat(twin);
+      if (!dst) diffFresh++;
+      else if (dst.isFile() && dst.size === t.bytes) { diffIdentical++; savedEst += t.bytes; }
+      else diffOverwrite++;
+    }
+  };
+
+  for (const cat of categories) {
+    if (cat === 'version-install') continue;
+    if (cat === 'version-content') {
+      const vDirSrc = path.join(source.rootDir, 'versions');
+      for (const ver of safeReaddir(vDirSrc)) {
+        for (const sub of versionContentSubs(source.rootDir)) {
+          const from = path.join(vDirSrc, ver, sub);
+          if (!safeStat(from)?.isDirectory()) continue;
+          const destBase = versionContentDest(gameDir, path.join(gameDir, 'versions'), ver, sub);
+          scanInto('version-content', from, destBase);
+        }
+      }
+      continue;
+    }
+    const specs = DIRS[cat];
+    if (!specs || specs.length === 0) {
+      // Файловые категории (accounts/servers/options/...) — только байты.
+      const b = fileSizeInRoot(source.rootDir, cat, Infinity);
+      if (b) bytes[cat] = b;
+      continue;
+    }
+    for (const spec of specs) {
+      for (const from of specSourceDirs(source.rootDir, spec, allowOverrides)) {
+        scanInto(cat, from, path.join(gameDir, ...(spec.to ?? spec.from)));
+      }
+    }
+  }
+
+  const versions = categories.includes('version-install')
+    ? (source.installableVersions ?? detectInstallableVersions(source.rootDir))
+    : [];
+  if (versions.length > 0) {
+    // Без ограничения по числу версий: цифра идёт в проверку места.
+    const b = fileSizeInRoot(source.rootDir, 'version-install', Infinity);
+    if (b) bytes['version-install'] = b;
+    files['version-install'] = versions.length;
+  }
+
+  const totalFiles = Object.values(files).reduce((a, b2) => a + (b2 ?? 0), 0);
+  const totalBytes = Object.values(bytes).reduce((a, b2) => a + (b2 ?? 0), 0);
+  const free = freeSpaceFor(gameDir);
+  // Запас 5% (или минимум 200 МБ) на служебные файлы и фрагментацию.
+  const headroom = Math.max(totalBytes * 0.05, 200 * 1024 * 1024);
+  // Жёсткие ссылки места не занимают, поэтому проверять его бессмысленно.
+  // Но откат на копирование возможен (другой том), так что молчать нельзя.
+  const spaceMatters = !plan.useHardlinks;
+  const notEnoughSpace = spaceMatters && free !== null && totalBytes + headroom > free;
+  if (notEnoughSpace && free !== null) {
+    warnings.push(`not enough free space: need ~${Math.ceil((totalBytes + headroom) / 1024 / 1024)} MB, free ${Math.floor(free / 1024 / 1024)} MB`);
+  }
+  if (free === null) {
+    warnings.push('could not read free space for the game volume — space check skipped');
+  }
+  if (plan.useHardlinks) {
+    warnings.push('hardlink mode: files will be shared with the source launcher (same inode)');
+  }
+  if (source.launcherTweaks?.maxMemoryMb) {
+    warnings.push(`source launcher allocates ${source.launcherTweaks.maxMemoryMb} MB of RAM — set the same in Trel settings`);
+  }
+  if (scanTruncated) warnings.push('preview listing truncated at 200k files per folder — totals are exact, the file list is not');
+  for (const n of sourceNotes(source)) warnings.push(n);
+  for (const w of secretStoreWarnings(source)) warnings.push(w);
+  // Оценка времени до старта по скорости прошлого импорта в эту папку.
+  let etaSecondsEstimate: number | undefined;
+  try {
+    const last = readLastImportReport(gameDir);
+    if (last?.lastSpeedBps && last.lastSpeedBps > 0 && totalBytes > 0) {
+      etaSecondsEstimate = Math.round(totalBytes / last.lastSpeedBps);
+    }
+  } catch {}
+  const servers = parseServersDat(path.join(source.rootDir, 'servers.dat'));
+  // Оценка совместимости модпака с тем, что уже стоит (по индексу рядом).
+  const packCompat = previewPackCompat(source);
+  if (packCompat) warnings.push(packCompat);
+  return { files, bytes, totalFiles, totalBytes, freeBytes: free ?? 0, freeSpaceUnknown: free === null, notEnoughSpace, versions, warnings,
+    servers: servers.length > 0 ? servers : undefined,
+    diff: { fresh: diffFresh, overwrite: diffOverwrite, identical: diffIdentical },
+    savedBytesEstimate: savedEst > 0 ? savedEst : undefined,
+    etaSecondsEstimate, fileTree: tree.length > 0 ? tree : undefined };
+}
+
+/**
+ * Совместимость модпака источника с уже установленным Trel-стеком.
+ * Без сети: сверяем mc/loader из индекса пака с версиями в gameDir/versions.
+ * Промах — это предупреждение, а не запрет: пак может ехать как файлы.
+ */
+export function previewPackCompat(source: DetectedSource): string | null {
+  if (!source.modpack || source.modpack.loader === 'vanilla') return null;
+  // Проверяем индекс рядом с rootDir (overrides/minecraft раскладки).
+  const idxDirs = [source.rootDir, path.dirname(source.rootDir)];
+  for (const d of idxDirs) {
+    for (const mf of ['modrinth.index.json', 'manifest.json']) {
+      let raw: unknown = null;
+      try { raw = JSON.parse(fs.readFileSync(ntPath(path.join(d, mf)), 'utf-8')); } catch { continue; }
+      if (!raw || typeof raw !== 'object') continue;
+      const deps = (raw as Record<string, unknown>).dependencies as Record<string, string> | undefined;
+      const mc = deps?.minecraft ?? (raw as Record<string, unknown>).minecraft;
+      const mcVer = typeof mc === 'string' ? mc : (mc as Record<string, unknown> | undefined)?.version;
+      if (typeof mcVer === 'string' && mcVer.length > 0) {
+        return `modpack targets Minecraft ${mcVer} (${source.modpack.loader}) — make sure Trel has the same game + loader installed`;
+      }
+      return `modpack manifest found (${source.modpack.loader}) — make sure Trel has the same game + loader installed`;
+    }
+  }
+  return null;
+}
+
+/**
+ * Отчёт о последнем импорте в эту папку игры.
+ *
+ * Манифест писался с самого начала, но никто его не читал: пользователь,
+ * зайдя на страницу импорта второй раз, видел тот же список источников без
+ * следа того, что перенос уже был. Дедупликация спасает от дублей файлов,
+ * но не отвечает на вопрос «я это уже делал?».
+ */
+export function readLastImportReport(gameDir: string): LastImportInfo | null {
+  const raw = readJson(path.join(gameDir, '.trel_import.json')) as Record<string, unknown> | null;
+  if (!raw || typeof raw.timestamp !== 'string' || typeof raw.sourceId !== 'string') return null;
+  const at = Date.parse(raw.timestamp);
+  if (!Number.isFinite(at)) return null;
+  const copiedRaw = (raw.copied ?? {}) as Record<string, unknown>;
+  let copiedFiles = 0;
+  for (const v of Object.values(copiedRaw)) if (typeof v === 'number') copiedFiles += v;
+  return {
+    at,
+    sourceId: raw.sourceId,
+    categories: Array.isArray(raw.categories) ? raw.categories.filter((c): c is string => typeof c === 'string') : [],
+    copiedFiles,
+    aborted: raw.aborted === true,
+    hardlinks: raw.hardlinks === true,
+    lastSpeedBps: typeof raw.lastSpeedBps === 'number' && raw.lastSpeedBps > 0 ? raw.lastSpeedBps : undefined,
+  };
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseModpackIndex } from './modpacks';
+import { normalizeLoaderVersion, parseModpackIndex } from './modpacks';
 
 describe('parseModpackIndex', () => {
   it('parses fabric modpack with files', () => {
@@ -66,5 +66,21 @@ describe('parseModpackIndex', () => {
 
   it('throws on non-minecraft game', () => {
     expect(() => parseModpackIndex({ game: 'terraria', dependencies: { minecraft: '1' } })).toThrow();
+  });
+});
+
+describe('normalizeLoaderVersion', () => {
+  it('prefixes bare forge versions with the game version', () => {
+    expect(normalizeLoaderVersion('forge', '1.20.1', '47.2.0')).toBe('1.20.1-47.2.0');
+  });
+
+  it('keeps already prefixed forge versions unchanged', () => {
+    expect(normalizeLoaderVersion('forge', '1.20.1', '1.20.1-47.2.0')).toBe('1.20.1-47.2.0');
+  });
+
+  it('leaves other loaders untouched', () => {
+    expect(normalizeLoaderVersion('neoforge', '1.21', '21.1.65')).toBe('21.1.65');
+    expect(normalizeLoaderVersion('fabric', '1.20.1', '0.16.0')).toBe('0.16.0');
+    expect(normalizeLoaderVersion('quilt', '1.20.1', '0.25.0')).toBe('0.25.0');
   });
 });

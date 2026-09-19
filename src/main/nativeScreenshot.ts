@@ -96,12 +96,14 @@ export class NativeScreenshotService {
   private hotkey = 'F2';
   private getDir: () => string;
   private getWin: () => BrowserWindow | null;
+  private isGameRunning?: () => boolean;
   private busy = false;
   private psFile: string | null = null;
 
-  constructor(getDir: () => string, getWin: () => BrowserWindow | null) {
+  constructor(getDir: () => string, getWin: () => BrowserWindow | null, isGameRunning?: () => boolean) {
     this.getDir = getDir;
     this.getWin = getWin;
+    this.isGameRunning = isGameRunning;
   }
 
   private toAccelerator(key: string): string | null {
@@ -128,9 +130,10 @@ export class NativeScreenshotService {
 
   /** Resolve the Minecraft window client rect (physical px) via Win32 helper. */
   private resolveGameRect(): { x: number; y: number; w: number; h: number; title: string } | null {
-    // Win32-only helper. На Linux/macOS возвращаем null — capture() молча
-    // отдаёт null, UI не показывает уведомление. Linux-порт не использует
-    // собственный capturer Trel; пользователь делает скриншоты средствами ОС.
+    // Win32-only: точные границы клиентской области окна Minecraft через
+    // PowerShell + Win32 API. На Linux/macOS вернуть их надёжно нельзя
+    // (Wayland, нет xdotool/wmctrl), поэтому возвращаем null — capture()
+    // в этом случае снимает весь экран под курсором вместо кропа по окну.
     if (process.platform !== 'win32') return null;
     try {
       if (!this.psFile) {
@@ -154,21 +157,38 @@ export class NativeScreenshotService {
 
   /** Capture ONLY the Minecraft window's client area and save it as PNG. */
   async capture(): Promise<string | null> {
+    // Если игра не запущена через Trel — снимать нечего: не дёргаем захват
+    // экрана (на Linux это дорогой запрос к порталу скриншотов/доступу).
+    if (this.isGameRunning && !this.isGameRunning()) return null;
     if (this.busy) return null;
     this.busy = true;
     try {
       const rect = this.resolveGameRect();
-      // Не окно Minecraft — молча ничего не делаем (без уведомления).
-      if (!rect) return null;
 
-      // Find the display that contains the game window (convert to DIP first).
-      const scaleGuessPoint = { x: rect.x + 2, y: rect.y + 2 };
-      const display =
-        screen.getAllDisplays().find((d) => {
-          const b = d.bounds; const s = d.scaleFactor || 1;
-          const left = b.x * s, top = b.y * s, right = (b.x + b.width) * s, bottom = (b.y + b.height) * s;
-          return scaleGuessPoint.x >= left && scaleGuessPoint.x < right && scaleGuessPoint.y >= top && scaleGuessPoint.y < bottom;
-        }) || screen.getPrimaryDisplay();
+      // Windows без окна Minecraft — молча выходим (снимать нечего).
+      // На Linux/macOS rect всегда null — это нормально: снимаем весь экран,
+      // где сейчас курсор (как правило там и игра, раз пользователь играет).
+      if (process.platform === 'win32' && !rect) return null;
+
+      let display: Electron.Display;
+      if (rect) {
+        // Windows: дисплей, содержащий окно игры (rect в физических px).
+        const scaleGuessPoint = { x: rect.x + 2, y: rect.y + 2 };
+        display =
+          screen.getAllDisplays().find((d) => {
+            const b = d.bounds; const s = d.scaleFactor || 1;
+            const left = b.x * s, top = b.y * s, right = (b.x + b.width) * s, bottom = (b.y + b.height) * s;
+            return scaleGuessPoint.x >= left && scaleGuessPoint.x < right && scaleGuessPoint.y >= top && scaleGuessPoint.y < bottom;
+          }) || screen.getPrimaryDisplay();
+      } else {
+        // Linux/macOS: дисплей под курсором (DIP-координаты).
+        const cur = screen.getCursorScreenPoint();
+        display =
+          screen.getAllDisplays().find((d) => {
+            const b = d.bounds;
+            return cur.x >= b.x && cur.x < b.x + b.width && cur.y >= b.y && cur.y < b.y + b.height;
+          }) || screen.getPrimaryDisplay();
+      }
       const scale = display.scaleFactor || 1;
       const physW = Math.round(display.size.width * scale);
       const physH = Math.round(display.size.height * scale);
@@ -177,25 +197,26 @@ export class NativeScreenshotService {
       const src = sources.find((s) => String(s.display_id) === String(display.id)) || sources[0];
       if (!src) { this.busy = false; return null; }
       const img = src.thumbnail;
-      const tsize = img.getSize();
-      const ratioX = tsize.width / physW;
-      const ratioY = tsize.height / physH;
 
-      // Crop rect relative to this display's physical origin, scaled to thumbnail space.
-      const originX = display.bounds.x * scale;
-      const originY = display.bounds.y * scale;
-      let cx = Math.round((rect.x - originX) * ratioX);
-      let cy = Math.round((rect.y - originY) * ratioY);
-      let cw = Math.round(rect.w * ratioX);
-      let ch = Math.round(rect.h * ratioY);
-      // Clamp inside the captured image.
-      cx = Math.max(0, Math.min(cx, tsize.width - 1));
-      cy = Math.max(0, Math.min(cy, tsize.height - 1));
-      cw = Math.max(1, Math.min(cw, tsize.width - cx));
-      ch = Math.max(1, Math.min(ch, tsize.height - cy));
-
-      const cropped = img.crop({ x: cx, y: cy, width: cw, height: ch });
-      const png = cropped.toPNG();
+      // Windows: кроп до клиентской области окна игры. Linux/macOS: весь экран.
+      let out = img;
+      if (rect) {
+        const tsize = img.getSize();
+        const ratioX = tsize.width / physW;
+        const ratioY = tsize.height / physH;
+        const originX = display.bounds.x * scale;
+        const originY = display.bounds.y * scale;
+        let cx = Math.round((rect.x - originX) * ratioX);
+        let cy = Math.round((rect.y - originY) * ratioY);
+        let cw = Math.round(rect.w * ratioX);
+        let ch = Math.round(rect.h * ratioY);
+        cx = Math.max(0, Math.min(cx, tsize.width - 1));
+        cy = Math.max(0, Math.min(cy, tsize.height - 1));
+        cw = Math.max(1, Math.min(cw, tsize.width - cx));
+        ch = Math.max(1, Math.min(ch, tsize.height - cy));
+        out = img.crop({ x: cx, y: cy, width: cw, height: ch });
+      }
+      const png = out.toPNG();
 
       const dir = path.join(this.getDir(), 'screenshots');
       fs.mkdirSync(dir, { recursive: true });

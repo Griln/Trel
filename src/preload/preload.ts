@@ -79,6 +79,7 @@ export interface UpdaterState {
 
   error?: string;
   isPortableHint?: boolean;
+  downloadedPath?: string;
 }
 
 export type LoaderType = 'fabric' | 'quilt' | 'neoforge' | 'forge';
@@ -134,6 +135,8 @@ export interface CrashFixAction {
   type: 'increase-memory' | 'switch-java' | 'open-folder' | 'open-mods' | 'copy-report' | 'update-gpu-driver' | 'none';
   label: string;
   hint?: string | number;
+  /** Ссылка для действий типа update-gpu-driver (только allowlist-хосты). */
+  url?: string;
 }
 
 export interface CrashDiagnosis {
@@ -258,23 +261,58 @@ const api = {
 
   importer: {
     detect: (): Promise<any[]> => ipcRenderer.invoke('import:detect'),
-    perform: (plan: { sourceId: string; sourceRootDir?: string; categories: string[]; deduplicate?: boolean }): Promise<any> =>
+    perform: (plan: { sourceId: string; sourceRootDir?: string; categories: string[]; deduplicate?: boolean; useHardlinks?: boolean; skipSecrets?: boolean; moveSource?: boolean; archiveWorlds?: boolean; cleanupDir?: string }): Promise<any> =>
       ipcRenderer.invoke('import:perform', plan),
-    detectCache: (sourceDir: string): Promise<any> =>
-      ipcRenderer.invoke('import:detectCache', sourceDir),
-    performCache: (plan: { sourceDir: string; categories: string[] }): Promise<any> =>
-      ipcRenderer.invoke('import:performCache', plan),
+    /** Очередь: несколько источников подряд (макс. 5), отмена стопает остаток. */
+    performMany: (plans: Array<{ sourceId: string; sourceRootDir?: string; categories: string[]; deduplicate?: boolean; useHardlinks?: boolean; skipSecrets?: boolean; moveSource?: boolean; archiveWorlds?: boolean }>): Promise<any> =>
+      ipcRenderer.invoke('import:performMany', plans),
+    /** Предпросмотр плана: файлы/байты по категориям, хватит ли места. */
+    preview: (plan: { sourceId: string; sourceRootDir?: string; categories: string[]; deduplicate?: boolean; useHardlinks?: boolean }): Promise<any> =>
+      ipcRenderer.invoke('import:preview', plan),
+    /** Прерывает текущий импорт. Уже скопированные файлы остаются на месте. */
+    cancel: (): Promise<void> => ipcRenderer.invoke('import:cancel'),
+    /** Пауза/продолжение: замирает между файлами, файл не рвётся. */
+    pause: (): Promise<void> => ipcRenderer.invoke('import:pause'),
+    resume: (): Promise<void> => ipcRenderer.invoke('import:resume'),
+    /** Откат последнего импорта по журналу (удаляет созданное). */
+    rollback: (): Promise<number> => ipcRenderer.invoke('import:rollback'),
+    /** Открыть папку игры в файловом менеджере. */
+    openGameDir: (): Promise<void> => ipcRenderer.invoke('import:openGameDir'),
+    /** Применить память/JVM-аргументы источника к настройкам Trel. */
+    applyTweaks: (tweaks: { maxMemoryMb?: number; jvmArgs?: string }): Promise<any> =>
+      ipcRenderer.invoke('import:applyTweaks', tweaks),
+    /** Проверить токен аккаунта (нужен ли повторный вход). */
+    checkAccount: (name: string): Promise<{ ok: boolean; reason?: string }> =>
+      ipcRenderer.invoke('import:checkAccount', name),
+    /** Импорт модпака из .zip/.mrpack: распаковка + detect. */
+    fromArchive: (archivePath: string): Promise<any> =>
+      ipcRenderer.invoke('import:fromArchive', archivePath),
+    /** Диалог выбора архива модпака (.zip/.mrpack) или null. */
+    pickArchive: (): Promise<string | null> => ipcRenderer.invoke('import:pickArchive'),
+    /** Отчёт о последнем импорте в текущую папку игры (или null). */
+    lastReport: (): Promise<any | null> => ipcRenderer.invoke('import:lastReport'),
     detectFromDir: (dir: string): Promise<any> =>
       ipcRenderer.invoke('import:detectFromDir', dir),
-    onProgress: (cb: (p: { current: number; total: number; stage: string }) => void) => {
-      const listener = (_: unknown, p: { current: number; total: number; stage: string }) => cb(p);
+    /** Пауза/продолжение всех скачиваний (очередь держит стримы). */
+    downloadsPause: (): Promise<void> => ipcRenderer.invoke('tools:downloadsPause'),
+    downloadsResume: (): Promise<void> => ipcRenderer.invoke('tools:downloadsResume'),
+    downloadsStatus: (): Promise<{ active: number; queued: number; paused: boolean }> =>
+      ipcRenderer.invoke('tools:downloadsStatus'),
+    /** Портативный ли запуск (данные рядом с бинарём). */
+    portable: (): Promise<boolean> => ipcRenderer.invoke('app:portable'),
+    /** Проверка прокси: GET манифеста Mojang через него. */
+    proxyTest: (proxyUrl: string): Promise<{ ok: boolean; latencyMs?: number; error?: string }> =>
+      ipcRenderer.invoke('tools:proxyTest', proxyUrl),
+    /** Карта диска папки игры: кто сколько съел + свободно. */
+    diskUsage: (): Promise<{ entries: Array<{ name: string; bytes: number; files: number }>; total: number; freeBytes: number | null }> =>
+      ipcRenderer.invoke('tools:diskUsage'),
+    /** Безопасная чистка: 'logs' (логи+краши) или 'tmp' (.trel_tmp хвосты). */
+    clean: (target: 'logs' | 'tmp'): Promise<{ removedFiles: number; freedBytes: number }> =>
+      ipcRenderer.invoke('tools:clean', target),
+    onProgress: (cb: (p: { current: number; total: number; stage: string; bytes?: number; bytesPerSecond?: number; etaSeconds?: number; currentFile?: string; paused?: boolean; queueSource?: string }) => void) => {
+      const listener = (_: unknown, p: { current: number; total: number; stage: string; bytes?: number; bytesPerSecond?: number; etaSeconds?: number; currentFile?: string; paused?: boolean; queueSource?: string }) => cb(p);
       ipcRenderer.on('import:progress', listener);
       return () => ipcRenderer.removeListener('import:progress', listener);
-    },
-    onCacheProgress: (cb: (p: { current: number; total: number; stage: string }) => void) => {
-      const listener = (_: unknown, p: { current: number; total: number; stage: string }) => cb(p);
-      ipcRenderer.on('import:cacheProgress', listener);
-      return () => ipcRenderer.removeListener('import:cacheProgress', listener);
     },
   },
   reset: {
@@ -315,6 +353,9 @@ const api = {
     search: (query: string): Promise<ModpackSummary[]> => ipcRenderer.invoke('modpacks:search', query),
     versions: (projectId: string): Promise<ModpackVersion[]> => ipcRenderer.invoke('modpacks:versions', projectId),
     install: (version: ModpackVersion): Promise<ModpackInstallResult> => ipcRenderer.invoke('modpacks:install', version),
+    /** Ставит версию по профилю, распознанному из импортируемой сборки (mc + loader). */
+    installFromProfile: (profile: { mc: string; loader: string; loaderVersion?: string; name?: string }): Promise<ModpackInstallResult> =>
+      ipcRenderer.invoke('modpacks:installFromProfile', profile),
     onProgress: (cb: (p: ModpackProgress) => void) => {
       const listener = (_: unknown, p: ModpackProgress) => cb(p);
       ipcRenderer.on('modpacks:progress', listener);
@@ -323,6 +364,26 @@ const api = {
   },
 
 
+  snapshots: {
+    create: (versionId: string, label?: string): Promise<{ file: string; versionId: string; label: string; at: number; size: number }> =>
+      ipcRenderer.invoke('snapshots:create', versionId, label),
+    list: (versionId?: string): Promise<Array<{ file: string; versionId: string; label: string; at: number; size: number }>> =>
+      ipcRenderer.invoke('snapshots:list', versionId),
+    restore: (file: string): Promise<string> => ipcRenderer.invoke('snapshots:restore', file),
+    remove: (file: string): Promise<boolean> => ipcRenderer.invoke('snapshots:remove', file),
+    exportDialog: (versionId: string): Promise<{ file: string; size: number } | null> =>
+      ipcRenderer.invoke('packs:exportDialog', versionId),
+    importPack: (archivePath: string, targetId: string): Promise<{ versionId: string; copied: number }> =>
+      ipcRenderer.invoke('packs:import', archivePath, targetId),
+  },
+  webdav: {
+    status: (): Promise<{ configured: boolean; url?: string; login?: string; lastSyncAt?: number; lastDirection?: string }> =>
+      ipcRenderer.invoke('webdav:status'),
+    configure: (url: string, login: string, password: string): Promise<void> =>
+      ipcRenderer.invoke('webdav:configure', url, login, password),
+    push: (): Promise<{ file: string; size: number }> => ipcRenderer.invoke('webdav:push'),
+    pull: (): Promise<{ file: string; worlds: number }> => ipcRenderer.invoke('webdav:pull'),
+  },
   screenshots: {
     list: (): Promise<Shot[]> => ipcRenderer.invoke('screenshots:list'),
     read: (path: string): Promise<string> => ipcRenderer.invoke('screenshots:read', path),
@@ -349,6 +410,8 @@ const api = {
   },
 
   tools: {
+    /** Открыть https-ссылку в браузере (только allowlist-хосты). */
+    openUrl: (url: string): Promise<void> => ipcRenderer.invoke('tools:openUrl', url),
     diagnostics: (): Promise<{ generatedAt: string; checks: Array<{ id: string; label: string; ok: boolean; level: 'ok' | 'warn' | 'error'; details: string; action?: string }> }> =>
       ipcRenderer.invoke('tools:diagnostics'),
     integrityCheck: (versionId: string): Promise<{ ok: boolean; issues: string[]; repaired: string[]; edition?: 'java' | 'bedrock' }> =>
@@ -382,6 +445,21 @@ const api = {
       ipcRenderer.invoke('content:add', kind, versionId, edition),
     installToBedrock: (kind: ContentKind, name: string, versionId?: string, serial?: string): Promise<{ target: string; serial: string; output: string }> =>
       ipcRenderer.invoke('content:installToBedrock', kind, name, versionId, serial),
+    /** Проверка обновлений модов через Modrinth (только java/моды). */
+    checkModUpdates: (versionId: string, gameVersion: string, loaders: string[]): Promise<Array<{ file: string; name: string; current?: string; latest?: string; url?: string; filename?: string }>> =>
+      ipcRenderer.invoke('content:checkModUpdates', versionId, gameVersion, loaders),
+    /** Профили модов: наборы включённых jar. */
+    modProfiles: (versionId: string): Promise<Record<string, string[]>> =>
+      ipcRenderer.invoke('content:modProfiles', versionId),
+    modProfileSave: (versionId: string, name: string): Promise<string[]> =>
+      ipcRenderer.invoke('content:modProfileSave', versionId, name),
+    modProfileDelete: (versionId: string, name: string): Promise<boolean> =>
+      ipcRenderer.invoke('content:modProfileDelete', versionId, name),
+    modProfileApply: (versionId: string, name: string): Promise<{ enabled: number; disabled: number }> =>
+      ipcRenderer.invoke('content:modProfileApply', versionId, name),
+    /** Скачать и поставить обновление мода (старый jar — в .bak). */
+    updateMod: (versionId: string, fileName: string, url: string): Promise<{ file: string; backup: string }> =>
+      ipcRenderer.invoke('content:updateMod', versionId, fileName, url),
 
   },
 
@@ -531,6 +609,12 @@ const api = {
   },
   servers: {
     list: (): Promise<ServerInstance[]> => ipcRenderer.invoke('servers:list'),
+    /** Сохранённые удалённые серверы из servers.dat + живой пинг. */
+    saved: (): Promise<SavedServerEntry[]> => ipcRenderer.invoke('servers:saved'),
+    ping: (ip: string): Promise<PingResultEntry> => ipcRenderer.invoke('servers:ping', ip),
+    /** Опубликовать одиночный мир как сервер. Возвращает сервер + адреса для друзей. */
+    publishWorld: (worldName: string, versionId: string): Promise<{ instance: ServerInstance; addresses: Array<{ label: string; host: string; port: number }> }> =>
+      ipcRenderer.invoke('servers:publishWorld', worldName, versionId),
     statuses: (): Promise<Record<string, ServerStatus>> => ipcRenderer.invoke('servers:statuses'),
     logBuffer: (id: string): Promise<string[]> => ipcRenderer.invoke('servers:logBuffer', id),
     create: (input: { name: string; versionId: string; memoryMb: number; properties?: Partial<ServerProperties> }): Promise<ServerInstance> =>

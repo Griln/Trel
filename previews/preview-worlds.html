@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trel — Миры · превью</title>
+<link rel="stylesheet" href="trel-design.css">
+<style>
+  .w-layout{display:grid;grid-template-columns:1fr 320px;gap:20px;align-items:start}
+  @media(max-width:860px){.w-layout{grid-template-columns:1fr}}
+
+  .w-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:13px}
+  .wcard{display:flex;align-items:center;gap:14px;padding:16px;border-radius:15px;background:var(--surface-2);
+    border:1px solid var(--border);cursor:pointer;text-align:left;position:relative;overflow:hidden;
+    transition:transform .22s var(--ease),border-color .22s,background .22s,box-shadow .22s;animation:cardIn .5s var(--ease) backwards}
+  .wcard:nth-child(1){animation-delay:.05s}.wcard:nth-child(2){animation-delay:.11s}.wcard:nth-child(3){animation-delay:.17s}
+  .wcard:nth-child(4){animation-delay:.23s}.wcard:nth-child(5){animation-delay:.29s}.wcard:nth-child(6){animation-delay:.35s}
+  .wcard:hover{transform:translateY(-4px);border-color:var(--border-bright);background:var(--surface-3);
+    box-shadow:0 13px 32px -14px rgba(0,0,0,.8)}
+  .wcard.sel{border-color:#fff;box-shadow:0 0 0 1px #fff}
+  .wcard .block{width:48px;height:48px}
+  .wcard:hover .block{transform:rotate(-7deg) scale(1.08)}
+  .wmeta{min-width:0;flex:1}
+  .wname{font-weight:800;font-size:14.5px;color:var(--fg-bright);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .wsub{font-family:var(--mono);font-size:10.5px;color:var(--fg-subtle);margin-top:4px;display:flex;gap:7px;align-items:center}
+  .wtag{position:absolute;top:9px;right:10px}
+
+  /* панель деталей */
+  .detail{position:sticky;top:70px;border-radius:18px;border:1px solid var(--border);overflow:hidden;
+    background:var(--surface-2);animation:cardIn .55s var(--ease) .1s backwards}
+  .detail-hero{position:relative;height:130px;display:grid;place-items:center;overflow:hidden;
+    background:radial-gradient(320px 160px at 50% 0%, rgba(94,203,111,.14), transparent 70%),var(--surface-3)}
+  .detail-hero .block{width:64px;height:64px;border-radius:11px}
+  .detail-hero .grain{opacity:.07}
+  .detail-body{padding:18px}
+  .detail-body h3{font-family:var(--display);font-weight:700;font-size:17px;color:var(--fg-bright);letter-spacing:-.3px}
+  .d-rows{margin:13px 0 15px;display:flex;flex-direction:column;gap:8px}
+  .d-row{display:flex;justify-content:space-between;gap:10px;font-size:12.5px}
+  .d-row span{color:var(--fg-subtle)}
+  .d-row b{color:var(--fg);font-family:var(--mono);font-weight:600;font-size:12px}
+  .d-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .d-actions .btn{justify-content:center;font-size:12.5px;padding:10px 12px}
+
+  .bk-list{margin-top:14px;border-top:1px solid var(--border);padding-top:13px}
+  .bk-list h5{font-family:var(--mono);font-size:10.5px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;
+    color:var(--fg-subtle);margin-bottom:9px}
+  .bk-row{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:9px;background:var(--surface-3);
+    border:1px solid var(--border);margin-bottom:7px;font-size:12px;transition:.15s}
+  .bk-row:hover{border-color:var(--border-bright)}
+  .bk-row .bt{flex:1;color:var(--fg-muted);font-family:var(--mono);font-size:11px}
+  .bk-row button{font-size:11px;font-weight:700;color:var(--cyan);background:none;border:none;cursor:pointer;font-family:var(--body)}
+  .bk-row button:hover{text-decoration:underline}
+</style>
+</head>
+<body>
+
+<div class="preview-bar">
+  <span class="tag-prev">ПРЕВЬЮ · МИРЫ</span>
+  <button class="on" data-t="main">① список + детали</button>
+  <button data-t="empty">② пусто</button>
+</div>
+
+<div class="page-frame">
+
+  <section class="pane show" id="main">
+    <div class="page-head">
+      <span class="eyebrow">Сохранения</span>
+      <div class="page-head-row">
+        <div>
+          <h1 class="page-title">Миры</h1>
+          <p class="page-sub">Каталог ваших сохранений · 6 миров · 2,4 ГБ на диске</p>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn ghost sm">⟳ Обновить</button>
+          <button class="btn ghost sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.7-.9L9.6 3.9A2 2 0 0 0 7.9 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>Папка saves</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="search-wrap" style="max-width:380px;margin-bottom:20px">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+      <input class="input" placeholder="Поиск мира">
+    </div>
+
+    <div class="w-layout">
+      <div class="w-grid">
+        <div class="wcard sel">
+          <span class="block grass"></span>
+          <span class="wmeta"><span class="wname">Мой первый мир</span>
+          <span class="wsub"><span class="sdot ok"></span>выживание · 812 МБ · 2 дня назад</span></span>
+          <span class="wtag chip green">выживание</span>
+        </div>
+        <div class="wcard">
+          <span class="block diamond"></span>
+          <span class="wmeta"><span class="wname">Шахта №9</span>
+          <span class="wsub">выживание · 340 МБ · вчера</span></span>
+          <span class="wtag chip green">выживание</span>
+        </div>
+        <div class="wcard">
+          <span class="block nether"></span>
+          <span class="wmeta"><span class="wname">Нижний мир</span>
+          <span class="wsub">выживание · 156 МБ · неделю назад</span></span>
+          <span class="wtag chip green">выживание</span>
+        </div>
+        <div class="wcard">
+          <span class="block end"></span>
+          <span class="wmeta"><span class="wname">Крепость Края</span>
+          <span class="wsub">творческий · 98 МБ · 3 дня назад</span></span>
+          <span class="wtag chip amber">творческий</span>
+        </div>
+        <div class="wcard">
+          <span class="block obsidian"></span>
+          <span class="wmeta"><span class="wname">Хардкор 2025</span>
+          <span class="wsub">хардкор · 402 МБ · месяц назад</span></span>
+          <span class="wtag chip red">хардкор</span>
+        </div>
+        <div class="wcard">
+          <span class="block gold"></span>
+          <span class="wmeta"><span class="wname">Старый мир (2013)</span>
+          <span class="wsub">выживание · 24 МБ · level.dat без папки</span></span>
+          <span class="wtag chip green">выживание</span>
+        </div>
+      </div>
+
+      <div class="detail">
+        <div class="detail-hero"><span class="block grass"></span><div class="grain"></div></div>
+        <div class="detail-body">
+          <h3>Мой первый мир</h3>
+          <div class="d-rows">
+            <div class="d-row"><span>Режим</span><b>выживание</b></div>
+            <div class="d-row"><span>Версия</span><b>1.20.1</b></div>
+            <div class="d-row"><span>Размер</span><b>812,4 МБ</b></div>
+            <div class="d-row"><span>Изменён</span><b>26 июл, 21:14</b></div>
+            <div class="d-row"><span>Сид</span><b>-4530634…</b></div>
+          </div>
+          <div class="d-actions">
+            <button class="btn ghost sm">🌐 На сервер</button>
+            <button class="btn ghost sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 8v13H3V8M1 3h22v5H1zM10 12h4"/></svg>Создать .zip бэкап</button>
+            <button class="btn danger sm" style="grid-column:1/-1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>Удалить мир</button>
+          </div>
+          <div class="bk-list">
+            <h5>Бэкапы · 2</h5>
+            <div class="bk-row"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--cyan)" stroke-width="2"><path d="M21 8v13H3V8M1 3h22v5H1z"/></svg><span class="bt">25 июл, 19:02 · 801 МБ</span><button>Восстановить</button></div>
+            <div class="bk-row"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--cyan)" stroke-width="2"><path d="M21 8v13H3V8M1 3h22v5H1z"/></svg><span class="bt">18 июл, 14:40 · 794 МБ</span><button>Восстановить</button></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="note">* удаление переспрашивает: «только мир» или «мир + все бэкапы». Восстановление отодвигает текущий мир в .bak, ничего не теряя.</p>
+  </section>
+
+  <section class="pane" id="empty">
+    <div class="page-head">
+      <span class="eyebrow">Сохранения</span>
+      <h1 class="page-title">Миры <span class="count">0</span></h1>
+    </div>
+    <div class="empty">
+      <span class="big">⛏</span>
+      <b>Миров пока нет</b>
+      Нет ни одного мира. Создайте новый в Minecraft — он появится здесь.
+    </div>
+  </section>
+
+</div>
+<script src="trel-preview.js"></script>
+<script>
+  document.querySelectorAll('.wcard').forEach(c=>c.addEventListener('click',()=>{
+    document.querySelectorAll('.wcard').forEach(x=>x.classList.toggle('sel',x===c));
+  }));
+</script>
+</body>
+</html>

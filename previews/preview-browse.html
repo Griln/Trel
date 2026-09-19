@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trel — Каталог · превью</title>
+<link rel="stylesheet" href="trel-design.css">
+<style>
+  /* ===== переключатель издания ===== */
+  .edition-switch{display:inline-flex;gap:4px;padding:5px;background:var(--surface);border:1px solid var(--border);
+    border-radius:13px;margin-bottom:22px}
+  .ed-btn{display:inline-flex;align-items:center;gap:9px;font-family:var(--mono);font-size:12px;font-weight:600;
+    padding:9px 18px;border-radius:9px;border:none;background:transparent;color:var(--fg-muted);cursor:pointer;transition:.18s}
+  .ed-btn svg{width:15px;height:15px}
+  .ed-btn:hover{color:var(--fg)}
+  .ed-btn.on{background:#fff;color:#0a0a0a;font-weight:700}
+
+  /* ===== панель фильтров ===== */
+  .toolbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:20px}
+  .toolbar .search-wrap{flex:1;min-width:220px}
+  .ftype{font-family:var(--mono);font-size:11.5px;font-weight:600;padding:8px 14px;border-radius:9px;cursor:pointer;
+    border:1px solid var(--border);background:var(--surface-2);color:var(--fg-muted);transition:.18s;
+    display:inline-flex;align-items:center;gap:7px}
+  .ftype .cnt{font-size:10px;color:var(--fg-subtle)}
+  .ftype:hover{border-color:var(--border-bright);color:var(--fg)}
+  .ftype.on{border-color:var(--accent);color:var(--accent-fg);background:var(--accent);font-weight:700}
+  .ftype.on .cnt{color:var(--accent-fg);opacity:.7}
+
+  /* ===== TrelEmu бар (Bedrock) ===== */
+  .emu-bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:15px 18px;border-radius:14px;
+    border:1px solid rgba(74,237,217,.22);background:linear-gradient(120deg,rgba(74,237,217,.06),rgba(74,237,217,.02));
+    margin-bottom:20px;animation:cardIn .5s var(--ease) backwards}
+  .emu-bar .emu-ico{width:36px;height:36px;border-radius:9px;display:grid;place-items:center;flex-shrink:0;
+    background:rgba(74,237,217,.12);border:1px solid rgba(74,237,217,.3);color:var(--cyan)}
+  .emu-bar .emu-ico svg{width:18px;height:18px}
+  .emu-bar .emu-txt{flex:1;min-width:180px}
+  .emu-bar .emu-txt b{font-size:13.5px;color:var(--fg-bright);display:block}
+  .emu-bar .emu-txt span{font-family:var(--mono);font-size:11px;color:var(--fg-subtle)}
+  .emu-bar .progress{flex:1;min-width:140px}
+
+  /* ===== список версий ===== */
+  .vlist{display:flex;flex-direction:column;gap:10px}
+  .vrow{display:flex;align-items:center;gap:16px;padding:16px 18px;border-radius:14px;background:var(--surface-2);
+    border:1px solid var(--border);cursor:pointer;transition:transform .22s var(--ease),border-color .22s,background .22s,box-shadow .22s;
+    animation:cardIn .5s var(--ease) backwards;position:relative;overflow:hidden}
+  .vrow::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--green);opacity:0;transition:.22s}
+  .vrow.snapshot::before{background:var(--amber)}
+  .vrow.bedrock::before{background:var(--cyan)}
+  .vrow:hover{transform:translateX(5px);border-color:var(--border-bright);background:var(--surface-3);box-shadow:0 10px 28px -14px rgba(0,0,0,.8)}
+  .vrow:hover::before{opacity:1}
+  .vrow:nth-child(1){animation-delay:.05s}.vrow:nth-child(2){animation-delay:.1s}.vrow:nth-child(3){animation-delay:.15s}
+  .vrow:nth-child(4){animation-delay:.2s}.vrow:nth-child(5){animation-delay:.25s}.vrow:nth-child(6){animation-delay:.3s}
+  .vrow:nth-child(7){animation-delay:.35s}.vrow:nth-child(8){animation-delay:.4s}
+  .v-id{font-family:var(--display);font-weight:700;font-size:19px;color:var(--fg-bright);letter-spacing:-.4px;
+    min-width:96px;flex-shrink:0}
+  .v-body{flex:1;min-width:0}
+  .v-name{font-weight:700;font-size:14px;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .v-desc{font-size:12.5px;color:var(--fg-muted);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .v-tags{display:flex;align-items:center;gap:7px;flex-shrink:0;flex-wrap:wrap}
+  .v-date{font-family:var(--mono);font-size:11px;color:var(--fg-subtle);flex-shrink:0;min-width:82px;text-align:right}
+  .vrow .btn{flex-shrink:0}
+  .vrow.installed .btn.primary{background:var(--surface-3);color:var(--green);box-shadow:none;border:1px solid rgba(94,203,111,.3)}
+  .vrow.installed .btn.primary:hover{background:rgba(94,203,111,.12)}
+
+  /* загрузка в строке */
+  .vrow.downloading .v-actions{display:none}
+  .v-dl{display:none;align-items:center;gap:12px;flex:0 0 240px}
+  .vrow.downloading .v-dl{display:flex}
+  .v-dl .pct{font-family:var(--mono);font-size:11px;color:var(--fg-muted);min-width:74px;text-align:right}
+
+  /* лоадеры */
+  .loaders{display:flex;gap:7px;flex-shrink:0}
+  .ldr{font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.5px;padding:5px 10px;border-radius:6px;
+    cursor:pointer;border:1px solid var(--border-strong);background:var(--surface-3);color:var(--fg-muted);transition:.15s}
+  .ldr:hover{color:#fff;border-color:var(--border-bright);transform:translateY(-2px)}
+  .ldr.fabric:hover{color:#dcd8c9;border-color:#dcd8c9}
+  .ldr.forge:hover{color:#5ecb6f;border-color:#5ecb6f}
+  .ldr.quilt:hover{color:#9b7ad4;border-color:#9b7ad4}
+  .ldr.neoforge:hover{color:#f5a83c;border-color:#f5a83c}
+
+  .vcount{font-family:var(--mono);font-size:12px;color:var(--fg-subtle);margin-bottom:14px}
+  .vcount b{color:var(--fg)}
+</style>
+</head>
+<body>
+
+<div class="preview-bar">
+  <span class="tag-prev">ПРЕВЬЮ · КАТАЛОГ</span>
+  <button class="on" data-t="java">① Java</button>
+  <button data-t="bedrock">② Bedrock + TrelEmu</button>
+  <button data-t="loading">③ скачивание</button>
+</div>
+
+<div class="page-frame">
+
+  <!-- ① JAVA -->
+  <section class="pane show" id="java">
+    <div class="page-head">
+      <span class="eyebrow">Каталог</span>
+      <div class="page-head-row">
+        <div>
+          <h1 class="page-title">Каталог версий <span class="count">911</span></h1>
+          <p class="page-sub">Найдите и установите любую версию Minecraft</p>
+        </div>
+        <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+          <span class="chip">911 доступно</span>
+          <span class="chip">0 установлено</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="toolbar">
+      <button class="ftype on">Java</button>
+      <div class="search-wrap">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <input class="input" placeholder="Поиск версий">
+      </div>
+      <button class="ftype on">Релизы <span class="cnt">102</span></button>
+      <button class="ftype">Снапшоты <span class="cnt">747</span></button>
+      <button class="ftype">Beta <span class="cnt">26</span></button>
+      <button class="ftype">Alpha <span class="cnt">36</span></button>
+      <button class="ftype">Все <span class="cnt">911</span></button>
+    </div>
+
+    <div class="vcount">Показано <b>8</b> из <b>168</b> релизов · новые версии подтягиваются автоматически</div>
+
+    <div class="vlist">
+      <div class="vrow">
+        <div class="v-id">1.21.4</div>
+        <div class="v-body">
+          <div class="v-name">The Garden Awakens</div>
+        </div>
+        <div class="v-tags"><span class="chip green">релиз</span></div>
+        <div class="loaders"><span class="ldr fabric">FABRIC</span><span class="ldr neoforge">NEOFORGE</span></div>
+        <div class="v-date">03 дек 2024</div>
+        <div class="v-actions"><button class="btn primary sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 21h16"/></svg>Установить</button></div>
+        <div class="v-dl"><div class="progress" style="flex:1"><i style="width:62%"></i></div><span class="pct">62% · 18 МБ</span></div>
+      </div>
+      <div class="vrow installed">
+        <div class="v-id">1.20.1</div>
+        <div class="v-body">
+          <div class="v-name">Trails &amp; Tales</div>
+        </div>
+        <div class="v-tags"><span class="chip green">релиз</span><span class="chip solid">✓ установлена</span></div>
+        <div class="loaders"><span class="ldr fabric">FABRIC</span><span class="ldr forge">FORGE</span></div>
+        <div class="v-date">07 июн 2023</div>
+        <div class="v-actions"><button class="btn primary sm"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>Играть</button></div>
+        <div class="v-dl"></div>
+      </div>
+      <div class="vrow snapshot">
+        <div class="v-id">25w07a</div>
+        <div class="v-body">
+          <div class="v-name">Свежий снапшот</div>
+        </div>
+        <div class="v-tags"><span class="chip amber">снапшот</span></div>
+        <div class="loaders"></div>
+        <div class="v-date">12 фев 2025</div>
+        <div class="v-actions"><button class="btn primary sm">Установить</button></div>
+        <div class="v-dl"></div>
+      </div>
+      <div class="vrow">
+        <div class="v-id">1.16.5</div>
+        <div class="v-body">
+          <div class="v-name">Nether Update</div>
+        </div>
+        <div class="v-tags"><span class="chip green">релиз</span></div>
+        <div class="loaders"><span class="ldr fabric">FABRIC</span><span class="ldr forge">FORGE</span><span class="ldr quilt">QUILT</span></div>
+        <div class="v-date">15 янв 2021</div>
+        <div class="v-actions"><button class="btn primary sm">Установить</button></div>
+        <div class="v-dl"></div>
+      </div>
+      <div class="vrow snapshot">
+        <div class="v-id">b1.7.3</div>
+        <div class="v-body">
+          <div class="v-name">Легендарная бета</div>
+        </div>
+        <div class="v-tags"><span class="chip purple">бета</span></div>
+        <div class="loaders"></div>
+        <div class="v-date">08 июл 2011</div>
+        <div class="v-actions"><button class="btn primary sm">Установить</button></div>
+        <div class="v-dl"></div>
+      </div>
+      <div class="vrow">
+        <div class="v-id">1.12.2</div>
+        <div class="v-body">
+          <div class="v-name">World of Color</div>
+        </div>
+        <div class="v-tags"><span class="chip green">релиз</span></div>
+        <div class="loaders"><span class="ldr forge">FORGE</span></div>
+        <div class="v-date">18 сен 2017</div>
+        <div class="v-actions"><button class="btn primary sm">Установить</button></div>
+        <div class="v-dl"></div>
+      </div>
+    </div>
+    <p class="note">* FABRIC / FORGE / QUILT / NEOFORGE — это мод-лоадеры: программы, поверх которых устанавливаются моды. Бейдж показывает, какие лоадеры доступны для версии; клик — поставить лоадер. «✓ установлена» — версия уже скачана, кнопка сразу запускает игру.</p>
+  </section>
+
+  <!-- ② BEDROCK -->
+  <section class="pane" id="bedrock">
+    <div class="page-head">
+      <span class="eyebrow">Каталог</span>
+      <h1 class="page-title">Bedrock <span class="count">9</span></h1>
+      <p class="page-sub">Мобильная версия Minecraft. Работает через эмулятор TrelEmu — скачивается отдельно, один раз.</p>
+    </div>
+
+    <div class="emu-bar">
+      <div class="emu-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 12h4m-2-2v4m8-3h.01M18 13h.01"/></svg></div>
+      <div class="emu-txt">
+        <b>TrelEmu готов к запуску</b>
+        <span>Android-x86 · WHPX · ADB :5555 · скачан в %APPDATA%</span>
+      </div>
+      <span class="chip cyan"><span class="dot"></span>запущен</span>
+      <button class="btn ghost sm"><svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>Остановить</button>
+    </div>
+
+    <div class="vlist">
+      <div class="vrow bedrock">
+        <div class="v-id">1.26</div>
+        <div class="v-body">
+          <div class="v-name">Ветка 2026</div>
+        </div>
+        <div class="v-tags"><span class="chip cyan">bedrock</span></div>
+        <div class="v-date">2026</div>
+        <div class="v-actions"><button class="btn primary sm">Установить</button></div>
+        <div class="v-dl"></div>
+      </div>
+      <div class="vrow bedrock installed">
+        <div class="v-id">1.15</div>
+        <div class="v-body">
+          <div class="v-name">Buzzy Bees</div>
+        </div>
+        <div class="v-tags"><span class="chip cyan">bedrock</span><span class="chip solid">✓ установлена</span></div>
+        <div class="v-date">дек 2019</div>
+        <div class="v-actions"><button class="btn primary sm"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>Играть</button></div>
+        <div class="v-dl"></div>
+      </div>
+      <div class="vrow bedrock">
+        <div class="v-id">26.30</div>
+        <div class="v-body">
+          <div class="v-name">Тестовый патч</div>
+        </div>
+        <div class="v-tags"><span class="chip cyan">bedrock</span><span class="chip amber">тестовая</span></div>
+        <div class="v-date">2026</div>
+        <div class="v-actions"><button class="btn primary sm">Установить</button></div>
+        <div class="v-dl"></div>
+      </div>
+    </div>
+    <p class="note">* APK ставится в Android внутри TrelEmu через ADB. Если эмулятор не скачан — вместо списка появится кнопка «Скачать TrelEmu» (~2 ГБ, один раз).</p>
+  </section>
+
+  <!-- ③ СКАЧИВАНИЕ -->
+  <section class="pane" id="loading">
+    <div class="page-head">
+      <span class="eyebrow">Каталог</span>
+      <h1 class="page-title">Все версии <span class="count">784</span></h1>
+      <p class="page-sub">Состояние во время скачивания версии — прогресс живёт прямо в строке.</p>
+    </div>
+
+    <div class="vlist">
+      <div class="vrow downloading">
+        <div class="v-id">1.21.4</div>
+        <div class="v-body">
+          <div class="v-name">The Garden Awakens</div>
+        </div>
+        <div class="v-tags"><span class="chip green">релиз</span></div>
+        <div class="v-date">03 дек 2024</div>
+        <div class="v-actions"><button class="btn primary sm">Установить</button></div>
+        <div class="v-dl"><div class="progress" style="flex:1"><i style="width:62%"></i></div><span class="pct">62% · 8,4 МБ/с</span></div>
+      </div>
+      <div class="vrow downloading">
+        <div class="v-id">1.20.1</div>
+        <div class="v-body">
+          <div class="v-name">Trails &amp; Tales</div>
+        </div>
+        <div class="v-tags"><span class="chip green">релиз</span></div>
+        <div class="v-date">07 июн 2023</div>
+        <div class="v-actions"><button class="btn primary sm">Установить</button></div>
+        <div class="v-dl"><div class="progress" style="flex:1"><i style="width:30%"></i></div><span class="pct">30% · 41/137</span></div>
+      </div>
+    </div>
+    <p class="note">* этапы: клиент → библиотеки → ассеты → natives. Прогресс виден и в глобальной плашке активности сверху.</p>
+  </section>
+
+</div>
+
+<script src="trel-preview.js"></script>
+</body>
+</html>

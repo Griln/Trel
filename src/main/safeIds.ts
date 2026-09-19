@@ -27,7 +27,12 @@ export function isSafeVersionId(id: unknown): id is string {
   if (!/^[A-Za-z0-9._-]+$/.test(id)) return false;
   if (id === '.' || id === '..') return false;
   if (/^\.+$/.test(id)) return false;
-  if (process.platform === 'win32' && WIN_RESERVED.has(id.toLowerCase())) return false;
+  // Ведущие -/. ломают CLI-вызовы и прячут папки; трейлинг точки/пробелы
+  // Windows молча режет (коллизии имён). WIN_RESERVED — везде, а не только
+  // на win32: версии ездят между ОС через бэкапы и облака.
+  if (id.startsWith('-') || id.startsWith('.')) return false;
+  if (/[. ]$/.test(id)) return false;
+  if (WIN_RESERVED.has(id.toLowerCase())) return false;
   return true;
 }
 
@@ -73,6 +78,10 @@ export function isSafeWorldName(name: unknown): name is string {
   if (name === '.' || name === '..') return false;
   // Запрещаем NUL и control-chars
   if (/[\x00-\x1f]/.test(name)) return false;
+  // CON/NUL и трейлинг-точки ломаются на Windows — проверяем везде,
+  // миры путешествуют между ОС в бэкапах и облаках.
+  if (WIN_RESERVED.has(name.toLowerCase().split('.')[0])) return false;
+  if (/[. ]$/.test(name)) return false;
   return true;
 }
 

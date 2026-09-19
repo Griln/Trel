@@ -1,9 +1,12 @@
 {
   "name": "trel-launcher",
-  "version": "0.4.0",
-  "description": "Trel",
+  "version": "0.5.0",
+  "description": "Trel — лаунчер Minecraft для Windows и Linux: каталог Java/Bedrock-версий, модлоадеры, моды, миры, серверы, скины и импорт из других лаунчеров.",
   "main": "dist-electron/main/main.js",
-  "author": "you",
+  "author": {
+    "name": "Griln",
+    "email": "griln@example.com"
+  },
   "license": "MIT",
   "overrides": {
     "esbuild": {
@@ -22,7 +25,8 @@
     "start": "electron .",
     "test": "vitest run",
     "dist": "npm run icon && npm run build && electron-builder --win",
-    "dist:linux": "npm run icon && npm run build && electron-builder --linux",
+    "dist:linux": "npm run icon && npm run build && electron-builder --linux && npm run dist:rpm",
+    "dist:rpm": "bash scripts/build-rpm-manual.sh",
     "dist:publish": "npm run icon && npm run build && node scripts/publish-with-token.js",
     "smartscreen": "node scripts/smartscreen-hashes.js"
   },
@@ -90,7 +94,7 @@
     "publish": [
       {
         "provider": "github",
-        "owner": "mkrlord1000-sketch",
+        "owner": "Griln",
         "repo": "Trel",
         "releaseType": "release"
       }
@@ -133,9 +137,18 @@
       "icon": "build/icon.png",
       "category": "Game",
       "target": [
-        { "target": "AppImage", "arch": ["x64"] },
-        { "target": "deb", "arch": ["x64"] },
-        { "target": "rpm", "arch": ["x64"] }
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        }
       ],
       "artifactName": "Trel-${version}-${arch}.${ext}"
     },
@@ -145,18 +158,35 @@
     "deb": {
       "artifactName": "Trel-${version}-${arch}.deb",
       "depends": [
-        "libgtk-3-0", "libnotify4", "libnss3", "libxss1", "libxtst6",
-        "xdg-utils", "libatspi2.0-0", "libdrm2", "libgbm1", "libasound2",
+        "libgtk-3-0",
+        "libnotify4",
+        "libnss3",
+        "libxss1",
+        "libxtst6",
+        "xdg-utils",
+        "libatspi2.0-0",
+        "libdrm2",
+        "libgbm1",
+        "libasound2",
         "libappindicator-gtk3"
       ]
     },
     "rpm": {
       "artifactName": "Trel-${version}-${arch}.rpm",
       "depends": [
-        "gtk3", "libnotify", "nss", "libXScrnSaver", "libXtst",
-        "xdg-utils", "at-spi2-atk", "libdrm", "mesa-libgbm", "alsa-lib",
+        "gtk3",
+        "libnotify",
+        "nss",
+        "libXScrnSaver",
+        "libXtst",
+        "xdg-utils",
+        "at-spi2-atk",
+        "libdrm",
+        "mesa-libgbm",
+        "alsa-lib",
         "libappindicator-gtk3"
       ]
     }
-  }
+  },
+  "homepage": "https://github.com/Griln/Trel"
 }

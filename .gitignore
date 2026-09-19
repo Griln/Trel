@@ -32,7 +32,8 @@ patch*.js
 adb_proxy.js
 
 # Local conversation history and secrets
-chat_history/
+chat_history/*
+!chat_history/unified_chat_history_complete.md
 
 # Huge optional emulator pack, downloaded separately
 resources/trel-emu/

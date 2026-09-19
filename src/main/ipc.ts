@@ -1,5 +1,5 @@
 
-import { app, BrowserWindow, ipcMain, dialog } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, Notification } from 'electron';
 import { shell } from 'electron';
 import * as fs from 'node:fs';
 import * as fsp from 'node:fs/promises';
@@ -7,10 +7,13 @@ import * as path from 'node:path';
 import * as os from 'node:os';
 import { execSync, spawnSync } from 'node:child_process';
 import { MinecraftService } from './minecraft';
+import { parseProxyUrl, applyGlobalProxy, testProxy } from './http-proxy';
 import { AuthService } from './auth';
 import { SettingsStore } from './settings';
 import { JavaService } from './java';
 import { WorldService } from './worlds';
+import { SnapshotService } from './snapshots';
+import { WebdavSync } from './webdav';
 import { ResetService } from './reset';
 import { ContentService } from './content';
 import type { ContentEdition } from './content';
@@ -38,6 +41,8 @@ const SYSTEM_DENYLIST = new Set([
   'c:\\programdata', 'c:\\$recycle.bin', 'c:\\system volume information',
   '/etc', '/usr', '/bin', '/sbin', '/var', '/proc', '/sys', '/dev', '/boot',
 ]);
+// Корень дома (/home, C:\Users) в списке намеренно НЕТ: gameDir всегда внутри
+// него. Сам дом и корень диска запрещены отдельно в validateSettings.
 
 function validateSettings(s: any): LauncherSettings {
   if (!s || typeof s !== 'object') throw new Error('Invalid settings');
@@ -46,26 +51,65 @@ function validateSettings(s: any): LauncherSettings {
   const resolved = path.resolve(s.gameDir);
   if (resolved.includes('\0')) throw new Error('Invalid gameDir');
   if (resolved.startsWith('\\\\')) throw new Error('Network paths not allowed for gameDir');
-  const lcResolved = resolved.toLowerCase();
-  for (const denied of SYSTEM_DENYLIST) {
-    if (lcResolved === denied || lcResolved.startsWith(denied + path.sep)) throw new Error('System directory not allowed for gameDir');
+  // Симлинк gameDir -> /etc проходил строковую проверку: сверяем реальный путь.
+  let realResolved = resolved;
+  try { realResolved = fs.realpathSync(resolved); } catch { /* ещё не создана — строкой */ }
+  const checkRoots = [resolved, realResolved];
+  for (const cand of checkRoots) {
+    const lc = cand.toLowerCase();
+    for (const denied of SYSTEM_DENYLIST) {
+      if (lc === denied || lc.startsWith(denied + path.sep)) throw new Error('System directory not allowed for gameDir');
+    }
+    // Корень диска, дом и tmp — не место для папки игры (снос/запись мимо).
+    if (cand === path.parse(cand).root) throw new Error('Filesystem root not allowed for gameDir');
   }
+  const home = os.homedir();
+  if (realResolved === home) throw new Error('Home folder itself not allowed for gameDir');
   // javaPath (optional)
   if (s.javaPath !== undefined && s.javaPath !== null && s.javaPath !== '') {
     if (typeof s.javaPath !== 'string' || s.javaPath.length > 1024 || s.javaPath.includes('\0')) throw new Error('Invalid javaPath');
     const lcJava = s.javaPath.toLowerCase();
     if (!lcJava.includes('java')) throw new Error('javaPath does not look like a Java executable');
+    // Исполняемый чужой бинарь при следующем запуске: файл обязан существовать
+    // и иметь exec-бит. Иначе — либо опечатка, либо подмена на неудаляемый путь.
+    try {
+      const st = fs.statSync(s.javaPath);
+      if (!st.isFile()) throw new Error('javaPath is not a file');
+      if (process.platform !== 'win32' && (st.mode & 0o111) === 0) throw new Error('javaPath is not executable');
+    } catch (e) {
+      if ((e as Error).message.startsWith('javaPath')) throw e;
+      throw new Error('javaPath does not exist: ' + s.javaPath);
+    }
   }
   // jvmArgs — deny dangerous flags
   if (typeof s.jvmArgs === 'string' && s.jvmArgs.length > 0) {
     const parts = s.jvmArgs.split(/\s+/).filter(Boolean);
-    for (const p of parts) { if (DANGEROUS_JVM_ARGS.test(p)) throw new Error('Dangerous JVM argument blocked: ' + p); }
+    for (const p of parts) {
+      if (DANGEROUS_JVM_ARGS.test(p)) throw new Error('Dangerous JVM argument blocked: ' + p);
+      // Подмена classpath = подмена всего кода игры сторонним jar.
+      if (p === '-cp' || p === '-classpath' || p.startsWith('-Djava.security.') || p.startsWith('-Djdk.')) {
+        throw new Error('Dangerous JVM argument blocked: ' + p);
+      }
+    }
   }
-  // preCommand/postCommand — whitelist safe characters only
+  if (typeof s.proxyUrl === 'string' && s.proxyUrl.length > 0) {
+    if (s.proxyUrl.length > 512) throw new Error('proxyUrl too long');
+    if (!parseProxyUrl(s.proxyUrl)) throw new Error('Invalid proxyUrl (need http(s)://host:port)');
+  }
+  // preCommand/postCommand — whitelist safe characters only + явный запрет
+  // подстановок, которые whitelist по символам не ловит.
   for (const key of ['preCommand', 'postCommand'] as const) {
     if (typeof s[key] === 'string' && s[key].length > 0) {
       if (s[key].length > 1024) throw new Error(key + ' too long');
       if (!SHELL_WHITELIST.test(s[key])) throw new Error(key + ' contains disallowed shell characters');
+      if (s[key].includes('$(') || s[key].includes('`') || s[key].includes('%') || s[key].includes('^')) {
+        throw new Error(key + ' contains disallowed substitution');
+      }
+    }
+  }
+  if (s.prevGameDir !== undefined && s.prevGameDir !== null && s.prevGameDir !== '') {
+    if (typeof s.prevGameDir !== 'string' || s.prevGameDir.length > 1024 || s.prevGameDir.includes('\0')) {
+      throw new Error('Invalid prevGameDir');
     }
   }
   // Build clean object with type-safe defaults
@@ -82,11 +126,19 @@ function validateSettings(s: any): LauncherSettings {
   if (typeof s.closeOnLaunch === 'boolean') clean.closeOnLaunch = s.closeOnLaunch;
   if (typeof s.lockOnLaunch === 'boolean') clean.lockOnLaunch = s.lockOnLaunch;
   if (typeof s.showIntro === 'boolean') clean.showIntro = s.showIntro;
+  if (typeof s.autoHideSidebar === 'boolean') clean.autoHideSidebar = s.autoHideSidebar;
   if (typeof s.prevGameDir === 'string' && s.prevGameDir.length > 0) clean.prevGameDir = s.prevGameDir;
-  if (typeof s.locale === 'string' && ['ru', 'en', 'zh', 'es', 'de'].includes(s.locale)) clean.locale = s.locale as any;
+  if (typeof s.locale === 'string' && ['ru', 'en'].includes(s.locale)) clean.locale = s.locale as any;
   if (typeof s.showConsole === 'boolean') clean.showConsole = s.showConsole;
   if (typeof s.preCommand === 'string') clean.preCommand = s.preCommand;
   if (typeof s.postCommand === 'string') clean.postCommand = s.postCommand;
+  if (typeof s.proxyUrl === 'string' && s.proxyUrl.length > 0) clean.proxyUrl = s.proxyUrl;
+  if (typeof s.autoBackup === 'boolean') clean.autoBackup = s.autoBackup;
+  if (s.pinnedVersions !== undefined) {
+    if (!Array.isArray(s.pinnedVersions)) throw new Error('Invalid pinnedVersions');
+    clean.pinnedVersions = s.pinnedVersions.filter((x: unknown): x is string => typeof x === 'string' && x.length > 0 && x.length <= 128).slice(0, 50);
+  }
+  if (s.perfPreset === 'potato' || s.perfPreset === 'balanced' || s.perfPreset === 'ultra') clean.perfPreset = s.perfPreset;
   return clean;
 }
 
@@ -106,8 +158,14 @@ function classifyTrelEmuSource(root: string): 'downloaded' | 'portable' | 'bundl
 export function registerIpc(win: BrowserWindow, launcherDir: string, updater: LauncherUpdater) {
   const store = new SettingsStore(launcherDir);
   const settings = store.loadSettings();
+  // Прокси из настроек (или env) — до любых скачиваний этого процесса.
+  try {
+    applyGlobalProxy(settings.proxyUrl || process.env.HTTPS_PROXY || process.env.https_proxy);
+  } catch { /* ignore */ }
   const java = new JavaService(launcherDir);
   const worlds = new WorldService(settings.gameDir);
+  const snapshots = new SnapshotService(launcherDir, settings.gameDir);
+  const webdav = new WebdavSync(launcherDir, settings.gameDir);
   // SkinServer и AuthlibInjector — общие между клиентом и серверами.
   // Один mock-сервер обслуживает скины клиента и server-side authlib проверки.
   const skinServer = new SkinServer();
@@ -119,7 +177,7 @@ export function registerIpc(win: BrowserWindow, launcherDir: string, updater: La
   const auth = new AuthService();
   const servers = new ServerService(launcherDir, settings.gameDir, java, skinServer, authlib, () => store.loadAccounts());
   const screenshots = new ScreenshotService(settings.gameDir);
-  const nativeShots = new NativeScreenshotService(() => store.loadSettings().gameDir, () => win);
+  const nativeShots = new NativeScreenshotService(() => store.loadSettings().gameDir, () => win, () => mc.hasRunningGame);
   const serverPing = new ServerPingService(settings.gameDir);
 
   // Прокидываем актуальный список аккаунтов в skin-сервер. Без этого
@@ -133,6 +191,10 @@ export function registerIpc(win: BrowserWindow, launcherDir: string, updater: La
   // so the renderer can be notified about changes. Calling it here caused the
   // renderer to receive stale data (phantom orphan folders) since IPC handlers
   // are registered before the first renderer connects.
+
+  // Удаляем пустые папки контента у ванильных версий — наследие старых сборок,
+  // которые создавали их при установке. В фоне, не блокируя старт.
+  setImmediate(() => { try { mc.cleanupVanillaContentFolders(); } catch {} });
 
   // ─── Cold-start prewarm ────────────────────────────────────────────────
   // Прогреваем Java-кэш в фоне ещё до того как renderer успеет подключиться.
@@ -259,8 +321,11 @@ export function registerIpc(win: BrowserWindow, launcherDir: string, updater: La
       }
     }
     store.saveSettings(clean);
+    applyGlobalProxy(clean.proxyUrl || process.env.HTTPS_PROXY || process.env.https_proxy);
     mc.setGameDir(clean.gameDir);
     worlds.setGameDir(clean.gameDir);
+    snapshots.setGameDir(clean.gameDir);
+    webdav.setGameDir(clean.gameDir);
     resetSvc.setGameDir(clean.gameDir);
     content.setGameDir(clean.gameDir);
     servers.setGameDir(clean.gameDir);
@@ -937,6 +1002,7 @@ export function registerIpc(win: BrowserWindow, launcherDir: string, updater: La
     throw new Error('Автоустановка отключена');
   });
   ipcMain.handle('bedrock:cancelDownload', () => { mc.bedrock.cancelCurrentDownload(); return true; });
+  ipcMain.handle('bedrock:cancelGenymotionStart', () => false);
 
   // ─── TrelEmu (bundled Android-x86 + QEMU TCG) ─────────────────────────
   // Приоритетный бэкенд для Bedrock: всегда с собой, ничего не надо ставить.
@@ -1028,20 +1094,26 @@ export function registerIpc(win: BrowserWindow, launcherDir: string, updater: La
   ipcMain.handle('java:scan', () => java.scan());
   ipcMain.handle('java:planFor', async (_e, versionId: string) => {
     try {
-      const vers = await mc.fetchVersions();
-      const entry = vers.find(v => v.id === versionId);
-      if (!entry) return null;
-      const axios = (await import('axios')).default;
-      const { data } = await axios.get((entry as any).url, { timeout: 15000 });
-      let major = data.javaVersion?.majorVersion;
-      if (!major && data.inheritsFrom) {
-        const parentEntry = vers.find(v => v.id === data.inheritsFrom);
-        if (parentEntry) {
-          const { data: pd } = await axios.get((parentEntry as any).url, { timeout: 15000 });
-          major = pd.javaVersion?.majorVersion;
-        }
+      const gameDir = store.loadSettings().gameDir;
+      const { requiredJavaMajorForVersion } = await import('./loaders');
+      // Локальный json/эвристика — мгновенно и без сети. В манифест ходим
+      // только если версии нет на диске (каталог) и локально версий нет.
+      let major = requiredJavaMajorForVersion(gameDir, versionId);
+      let hasLocal = false;
+      try {
+        hasLocal = fs.existsSync(path.join(gameDir, 'versions', versionId, versionId + '.json'));
+      } catch { /* ignore */ }
+      if (!hasLocal) {
+        try {
+          const vers = await mc.fetchVersions();
+          const entry = vers.find(v => v.id === versionId);
+          if (entry) {
+            const axios = (await import('axios')).default;
+            const { data } = await axios.get((entry as any).url, { timeout: 15000 });
+            if (data.javaVersion?.majorVersion) major = data.javaVersion.majorVersion;
+          }
+        } catch { /* сеть необязательна — остаётся эвристика */ }
       }
-      if (!major) major = 8;
       const s = store.loadSettings();
       // Validate user override
       if (s.javaPath) {
@@ -1106,6 +1178,17 @@ export function registerIpc(win: BrowserWindow, launcherDir: string, updater: La
   // ---- server monitoring ----
   ipcMain.handle('servers:saved', () => serverPing.listServers());
   ipcMain.handle('servers:ping', (_e, ip: string) => serverPing.ping(ip));
+  ipcMain.handle('servers:publishWorld', async (_e, worldName: string, versionId: string) => {
+    if (typeof worldName !== 'string' || worldName.length === 0 || worldName.length > 200) throw new Error('Invalid world');
+    if (typeof versionId !== 'string' || versionId.length === 0 || versionId.length > 128) throw new Error('Invalid version');
+    if (mc.hasRunningGame) throw new Error('Закройте Minecraft перед публикацией мира');
+    const dir = worlds.findWorldPath(worldName);
+    if (!dir) throw new Error('World not found: ' + worldName);
+    const inst = await servers.publishWorld(dir, worldName, versionId, store.loadSettings().memoryMb ?? 2048);
+    let addresses: Array<{ label: string; host: string; port: number }> = [];
+    try { addresses = servers.connectAddresses(inst.id); } catch { /* ignore */ }
+    return { instance: inst, addresses };
+  });
 
   // ---- playtime stats ----
   ipcMain.handle('stats:playtime', () => mc.getPlaytimeStats());
@@ -1228,7 +1311,8 @@ export function registerIpc(win: BrowserWindow, launcherDir: string, updater: La
     const reportDir = path.join(app.getPath('userData'), 'reports');
     fs.mkdirSync(reportDir, { recursive: true });
     const file = path.join(reportDir, `trel-report-${Date.now()}.txt`);
-    const content = [`Trel diagnostic report`, `Date: ${new Date().toISOString()}`, `GameDir: ${store.loadSettings().gameDir}`, `Versions: ${JSON.stringify(mc.installedDetailed(), null, 2)}`].join('\n\n');
+    const versions = mc.installedDetailed().map((v) => ({ id: v.id, edition: v.edition, loader: v.loader ?? null }));
+    const content = [`Trel diagnostic report`, `Date: ${new Date().toISOString()}`, `Installed versions: ${JSON.stringify(versions, null, 2)}`].join('\n\n');
     fs.writeFileSync(file, content, 'utf8');
     shell.showItemInFolder(file);
     return file;
@@ -1244,6 +1328,37 @@ export function registerIpc(win: BrowserWindow, launcherDir: string, updater: La
     if (edition !== 'java' && edition !== 'bedrock') throw new Error('Invalid content edition');
     return edition;
   };
+  ipcMain.handle('content:checkModUpdates', async (_e, versionId: string, gameVersion: string, loaders: string[]) => {
+    if (typeof versionId !== 'string' || versionId.length === 0 || versionId.length > 128) throw new Error('Invalid versionId');
+    if (typeof gameVersion !== 'string' || gameVersion.length === 0 || gameVersion.length > 32) throw new Error('Invalid gameVersion');
+    if (!Array.isArray(loaders) || loaders.length > 5) throw new Error('Invalid loaders');
+    return content.checkModUpdates(versionId, gameVersion, loaders.filter((l): l is string => typeof l === 'string'));
+  });
+  ipcMain.handle('content:modProfiles', (_e, versionId: string) => {
+    if (typeof versionId !== 'string' || versionId.length === 0 || versionId.length > 128) throw new Error('Invalid versionId');
+    return content.listModProfiles(versionId);
+  });
+  ipcMain.handle('content:modProfileSave', (_e, versionId: string, name: string) => {
+    if (typeof versionId !== 'string' || versionId.length === 0 || versionId.length > 128) throw new Error('Invalid versionId');
+    if (typeof name !== 'string' || name.length === 0 || name.length > 64) throw new Error('Invalid name');
+    return content.saveModProfile(versionId, name);
+  });
+  ipcMain.handle('content:modProfileDelete', (_e, versionId: string, name: string) => {
+    if (typeof versionId !== 'string' || versionId.length === 0 || versionId.length > 128) throw new Error('Invalid versionId');
+    if (typeof name !== 'string' || name.length === 0 || name.length > 64) throw new Error('Invalid name');
+    return content.deleteModProfile(versionId, name);
+  });
+  ipcMain.handle('content:modProfileApply', (_e, versionId: string, name: string) => {
+    if (typeof versionId !== 'string' || versionId.length === 0 || versionId.length > 128) throw new Error('Invalid versionId');
+    if (typeof name !== 'string' || name.length === 0 || name.length > 64) throw new Error('Invalid name');
+    return content.applyModProfile(versionId, name);
+  });
+  ipcMain.handle('content:updateMod', async (_e, versionId: string, fileName: string, url: string) => {
+    if (typeof versionId !== 'string' || versionId.length === 0 || versionId.length > 128) throw new Error('Invalid versionId');
+    if (typeof fileName !== 'string' || fileName.length === 0 || fileName.length > 256) throw new Error('Invalid fileName');
+    if (typeof url !== 'string' || url.length === 0 || url.length > 2048) throw new Error('Invalid url');
+    return content.updateMod(versionId, fileName, url);
+  });
   ipcMain.handle('content:list', (_e, kind: ContentKind, versionId?: string, edition?: ContentEdition) => {
     ensureSafeContentVersion(versionId);
     return content.list(kind, versionId, ensureContentEdition(edition));
@@ -1306,39 +1421,130 @@ export function registerIpc(win: BrowserWindow, launcherDir: string, updater: La
   // ---- import from other launchers ----
   let importLock = false;
   let importAbortController: AbortController | null = null;
+  /** Троттлинг прогресса в окно: флуд по каждому мелкому файлу вешал рендер. */
+  function throttledProgress(intervalMs = 100) {
+    let last = 0;
+    let pending: unknown[] | null = null;
+    let timer: NodeJS.Timeout | null = null;
+    const flush = () => {
+      timer = null;
+      if (pending && !win.isDestroyed()) win.webContents.send('import:progress', ...(pending as [unknown]));
+      pending = null;
+    };
+    return (payload: Record<string, unknown>) => {
+      pending = [payload];
+      const now = Date.now();
+      if (now - last >= intervalMs) {
+        last = now;
+        if (timer) { clearTimeout(timer); timer = null; }
+        if (!win.isDestroyed()) win.webContents.send('import:progress', payload);
+        pending = null;
+      } else if (!timer) {
+        timer = setTimeout(() => { last = Date.now(); flush(); }, intervalMs - (now - last));
+      }
+    };
+  }
   ipcMain.handle('import:detect', () => {
-    return launcherImport.detectSources();
+    // Скан в воркере: обход папок всех лаунчеров синхронными fs-вызовами
+    // подвешивал окно на несколько секунд. При сбое воркера — синхронно.
+    return launcherImport.detectSourcesAsync(store.loadSettings().gameDir);
   });
   ipcMain.handle('import:cancel', () => {
     if (importAbortController) { importAbortController.abort(); }
   });
-  ipcMain.handle('import:perform', async (_e, plan: launcherImport.ImportPlan) => {
-    if (importLock) throw new Error('Import already in progress');
-    importLock = true;
-    importAbortController = new AbortController();
-    try {
-    // Validate input
+  ipcMain.handle('import:preview', async (_e, plan: launcherImport.ImportPlan) => {
+    // Только валидация и отчёт — копирование не запускается.
     if (!plan || typeof plan !== 'object') throw new Error('Invalid import plan');
     if (typeof plan.sourceId !== 'string' || plan.sourceId.length === 0 || plan.sourceId.length > 128) throw new Error('Invalid sourceId');
     if (plan.sourceRootDir !== undefined && (typeof plan.sourceRootDir !== 'string' || plan.sourceRootDir.length > 1024)) throw new Error('Invalid sourceRootDir');
     if (!Array.isArray(plan.categories)) throw new Error('Invalid categories');
-    const VALID_CATS = new Set(['accounts','worlds','mods','shaderpacks','resourcepacks','texturepacks','servers','screenshots','options','config','datapacks','stats','advancements','logs','scripts','defaultconfigs','backups','local','usercache','world_templates','resources','pin','version-content','pack-meta','assets','libraries','skin-cache','log-configs','version-install']);
-    for (const c of plan.categories) { if (!VALID_CATS.has(c)) throw new Error('Unknown category: ' + c); }
-
-    const allSources = launcherImport.detectSources();
+    const gameDir = store.loadSettings().gameDir;
+    const allSources = await launcherImport.detectSourcesAsync(gameDir);
     let source = allSources.find((s) => s.id === plan.sourceId);
     if (!source && plan.sourceRootDir) {
       source = launcherImport.detectFromDir(plan.sourceRootDir) ?? undefined;
     }
     if (!source) throw new Error('Source not found: ' + plan.sourceId);
+    return launcherImport.previewImport(plan, source, gameDir);
+  });
+  const VALID_CATS = new Set(['accounts','worlds','mods','shaderpacks','resourcepacks','texturepacks','servers','screenshots','options','config','datapacks','stats','advancements','logs','scripts','defaultconfigs','backups','local','usercache','world_templates','resources','pin','version-content','pack-meta','assets','libraries','skin-cache','log-configs','version-install','schematics','replays','minimap','coremods','openloader','debug','behaviorpacks','skinpacks']);
+  function validatePlan(plan: launcherImport.ImportPlan): void {
+    if (!plan || typeof plan !== 'object') throw new Error('Invalid import plan');
+    if (typeof plan.sourceId !== 'string' || plan.sourceId.length === 0 || plan.sourceId.length > 128) throw new Error('Invalid sourceId');
+    if (plan.sourceRootDir !== undefined && (typeof plan.sourceRootDir !== 'string' || plan.sourceRootDir.length > 1024)) throw new Error('Invalid sourceRootDir');
+    if (plan.sourceRootDir) {
+      // Источник обязан жить внутри дома юзера или tmp (архивы): корень диска
+      // или системные пути через .. не принимаем даже от своего UI.
+      const resolved = path.resolve(plan.sourceRootDir);
+      const home = os.homedir();
+      const under = (p: string, base: string) => p === base || p.startsWith(base + path.sep);
+      if (!under(resolved, home) && !under(resolved, os.tmpdir())) throw new Error('Source directory is outside your home folder');
+    }
+    if (plan.cleanupDir !== undefined) {
+      // Удаляем только свою распаковку в tmp — и только её.
+      if (typeof plan.cleanupDir !== 'string') throw new Error('Invalid cleanupDir');
+      const resolved = path.resolve(plan.cleanupDir);
+      if (!resolved.startsWith(os.tmpdir() + path.sep) || !path.basename(resolved).startsWith('trel-pack-')) {
+        throw new Error('Invalid cleanupDir');
+      }
+    }
+    if (!Array.isArray(plan.categories)) throw new Error('Invalid categories');
+    for (const c of plan.categories) { if (!VALID_CATS.has(c)) throw new Error('Unknown category: ' + c); }
+    if (plan.useHardlinks !== undefined && typeof plan.useHardlinks !== 'boolean') throw new Error('Invalid useHardlinks');
+    if (plan.deduplicate !== undefined && typeof plan.deduplicate !== 'boolean') throw new Error('Invalid deduplicate');
+    for (const f of ['skipSecrets', 'moveSource', 'archiveWorlds'] as const) {
+      if (plan[f] !== undefined && typeof plan[f] !== 'boolean') throw new Error('Invalid ' + f);
+    }
+  }
+  async function resolveSource(plan: launcherImport.ImportPlan) {
+    const allSources = await launcherImport.detectSourcesAsync(store.loadSettings().gameDir);
+    let source = allSources.find((s) => s.id === plan.sourceId);
+    if (!source && plan.sourceRootDir) {
+      source = launcherImport.detectFromDir(plan.sourceRootDir) ?? undefined;
+    }
+    if (!source) throw new Error('Source not found: ' + plan.sourceId);
+    // Выгруженный .zip: распаковываем в tmp (zip-slip защита внутри),
+    // дальше — обычный импорт из папки; tmp чистится через cleanupDir.
+    if (source.isArchive) {
+      const { extractPackArchive } = await import('./import-ops');
+      const pack = await extractPackArchive(source.rootDir);
+      const inner = launcherImport.detectFromDir(pack.rootDir);
+      if (!inner) throw new Error('No game data found in archive: ' + source.rootDir);
+      plan.cleanupDir = pack.tmpDir;
+      return { ...inner, id: source.id, label: `${pack.packName} (archive)` };
+    }
+    return source;
+  }
+  ipcMain.handle('import:perform', async (_e, plan: launcherImport.ImportPlan) => {
+    if (importLock) throw new Error('Import already in progress');
+    importLock = true;
+    importAbortController = new AbortController();
+    try {
+    validatePlan(plan);
+    // Запущенная игра держит options.txt/config открытыми и при выходе
+    // перезапишет их своими значениями — перенос молча пропал бы. На Windows
+    // добавились бы ещё и [LOCKED]-ошибки на занятых файлах.
+    if (mc.hasRunningGame) throw new Error('Закройте Minecraft перед импортом: запущенная игра перезапишет перенесённые настройки');
+
+    const source = await resolveSource(plan);
     const gameDir = store.loadSettings().gameDir;
     const addAccount = (name: string): boolean => {
       const list = store.loadAccounts();
       if (list.some((a) => a.name.toLowerCase() === name.toLowerCase())) return false;
-      const guest = auth.createGuest(name);
-      list.push(guest);
+      list.push(auth.createGuest(name));
       store.saveAccounts(list);
       return true;
+    };
+    const addImportedAccount = (imported: launcherImport.ImportedAccount): boolean => {
+      const list = store.loadAccounts();
+      const existing = list.findIndex((a) => a.uuid === imported.uuid || a.name.toLowerCase() === imported.name.toLowerCase());
+      const account = imported.type === 'online' && imported.uuid
+        ? auth.createMicrosoft(imported.uuid, imported.name, imported.refreshToken, imported.owned)
+        : auth.createGuest(imported.name);
+      if (existing >= 0) { list[existing] = { ...list[existing], ...account, accessToken: imported.accessToken ?? account.accessToken }; }
+      else list.push({ ...account, accessToken: imported.accessToken ?? account.accessToken });
+      store.saveAccounts(list);
+      return existing < 0;
     };
     const installVersion = plan.categories.includes('version-install')
       ? async (versionId: string) => {
@@ -1346,31 +1552,226 @@ export function registerIpc(win: BrowserWindow, launcherDir: string, updater: La
           await mc.install(versionId, win);
         }
       : undefined;
-    const report = await launcherImport.performImport(plan, source, gameDir, addAccount, installVersion, (curr, total, stage) => {
-      if (!win.isDestroyed()) {
-        win.webContents.send('import:progress', { current: curr, total, stage });
-      }
-    }, importAbortController.signal);
+    const sendProgress = throttledProgress();
+    let lastTotal = 1;
+    const report = await launcherImport.performImport(plan, source, gameDir, addAccount, installVersion, (curr, total, stage, bytes, bytesPerSecond, etaSeconds, currentFile) => {
+      lastTotal = total;
+      sendProgress({ current: curr, total, stage, bytes, bytesPerSecond, etaSeconds, currentFile, paused: launcherImport.isImportPaused() });
+      // Прогресс в таскбаре: импорт идёт минутами, окно может быть свёрнуто.
+      try { win.setProgressBar(total > 0 ? Math.min(curr / total, 1) : 0); } catch {}
+    }, importAbortController.signal, addImportedAccount);
+    if (!win.isDestroyed()) {
+      win.webContents.send('import:progress', { current: lastTotal, total: lastTotal, stage: 'Done', bytes: report.bytesWritten ?? 0 });
+    }
     if (report.newAccounts.length > 0) refreshSkinServer();
+    // Своя распаковка архива больше не нужна: был fromArchive — чистим tmp.
+    if (plan.cleanupDir) {
+      try { await fsp.rm(path.resolve(plan.cleanupDir), { recursive: true, force: true }); } catch {}
+    }
+    try { win.setProgressBar(-1); } catch {}
+    // Готово в фоне: окно может быть свёрнуто — стучимся нотификацией.
+    try {
+      const copied = Object.values(report.copied).reduce((a, b) => a + ((b as number) ?? 0), 0);
+      new Notification({
+        title: 'Trel Launcher — импорт завершён',
+        body: report.errors.length > 0
+          ? `Скопировано файлов: ${copied}, ошибок: ${report.errors.length}`
+          : `Скопировано файлов: ${copied}${report.aborted ? ' (прерван)' : ''}`,
+      }).show();
+    } catch {}
     return report;
-  } finally { importLock = false; importAbortController = null; }
+  } finally { importLock = false; importAbortController = null; launcherImport.setImportPaused(false); }
   });
-  ipcMain.handle('import:detectCache', (_e, sourceDir: string) => {
-    if (typeof sourceDir !== 'string' || sourceDir.length === 0 || sourceDir.length > 1024) throw new Error('Invalid sourceDir');
-    return launcherImport.detectCache(sourceDir);
+  ipcMain.handle('import:pause', () => { launcherImport.setImportPaused(true); });
+  ipcMain.handle('import:resume', () => { launcherImport.setImportPaused(false); });
+  ipcMain.handle('import:rollback', async () => {
+    const { rollbackJournal } = await import('./import-ops');
+    return rollbackJournal(store.loadSettings().gameDir);
   });
-  ipcMain.handle('import:performCache', async (_e, plan: launcherImport.CacheImportPlan) => {
-    if (!plan || typeof plan !== 'object') throw new Error('Invalid cache plan');
-    if (typeof plan.sourceDir !== 'string' || plan.sourceDir.length === 0 || plan.sourceDir.length > 1024) throw new Error('Invalid sourceDir');
-    if (!Array.isArray(plan.categories)) throw new Error('Invalid categories');
-    const VALID_CACHE_CATS = new Set(['assets', 'libraries', 'skin-cache', 'versions']);
-    for (const c of plan.categories) { if (!VALID_CACHE_CATS.has(c)) throw new Error('Unknown cache category: ' + c); }
-    const gameDir = store.loadSettings().gameDir;
-    return launcherImport.performCacheImport(plan, gameDir, (curr, total, stage) => {
-      if (!win.isDestroyed()) {
-        win.webContents.send('import:cacheProgress', { current: curr, total, stage });
-      }
+  ipcMain.handle('import:openGameDir', () => {
+    shell.openPath(store.loadSettings().gameDir).catch(() => {});
+  });
+  ipcMain.handle('import:applyTweaks', (_e, tweaks: { maxMemoryMb?: number; jvmArgs?: string }) => {
+    // Кнопка «как у источника»: память и JVM-аргументы едут в настройки Trel.
+    // Валидация та же, что в settings:set (settings.ts режет опасные флаги).
+    const s = store.loadSettings();
+    if (typeof tweaks?.maxMemoryMb === 'number' && tweaks.maxMemoryMb >= 256 && tweaks.maxMemoryMb <= 32768) {
+      s.memoryMb = Math.round(tweaks.maxMemoryMb);
+    }
+    if (typeof tweaks?.jvmArgs === 'string' && tweaks.jvmArgs.length < 2048) {
+      const parts = tweaks.jvmArgs.split(/\s+/).filter(Boolean);
+      if (parts.every((part: string) => !DANGEROUS_JVM_ARGS.test(part))) s.jvmArgs = tweaks.jvmArgs;
+    }
+    store.saveSettings(s);
+    return { memoryMb: s.memoryMb, jvmArgs: s.jvmArgs };
+  });
+  ipcMain.handle('import:checkAccount', async (_e, name: string) => {
+    // Проверка токена в фоне: дергаем профиль Mojang, таймаут 8с.
+    // Без refresh-токена проверять нечего — сразу «нужен вход».
+    if (typeof name !== 'string' || name.length === 0 || name.length > 64) throw new Error('Invalid name');
+    const acc = store.loadAccounts().find((a) => a.name.toLowerCase() === name.toLowerCase()) as (Record<string, unknown> & { name: string }) | undefined;
+    if (!acc) return { ok: false, reason: 'not-found' };
+    const token = acc.accessToken;
+    if ((acc as { type?: string }).type === 'offline') return { ok: false, reason: 'offline' };
+    if (typeof token !== 'string' || !token) return { ok: false, reason: 'relogin-required' };
+    try {
+      const ctl = new AbortController();
+      const t = setTimeout(() => ctl.abort(), 8000);
+      const res = await fetch('https://api.minecraftservices.com/minecraft/profile', {
+        headers: { Authorization: `Bearer ${token}` }, signal: ctl.signal,
+      }).catch(() => null);
+      clearTimeout(t);
+      if (!res) return { ok: false, reason: 'network' };
+      return res.ok ? { ok: true } : { ok: false, reason: 'relogin-required' };
+    } catch { return { ok: false, reason: 'network' }; }
+  });
+  ipcMain.handle('import:pickArchive', async () => {
+    const res = await dialog.showOpenDialog(win, {
+      title: 'Выбери архив сборки',
+      filters: [{ name: 'Modpacks', extensions: ['zip', 'mrpack', 'trelpack'] }],
+      properties: ['openFile'],
     });
+    if (res.canceled || res.filePaths.length === 0) return null;
+    return res.filePaths[0];
+  });
+  ipcMain.handle('import:fromArchive', async (_e, archivePath: string) => {
+    // Импорт модпака из zip/mrpack/trelpack: распаковка с zip-slip защитой + detect.
+    if (typeof archivePath !== 'string' || archivePath.length === 0 || archivePath.length > 1024) throw new Error('Invalid path');
+    if (!/\.(zip|mrpack|trelpack)$/i.test(archivePath)) throw new Error('Only .zip / .mrpack / .trelpack archives are supported');
+    const { extractPackArchive } = await import('./import-ops');
+    const pack = await extractPackArchive(archivePath);
+    const source = launcherImport.detectFromDir(pack.rootDir);
+    if (!source) throw new Error('No game data found in archive');
+    return { ...source, id: 'archive', label: `${pack.packName} (archive)`, tmpDir: pack.tmpDir };
+  });
+  ipcMain.handle('import:performMany', async (_e, plans: launcherImport.ImportPlan[]) => {
+    // Очередь источников: несколько лаунчеров за один заход, строго по очереди.
+    // Отмена останавливает очередь (остаток помечается cancelled, файлы целы).
+    if (importLock) throw new Error('Import already in progress');
+    if (!Array.isArray(plans) || plans.length === 0 || plans.length > 5) throw new Error('Provide 1-5 plans');
+    for (const p of plans) validatePlan(p);
+    if (mc.hasRunningGame) throw new Error('Закройте Minecraft перед импортом: запущенная игра перезапишет перенесённые настройки');
+    importLock = true;
+    importAbortController = new AbortController();
+    try {
+      const gameDir = store.loadSettings().gameDir;
+      const results: Array<{ sourceId: string; report?: launcherImport.ImportReport; status: 'done' | 'cancelled' }> = [];
+      for (const p of plans) {
+        if (importAbortController.signal.aborted) {
+          results.push({ sourceId: p.sourceId, status: 'cancelled' });
+          continue;
+        }
+        const source = await resolveSource(p);
+        const addAccount = (name: string): boolean => {
+          const list = store.loadAccounts();
+          if (list.some((a) => a.name.toLowerCase() === name.toLowerCase())) return false;
+          list.push(auth.createGuest(name));
+          store.saveAccounts(list);
+          return true;
+        };
+        const report = await launcherImport.performImport(p, source, gameDir, addAccount, undefined, (curr, total, stage, bytes, bps, eta, file) => {
+          if (!win.isDestroyed()) win.webContents.send('import:progress', { current: curr, total, stage, bytes, bytesPerSecond: bps, etaSeconds: eta, currentFile: file, queueSource: p.sourceId });
+        }, importAbortController.signal);
+        results.push({ sourceId: p.sourceId, report, status: importAbortController.signal.aborted ? 'cancelled' : 'done' });
+      }
+      return results;
+    } finally { importLock = false; importAbortController = null; launcherImport.setImportPaused(false); }
+  });
+  ipcMain.handle('tools:diskUsage', () => {
+    const { diskUsage } = require('./storage') as typeof import('./storage');
+    return diskUsage(store.loadSettings().gameDir);
+  });
+  ipcMain.handle('tools:clean', async (_e, target: string) => {
+    if (target !== 'logs' && target !== 'tmp') throw new Error('Invalid clean target');
+    const { cleanTarget } = await import('./storage');
+    return cleanTarget(store.loadSettings().gameDir, target);
+  });
+  ipcMain.handle('tools:downloadsPause', () => {
+    const { setDownloadsPaused } = require('./http-proxy') as typeof import('./http-proxy');
+    setDownloadsPaused(true);
+  });
+  ipcMain.handle('tools:downloadsResume', () => {
+    const { setDownloadsPaused } = require('./http-proxy') as typeof import('./http-proxy');
+    setDownloadsPaused(false);
+  });
+  ipcMain.handle('tools:downloadsStatus', () => {
+    const { downloadQueueStatus } = require('./http-proxy') as typeof import('./http-proxy');
+    return downloadQueueStatus();
+  });
+  const OPEN_URL_HOSTS = new Set([
+    'www.nvidia.com', 'nvidia.com', 'www.amd.com', 'amd.com',
+    'www.intel.com', 'intel.com', 'modrinth.com', 'www.modrinth.com',
+    'minecraft.net', 'www.minecraft.net', 'microsoft.com', 'support.microsoft.com',
+  ]);
+  ipcMain.handle('tools:openUrl', async (_e, url: string) => {
+    if (typeof url !== 'string' || url.length === 0 || url.length > 512) throw new Error('Invalid url');
+    let host = '';
+    try {
+      const u = new URL(url);
+      if (u.protocol !== 'https:') throw new Error('Only https allowed');
+      host = u.hostname.toLowerCase();
+    } catch { throw new Error('Invalid url'); }
+    if (!OPEN_URL_HOSTS.has(host)) throw new Error('Host not allowed: ' + host);
+    await shell.openExternal(url);
+  });
+  ipcMain.handle('app:portable', () => {
+    try {
+      const exeDir = path.dirname(process.execPath);
+      return fs.existsSync(path.join(exeDir, 'portable.txt')) || process.argv.includes('--portable') || process.env.TREL_PORTABLE === '1';
+    } catch { return false; }
+  });
+  ipcMain.handle('tools:proxyTest', async (_e, proxyUrl: string) => {
+    if (typeof proxyUrl !== 'string' || proxyUrl.length === 0 || proxyUrl.length > 512) throw new Error('Invalid proxyUrl');
+    return testProxy(proxyUrl);
+  });
+  ipcMain.handle('snapshots:create', (_e, versionId: string, label?: string) => {
+    if (typeof versionId !== 'string' || versionId.length === 0 || versionId.length > 128) throw new Error('Invalid versionId');
+    if (label !== undefined && (typeof label !== 'string' || label.length > 40)) throw new Error('Invalid label');
+    return snapshots.create(versionId, label);
+  });
+  ipcMain.handle('snapshots:list', (_e, versionId?: string) => {
+    if (versionId !== undefined && (typeof versionId !== 'string' || versionId.length > 128)) throw new Error('Invalid versionId');
+    return snapshots.list(versionId);
+  });
+  ipcMain.handle('snapshots:restore', (_e, file: string) => {
+    if (typeof file !== 'string' || file.length === 0 || file.length > 256) throw new Error('Invalid file');
+    if (mc.hasRunningGame) throw new Error('Закройте Minecraft перед откатом: запущенная игра перезапишет восстановленное');
+    return snapshots.restore(file);
+  });
+  ipcMain.handle('snapshots:remove', (_e, file: string) => {
+    if (typeof file !== 'string' || file.length === 0 || file.length > 256) throw new Error('Invalid file');
+    return snapshots.remove(file);
+  });
+  ipcMain.handle('webdav:status', () => webdav.status());
+  ipcMain.handle('webdav:configure', (_e, url: string, login: string, password: string) => {
+    if (typeof url !== 'string' || url.length > 512) throw new Error('Invalid url');
+    if (typeof login !== 'string' || login.length > 256) throw new Error('Invalid login');
+    if (typeof password !== 'string' || password.length > 1024) throw new Error('Invalid password');
+    return webdav.configure(url, login, password);
+  });
+  ipcMain.handle('webdav:push', async (_e) => {
+    if (mc.hasRunningGame) throw new Error('Закройте Minecraft: мир нельзя паковать на ходу');
+    return webdav.push();
+  });
+  ipcMain.handle('webdav:pull', async () => webdav.pull());
+  ipcMain.handle('packs:exportDialog', async (_e, versionId: string) => {
+    if (typeof versionId !== 'string' || versionId.length === 0 || versionId.length > 128) throw new Error('Invalid versionId');
+    const res = await dialog.showSaveDialog(win, {
+      title: 'Сохранить сборку',
+      defaultPath: `${versionId}.trelpack`,
+      filters: [{ name: 'Trel pack', extensions: ['trelpack'] }],
+    });
+    if (res.canceled || !res.filePath) return null;
+    return snapshots.exportPack(versionId, res.filePath);
+  });
+  ipcMain.handle('packs:import', async (_e, archivePath: string, targetId: string) => {
+    if (typeof archivePath !== 'string' || archivePath.length === 0 || archivePath.length > 1024) throw new Error('Invalid path');
+    if (typeof targetId !== 'string' || targetId.length === 0 || targetId.length > 128) throw new Error('Invalid target');
+    if (mc.hasRunningGame) throw new Error('Закройте Minecraft перед импортом сборки');
+    return snapshots.importPack(archivePath, targetId);
+  });
+  ipcMain.handle('import:lastReport', () => {
+    return launcherImport.readLastImportReport(store.loadSettings().gameDir);
   });
   ipcMain.handle('import:detectFromDir', (_e, dir: string) => {
     if (typeof dir !== 'string' || dir.length === 0 || dir.length > 1024) throw new Error('Invalid directory');
@@ -1415,6 +1816,14 @@ export function registerIpc(win: BrowserWindow, launcherDir: string, updater: La
       throw new Error('Недопустимый источник модпака');
     }
     return modpacks.install(version, win);
+  });
+  // Установка версии по профилю, распознанному при импорте (DetectedModpack).
+  ipcMain.handle('modpacks:installFromProfile', async (_e, profile: { mc: string; loader: string; loaderVersion?: string; name?: string }) => {
+    if (!profile || typeof profile !== 'object') throw new Error('Invalid profile');
+    if (typeof profile.mc !== 'string' || profile.mc.length === 0 || profile.mc.length > 64) throw new Error('Invalid mc version');
+    if (profile.loaderVersion !== undefined && (typeof profile.loaderVersion !== 'string' || profile.loaderVersion.length > 64)) throw new Error('Invalid loaderVersion');
+    if (profile.name !== undefined && (typeof profile.name !== 'string' || profile.name.length > 120)) throw new Error('Invalid name');
+    return modpacks.installFromProfile(profile, win);
   });
 
   // ---- launcher updater ----

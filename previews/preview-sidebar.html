@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trel — панель навигации v3 · превью</title>
+<link rel="stylesheet" href="trel-design.css">
+<style>
+  /* trel-design.css не определяет RGB/градиентные токены акцента —
+     дублируем их сюда по аналогии со styles.css лаунчера. */
+  :root{--accent-rgb:255,255,255;--accent-bright:#ffffff;--accent-deep:#d4d4d4;--accent-border:rgba(255,255,255,.3)}
+  html[data-theme="eclipse"]{--accent-rgb:26,26,26;--accent-bright:#3a3a3a;--accent-deep:#000000;--accent-border:rgba(0,0,0,.2)}
+  html[data-theme="voxel"]{--accent-rgb:80,200,120;--accent-bright:#7adb9a;--accent-deep:#2d8b53;--accent-border:rgba(80,200,120,.38)}
+  .preview-bar{position:fixed;top:0;left:0;right:0;z-index:40}
+  /* Панель навигации v3: «Главная» — hero-карточка на самом верху,
+     крупнее и ярче остальных пунктов; активное состояние залито акцентом.
+     Внизу — чип аккаунта с акцентным кольцом и шевроном. */
+  html,body{height:100%}
+  body{display:flex;align-items:center;justify-content:center;gap:26px;padding:80px 20px 40px;flex-wrap:wrap}
+
+  .sidebar{width:216px;flex-shrink:0;display:flex;flex-direction:column;gap:2px;padding:14px 10px 12px;
+    border:1px solid var(--border);border-radius:18px;background:linear-gradient(180deg,rgba(0,0,0,.45),rgba(0,0,0,.25));
+    overflow-y:auto;max-height:calc(100vh - 120px);animation:cardIn .5s var(--ease) backwards}
+  .sidebar:nth-of-type(2){animation-delay:.08s}
+  .sidebar:nth-of-type(3){animation-delay:.16s}
+
+  /* hero-«Главная» */
+  .nav-hero{position:relative;display:flex;align-items:center;gap:12px;padding:11px 12px;margin-bottom:6px;
+    border-radius:13px;cursor:pointer;user-select:none;border:1px solid var(--accent-border);
+    background:linear-gradient(135deg,rgba(var(--accent-rgb),.16),rgba(var(--accent-rgb),.05));color:var(--fg-bright);
+    transition:background .12s,border-color .12s,transform .12s,box-shadow .12s}
+  .nav-hero:hover{border-color:var(--accent);transform:translateY(-1px)}
+  .nav-hero .hero-ico{width:34px;height:34px;flex-shrink:0;border-radius:10px;display:grid;place-items:center;
+    background:linear-gradient(135deg,var(--accent-bright),var(--accent-deep));color:var(--accent-fg);
+    box-shadow:0 8px 20px -8px rgba(var(--accent-rgb),.7)}
+  .nav-hero .hero-ico svg{width:16px;height:16px}
+  .nav-hero .hero-txt{min-width:0;display:flex;flex-direction:column}
+  .nav-hero .hero-txt b{font-family:var(--display);font-size:14px;font-weight:700;letter-spacing:.2px}
+  .nav-hero .hero-txt .sub{font-size:10.5px;font-weight:500;margin-top:2px;color:var(--fg-muted)}
+  .nav-hero.active{background:linear-gradient(135deg,var(--accent-bright),var(--accent-deep));border-color:transparent;
+    color:var(--accent-fg);box-shadow:0 12px 30px -12px rgba(var(--accent-rgb),.8),inset 0 0 0 1px rgba(255,255,255,.25)}
+  .nav-hero.active:hover{transform:none}
+  .nav-hero.active .hero-ico{background:rgba(0,0,0,.22);color:var(--accent-fg);box-shadow:none}
+  .nav-hero.active .hero-txt .sub{color:color-mix(in srgb,var(--accent-fg) 68%,transparent)}
+
+  .nav-divider{height:1px;background:linear-gradient(90deg,transparent,var(--border),transparent);margin:8px}
+  .nav-group{display:flex;flex-direction:column;gap:2px}
+  .nav-group-label{font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--fg-subtle);padding:0 12px;margin-bottom:4px;user-select:none}
+
+  .nav-item{position:relative;padding:9px 12px;border-radius:10px;color:var(--fg-muted);cursor:pointer;display:flex;
+    align-items:center;gap:11px;font-size:13.5px;font-weight:500;transition:background .12s,color .12s;user-select:none}
+  .nav-item svg{width:16px;height:16px;flex-shrink:0;stroke-width:1.75}
+  .nav-item::before{content:"";position:absolute;left:0;top:50%;transform:translateY(-50%) scaleY(0);width:3px;height:18px;
+    background:linear-gradient(180deg,var(--accent-bright),var(--accent-deep));border-radius:0 3px 3px 0;transition:transform .18s}
+  .nav-item:hover{background:rgba(255,255,255,.05);color:var(--fg)}
+  .nav-item.active{background:linear-gradient(180deg,rgba(var(--accent-rgb),.16),rgba(var(--accent-rgb),.05));color:var(--fg-bright);
+    box-shadow:inset 0 0 0 1px var(--accent-border)}
+  .nav-item.active::before{transform:translateY(-50%) scaleY(1)}
+  .nav-item.active svg{color:var(--accent-bright)}
+  .nav-item-label{flex:1}
+  .nav-item-count{font-size:10.5px;font-weight:600;color:var(--fg-muted);background:var(--surface-2);border:1px solid var(--border);padding:1px 6px;border-radius:8px;min-width:18px;text-align:center}
+  .nav-item.active .nav-item-count{color:var(--accent-bright);background:rgba(var(--accent-rgb),.14);border-color:transparent}
+  .nav-item-dot{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 6px rgba(94,203,111,.6);flex-shrink:0}
+  .sidebar .sp{flex:1}
+
+  /* чип аккаунта v3 */
+  .account-chip{margin-top:10px;padding:10px 11px;border-radius:13px;background:linear-gradient(180deg,var(--surface-2),var(--surface));
+    border:1px solid var(--border);display:flex;align-items:center;gap:10px;cursor:pointer;transition:.15s;
+    width:100%;text-align:left;color:inherit;font:inherit}
+  .account-chip:hover{border-color:var(--border-strong);background:var(--surface-3)}
+  .avatar-sm{width:32px;height:32px;border-radius:9px;flex-shrink:0;image-rendering:pixelated;position:relative;overflow:hidden;
+    border:1px solid rgba(255,255,255,.14);box-shadow:0 0 0 2px var(--surface),0 0 0 3.5px var(--accent-border)}
+  .avatar-sm::before{content:"";position:absolute;inset:0;background:linear-gradient(180deg,#2b1d10 0 26%,#c69c6d 26%)}
+  .avatar-sm::after{content:"";position:absolute;left:7px;top:17px;width:4px;height:4px;background:#fff;
+    box-shadow:14px 0 0 #fff,7px 0 0 -1px #3d3d9e,14px 0 0 -1px #3d3d9e}
+  .account-chip .info{flex:1;min-width:0}
+  .account-chip .name{font-size:13px;font-weight:600;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .account-chip .role{font-size:11px;color:var(--fg-subtle)}
+  .account-chip .chev{width:14px;height:14px;flex-shrink:0;color:var(--fg-subtle);transition:transform .12s,color .12s}
+  .account-chip:hover .chev{color:var(--fg);transform:translateX(2px)}
+
+  .scene-lbl{width:216px;text-align:center;font-family:var(--mono);font-size:10.5px;letter-spacing:1.4px;text-transform:uppercase;
+    color:var(--fg-subtle);margin-top:10px}
+  .scene{display:flex;flex-direction:column;align-items:center}
+
+  .side-note{max-width:560px;font-family:var(--mono);font-size:12px;color:var(--fg-subtle);line-height:1.7;
+    padding:16px 18px;border-radius:13px;border:1px dashed var(--border-strong)}
+  .side-note b{color:var(--fg-muted)}
+</style>
+</head>
+<body>
+
+<div class="preview-bar">
+  <span class="tag-prev">ПРЕВЬЮ · ПАНЕЛЬ НАВИГАЦИИ v3</span>
+  <span style="color:#888">«Главная» — hero-карточка на самом верху, активная заливается акцентом</span>
+</div>
+
+<!-- сцена 1: активна «Главная» -->
+<div class="scene">
+  <aside class="sidebar">
+    <div class="nav-hero active">
+      <span class="hero-ico"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></span>
+      <span class="hero-txt"><b>Главная</b><span class="sub">пуск и продолжение</span></span>
+    </div>
+    <div class="nav-divider"></div>
+    <div class="nav-group">
+      <div class="nav-group-label">Играть</div>
+      <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 8 12 3 3 8v8l9 5 9-5V8Z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg><span class="nav-item-label">Каталог</span></div>
+      <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="m5 12 5 5 9-11"/></svg><span class="nav-item-label">Установленные</span><span class="nav-item-count">4</span></div>
+      <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="2" y="3" width="20" height="7" rx="2"/><rect x="2" y="14" width="20" height="7" rx="2"/><path d="M6 6.5h.01M6 17.5h.01"/></svg><span class="nav-item-label">Серверы</span></div>
+    </div>
+    <div class="nav-divider"></div>
+    <div class="nav-group">
+      <div class="nav-group-label">Данные</div>
+      <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18 15 15 0 0 1 0-18Z"/></svg><span class="nav-item-label">Миры</span></div>
+      <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 8v13H3V8M1 3h22v5H1zM10 12h4"/></svg><span class="nav-item-label">Контент</span></div>
+      <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 8 12 3 3 8v8l9 5 9-5V8Z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg><span class="nav-item-label">Модпаки</span></div>
+    </div>
+    <div class="nav-divider"></div>
+    <div class="nav-group">
+      <div class="nav-group-label">Профиль</div>
+      <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg><span class="nav-item-label">Аккаунты</span></div>
+      <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M9 8h6M9 12h6"/></svg><span class="nav-item-label">Скин</span></div>
+      <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.01a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1.55 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.01a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.55 1Z"/></svg><span class="nav-item-label">Настройки</span></div>
+    </div>
+    <div class="sp"></div>
+    <button class="account-chip"><span class="avatar-sm"></span><span class="info"><span class="name">VerifyUser</span><span class="role">Гость</span></span><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg></button>
+  </aside>
+  <div class="scene-lbl">активна «Главная»</div>
+</div>
+
+<!-- сцена 2: активен другой пункт, hero в покое -->
+<div class="scene">
+  <aside class="sidebar">
+    <div class="nav-hero">
+      <span class="hero-ico"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></span>
+      <span class="hero-txt"><b>Главная</b><span class="sub">пуск и продолжение</span></span>
+    </div>
+    <div class="nav-divider"></div>
+    <div class="nav-group">
+      <div class="nav-group-label">Играть</div>
+      <div class="nav-item active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 8 12 3 3 8v8l9 5 9-5V8Z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg><span class="nav-item-label">Каталог</span></div>
+      <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="m5 12 5 5 9-11"/></svg><span class="nav-item-label">Установленные</span><span class="nav-item-count">4</span></div>
+      <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="2" y="3" width="20" height="7" rx="2"/><rect x="2" y="14" width="20" height="7" rx="2"/><path d="M6 6.5h.01M6 17.5h.01"/></svg><span class="nav-item-label">Серверы</span><span class="nav-item-dot"></span></div>
+    </div>
+    <div class="nav-divider"></div>
+    <div class="nav-group">
+      <div class="nav-group-label">Данные</div>
+      <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18 15 15 0 0 1 0-18Z"/></svg><span class="nav-item-label">Миры</span></div>
+      <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 8v13H3V8M1 3h22v5H1zM10 12h4"/></svg><span class="nav-item-label">Контент</span></div>
+      <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 8 12 3 3 8v8l9 5 9-5V8Z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg><span class="nav-item-label">Модпаки</span></div>
+    </div>
+    <div class="nav-divider"></div>
+    <div class="nav-group">
+      <div class="nav-group-label">Профиль</div>
+      <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg><span class="nav-item-label">Аккаунты</span></div>
+      <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M9 8h6M9 12h6"/></svg><span class="nav-item-label">Скин</span></div>
+      <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.01a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1.55 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.01a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.55 1Z"/></svg><span class="nav-item-label">Настройки</span><span class="nav-item-dot"></span></div>
+    </div>
+    <div class="sp"></div>
+    <button class="account-chip"><span class="avatar-sm"></span><span class="info"><span class="name">VerifyUser</span><span class="role">Гость</span></span><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg></button>
+  </aside>
+  <div class="scene-lbl">hero в покое · бейджи и точки</div>
+</div>
+
+<div class="side-note">
+  <b>Что нового в панели v3:</b><br>
+  · «Главная» вынесена из списка и стоит первой — hero-карточка с иконкой-плиткой и подзаголовком;<br>
+  · активная «Главная» заливается акцентным градиентом и светится — её невозможно пропустить;<br>
+  · неактивная — полупрозрачный акцент с рамкой, всё равно читается главным пунктом;<br>
+  · чип аккаунта внизу: акцентное кольцо вокруг аватара + шеврон-подсказка «кликни».<br>
+  Переключи темы справа вверху — панель собрана на токенах и работает во всех трёх.
+</div>
+
+<script src="trel-preview.js"></script>
+</body>
+</html>

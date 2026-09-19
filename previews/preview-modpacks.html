@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trel — Модпаки · превью</title>
+<link rel="stylesheet" href="trel-design.css">
+<style>
+  .mp-search{display:flex;gap:10px;margin-bottom:22px}
+  .mp-search .search-wrap{flex:1}
+  .mp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:14px}
+  .mpcard{display:flex;gap:15px;padding:17px;border-radius:16px;background:var(--surface-2);border:1px solid var(--border);
+    cursor:pointer;transition:transform .22s var(--ease),border-color .22s,background .22s,box-shadow .22s;
+    animation:cardIn .5s var(--ease) backwards}
+  .mpcard:nth-child(1){animation-delay:.05s}.mpcard:nth-child(2){animation-delay:.11s}.mpcard:nth-child(3){animation-delay:.17s}
+  .mpcard:nth-child(4){animation-delay:.23s}.mpcard:nth-child(5){animation-delay:.29s}.mpcard:nth-child(6){animation-delay:.35s}
+  .mpcard:hover{transform:translateY(-4px);border-color:var(--border-bright);background:var(--surface-3);
+    box-shadow:0 14px 34px -15px rgba(0,0,0,.8)}
+  .mp-ico{width:56px;height:56px;flex-shrink:0;border-radius:13px;overflow:hidden;border:1px solid rgba(255,255,255,.12);
+    display:grid;place-items:center;font-size:26px;transition:transform .3s var(--ease);
+    background:linear-gradient(140deg,var(--g1,#2a2a3e),var(--g2,#171722))}
+  .mpcard:hover .mp-ico{transform:scale(1.09) rotate(-4deg)}
+  .mp-body{flex:1;min-width:0}
+  .mp-title{font-weight:800;font-size:15px;color:var(--fg-bright);display:flex;align-items:center;gap:8px}
+  .mp-meta{font-family:var(--mono);font-size:10.5px;color:var(--fg-subtle);margin:4px 0 7px}
+  .mp-desc{font-size:12.5px;color:var(--fg-muted);line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;
+    -webkit-box-orient:vertical;overflow:hidden}
+  .mp-tags{display:flex;gap:6px;margin-top:9px;flex-wrap:wrap}
+
+  /* оверлей версий */
+  .vrows{display:flex;flex-direction:column;gap:9px;margin-top:16px}
+  .vrow2{display:flex;align-items:center;gap:13px;padding:13px 15px;border-radius:12px;background:var(--surface-3);
+    border:1px solid var(--border);transition:.18s}
+  .vrow2:hover{border-color:var(--border-bright)}
+  .vrow2 .vn{flex:1;min-width:0}
+  .vrow2 .vn b{font-size:13.5px;color:var(--fg);display:block}
+  .vrow2 .vn span{font-family:var(--mono);font-size:10.5px;color:var(--fg-subtle)}
+
+  /* прогресс установки */
+  .inst-card{text-align:center;padding:10px 4px}
+  .inst-ico{width:64px;height:64px;margin:0 auto 16px;border-radius:16px;display:grid;place-items:center;
+    background:var(--surface-3);border:1px solid var(--border-strong);font-size:30px;animation:bob 1.6s ease-in-out infinite}
+  @keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
+  .inst-card h3{margin-bottom:4px}
+  .inst-stage{font-family:var(--mono);font-size:12px;color:var(--fg-muted);margin:10px 0 14px}
+  .inst-steps{display:flex;flex-direction:column;gap:7px;margin-top:18px;text-align:left}
+  .istep{display:flex;align-items:center;gap:10px;font-size:12.5px;color:var(--fg-subtle)}
+  .istep .sdot{width:9px;height:9px}
+  .istep.done{color:var(--fg-muted)}
+  .istep.done .sdot{background:var(--green);box-shadow:none;animation:none}
+  .istep.now{color:var(--fg)}
+</style>
+</head>
+<body>
+
+<div class="preview-bar">
+  <span class="tag-prev">ПРЕВЬЮ · МОДПАКИ</span>
+  <button class="on" data-t="list">① поиск</button>
+  <button data-t="versions">② выбор версии</button>
+  <button data-t="install">③ установка</button>
+</div>
+
+<div class="page-frame">
+
+  <div class="page-head">
+    <span class="eyebrow">Modrinth</span>
+    <h1 class="page-title">Модпаки</h1>
+    <p class="page-sub">Готовые сборки в один клик: Trel сам поставит нужную версию, лоадер и скачает все моды с конфигами.</p>
+  </div>
+
+  <!-- ① ПОИСК -->
+  <section class="pane show" id="list">
+    <div class="mp-search">
+      <div class="search-wrap">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <input class="input" placeholder="Поиск модпаков: Fabulously Optimized, All the Mods…" value="">
+      </div>
+      <button class="btn primary">Найти</button>
+    </div>
+
+    <div class="mp-grid">
+      <div class="mpcard" onclick="switchPane('versions')">
+        <div class="mp-ico" style="--g1:#1e3a5f;--g2:#0d1626">⚡</div>
+        <div class="mp-body">
+          <div class="mp-title">Fabulously Optimized</div>
+          <div class="mp-meta">от Fabulously · 12,4 млн загрузок</div>
+          <div class="mp-desc">Максимум FPS: Sodium, Lithium и 40+ оптимизаций. Ванильный вид, ракетная скорость.</div>
+          <div class="mp-tags"><span class="chip amber">FABRIC</span><span class="chip green">1.21.4</span><span class="chip">52 мода</span></div>
+        </div>
+      </div>
+      <div class="mpcard" onclick="switchPane('versions')">
+        <div class="mp-ico" style="--g1:#4a2c17;--g2:#1c1008">🏭</div>
+        <div class="mp-body">
+          <div class="mp-title">Create: Above and Beyond</div>
+          <div class="mp-meta">от simibavi · 3,1 млн загрузок</div>
+          <div class="mp-desc">Инженерное приключение вокруг Create: автоматизация, поезда и путь к космосу.</div>
+          <div class="mp-tags"><span class="chip amber">FORGE</span><span class="chip green">1.16.5</span><span class="chip">180 модов</span></div>
+        </div>
+      </div>
+      <div class="mpcard" onclick="switchPane('versions')">
+        <div class="mp-ico" style="--g1:#3d1f3d;--g2:#170d17">🔮</div>
+        <div class="mp-body">
+          <div class="mp-title">All the Mods 9</div>
+          <div class="mp-meta">от ATM Team · 8,7 млн загрузок</div>
+          <div class="mp-desc">Всё и сразу: магия, техника, измерения и квесты. Огромная песочница на годы.</div>
+          <div class="mp-tags"><span class="chip amber">FORGE</span><span class="chip green">1.20.1</span><span class="chip">390 модов</span></div>
+        </div>
+      </div>
+      <div class="mpcard" onclick="switchPane('versions')">
+        <div class="mp-ico" style="--g1:#0f2f2a;--g2:#071512">🌲</div>
+        <div class="mp-body">
+          <div class="mp-title">Better MC [FABRIC]</div>
+          <div class="mp-meta">от Sharkie · 5,2 млн загрузок</div>
+          <div class="mp-desc">Ваниль+, какой она могла быть: новые биомы, мобы, структуры и данжи.</div>
+          <div class="mp-tags"><span class="chip amber">FABRIC</span><span class="chip green">1.20.1</span><span class="chip">220 модов</span></div>
+        </div>
+      </div>
+      <div class="mpcard" onclick="switchPane('versions')">
+        <div class="mp-ico" style="--g1:#5e1f1f;--g2:#260d0d">⚔️</div>
+        <div class="mp-body">
+          <div class="mp-title">RLCraft</div>
+          <div class="mp-meta">от Shivaxi · 11,9 млн загрузок</div>
+          <div class="mp-desc">Реалистичный хардкор: драконы, жажда, температура и смерть от всего подряд.</div>
+          <div class="mp-tags"><span class="chip amber">FORGE</span><span class="chip green">1.12.2</span><span class="chip">170 модов</span></div>
+        </div>
+      </div>
+      <div class="mpcard" onclick="switchPane('versions')">
+        <div class="mp-ico" style="--g1:#2a2a3e;--g2:#12121c">🚀</div>
+        <div class="mp-body">
+          <div class="mp-title">Adrenaline</div>
+          <div class="mp-meta">от devin · 1,8 млн загрузок</div>
+          <div class="mp-desc">Лёгкая сборка для слабых ПК: только оптимизации, ничего лишнего.</div>
+          <div class="mp-tags"><span class="chip amber">FABRIC</span><span class="chip green">1.21</span><span class="chip">30 модов</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ② ВЫБОР ВЕРСИИ -->
+  <section class="pane" id="versions">
+    <div class="card" style="max-width:640px">
+      <div class="card-head">
+        <h4>Fabulously Optimized — версии</h4>
+        <button class="btn ghost sm" onclick="switchPane('list')">← назад</button>
+      </div>
+      <div class="vrows">
+        <div class="vrow2">
+          <div class="vn"><b>6.4.2</b><span>MC 1.21.4 · fabric · 52 мода · 2 дня назад</span></div>
+          <span class="chip green">последняя</span>
+          <button class="btn primary sm" onclick="switchPane('install')">Установить</button>
+        </div>
+        <div class="vrow2">
+          <div class="vn"><b>6.4.1</b><span>MC 1.21.4 · fabric · 52 мода</span></div>
+          <button class="btn ghost sm" onclick="switchPane('install')">Установить</button>
+        </div>
+        <div class="vrow2">
+          <div class="vn"><b>6.3.0</b><span>MC 1.21.1 · fabric · 50 модов</span></div>
+          <button class="btn ghost sm" onclick="switchPane('install')">Установить</button>
+        </div>
+        <div class="vrow2">
+          <div class="vn"><b>5.14.0</b><span>MC 1.20.1 · fabric · 48 модов</span></div>
+          <button class="btn ghost sm" onclick="switchPane('install')">Установить</button>
+        </div>
+      </div>
+      <div class="hint">Trel скачает .mrpack, поставит Fabric нужной версии, загрузит все моды и применит конфиги — сборка сразу готова к запуску.</div>
+    </div>
+  </section>
+
+  <!-- ③ УСТАНОВКА -->
+  <section class="pane" id="install">
+    <div class="card" style="max-width:520px;margin:30px auto 0">
+      <div class="inst-card">
+        <div class="inst-ico">📦</div>
+        <h3>Fabulously Optimized 6.4.2</h3>
+        <div class="mono" style="font-size:11px;color:var(--fg-subtle)">MC 1.21.4 · Fabric · 52 мода</div>
+        <div class="inst-stage">Скачивание модов… 34/52 · 68%</div>
+        <div class="progress"><i style="width:68%"></i></div>
+        <div class="inst-steps">
+          <div class="istep done"><span class="sdot"></span>Скачан .mrpack (18,4 МБ)</div>
+          <div class="istep done"><span class="sdot"></span>Установлена Minecraft 1.21.4</div>
+          <div class="istep done"><span class="sdot"></span>Установлен Fabric Loader 0.16.9</div>
+          <div class="istep now"><span class="sdot ok"></span>Скачивание модов (34/52)…</div>
+          <div class="istep"><span class="sdot off"></span>Применение конфигов и overrides</div>
+        </div>
+      </div>
+    </div>
+    <p class="note">* после установки появится зелёная плашка: «Версия Fabulously-Optimized-6.4.2 готова к запуску» — и её сразу видно в «Установленных».</p>
+  </section>
+
+</div>
+<script src="trel-preview.js"></script>
+</body>
+</html>

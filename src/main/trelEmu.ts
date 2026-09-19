@@ -3,6 +3,14 @@ import * as fsp from 'node:fs/promises';
 import * as path from 'node:path';
 import * as net from 'node:net';
 import { execSync, spawn, ChildProcess } from 'node:child_process';
+
+/**
+ * Серийник ADB едет в shell-строку: `emulator-5554`, IP:порт, но никогда —
+ * пробелы и метсимволы. Злой серийник (`x; rm -rf ~`) иначе даёт RCE.
+ */
+function assertSafeSerial(serial: string): void {
+  if (!/^[a-zA-Z0-9._:-]{1,64}$/.test(serial)) throw new Error(`Unsafe ADB serial: ${serial}`);
+}
 import { TrelEmuDownloader } from './trelEmuDownloader';
 import { extractBootFiles } from './isoReader';
 
@@ -615,6 +623,7 @@ export class TrelEmuService {
     info: TrelEmuInfo,
     cfg: TrelEmuConfig,
   ): Promise<void> {
+    assertSafeSerial(serial);
     try {
       if (cfg.auto_install_bedrock) {
         // Ждём до 90 сек что com.mojang появится (auto-install в tryAutoInstallBedrock).
@@ -654,6 +663,7 @@ export class TrelEmuService {
    * Делает всё, что ускоряет субъективное время до появления Minecraft.
    */
   private async postBootOptimize(adb: string, serial: string, cfg: TrelEmuConfig): Promise<void> {
+    assertSafeSerial(serial);
     const runShell = (cmd: string, timeoutMs = 5000) => {
       try {
         this.runAdb(adb, ['-s', serial, 'shell', cmd], {
@@ -929,6 +939,7 @@ export class TrelEmuService {
     const ports = new Set<number>([this.lastAdbPort ?? DEFAULT_CONFIG.adb_server_port, DEFAULT_CONFIG.adb_server_port]);
     if (adb) {
       for (const port of ports) {
+        if (!Number.isInteger(port) || port < 1 || port > 65535) continue;
         try {
           execSync(`"${adb}" -P ${port} kill-server`, {
             timeout: 5000,

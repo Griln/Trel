@@ -283,9 +283,17 @@ export class SkinServer {
       return;
     }
 
-    // /authserver/signout — выход. Просто принимаем.
+    // /authserver/signout — выход: гасим привязку токен→uuid, чтобы украденный
+    // позже токен не воскрешал сессию. Без тела — просто принимаем.
     if (p === '/authserver/signout' && req.method === 'POST') {
-      readBody().then(() => empty()).catch(() => empty());
+      readBody().then((body) => {
+        try {
+          const data = JSON.parse(body);
+          const token = data.accessToken?.toString() || data.selectedProfile?.toString() || '';
+          if (token) this.tokenToUuid.delete(token);
+        } catch { /* без тела нечего гасить */ }
+        empty();
+      }).catch(() => empty());
       return;
     }
 
@@ -303,11 +311,16 @@ export class SkinServer {
       readBody().then((body) => {
         try {
           const data = JSON.parse(body);
-          const serverId = data.serverId?.toString() || '';
+          const serverId = data.serverId?.toString().slice(0, 128) || '';
           const user = this.tokenToUuid.get(data.accessToken?.toString() || '');
           if (serverId && user) {
             const acc = this.byUuidUndashed.get(user);
             if (acc) {
+              // Хард-кап сессий: флуд serverId в 5-минутном окне иначе растит Map.
+              if (this.sessions.size >= 2000) {
+                const oldest = this.sessions.keys().next();
+                if (!oldest.done) this.sessions.delete(oldest.value);
+              }
               this.sessions.set(serverId, { username: acc.name, uuid: user, at: Date.now() });
             }
           }

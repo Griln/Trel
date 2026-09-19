@@ -16,6 +16,8 @@ export interface CrashFixAction {
   label: string;
   /** Необязательная подсказка-значение (например, рекомендуемый Xmx в МБ). */
   hint?: string | number;
+  /** Ссылка для действий типа update-gpu-driver (только allowlist-хосты). */
+  url?: string;
 }
 
 export interface CrashDiagnosis {
@@ -62,8 +64,53 @@ function firstCapture(text: string, patterns: RegExp[]): string | undefined {
   return undefined;
 }
 
+/** Производитель GPU для ссылки на драйвер (best-effort, без шелла). */
+export function detectGpuVendor(): 'nvidia' | 'amd' | 'intel' | null {
+  try {
+    const { execFileSync } = require('node:child_process') as typeof import('node:child_process');
+    let out = '';
+    if (process.platform === 'win32') {
+      out = execFileSync('wmic', ['path', 'win32_VideoController', 'get', 'name'], { timeout: 8000, encoding: 'utf-8', windowsHide: true });
+    } else {
+      // lspci может отсутствовать — тогда null и кнопка без ссылки.
+      out = execFileSync('lspci', { timeout: 8000, encoding: 'utf-8' });
+    }
+    const low = out.toLowerCase();
+    if (low.includes('nvidia') || low.includes('geforce')) return 'nvidia';
+    if (low.includes('amd') || low.includes('radeon')) return 'amd';
+    if (low.includes('intel')) return 'intel';
+  } catch { /* unknown vendor */ }
+  return null;
+}
+
 // Порядок важен: более специфичные сигнатуры идут раньше общих.
 const SIGNATURES: Signature[] = [
+  {
+    id: 'forge-missing-mods',
+    severity: 'fatal',
+    patterns: [/MissingModsException/i, /missing mods list/i, /requires ['"`]?([\w\-+]+)['"`]?/i],
+    build: (text) => ({
+      title: 'Не хватает зависимости мода (Forge)',
+      detail: 'Forge отказался стартовать: какому-то моду нужен другой мод или версия. Доставь зависимость из списка ниже.',
+      actions: [
+        { type: 'copy-report', label: 'Скопировать отчёт' },
+      ],
+      culprit: firstCapture(text, [/requires ['"`]?([\w\-+]+)['"`]?/i, /Mod ([\w\-+]+) requires/i]),
+    }),
+  },
+  {
+    id: 'mixin-apply-failed',
+    severity: 'fatal',
+    patterns: [/MixinApplyError/i, /Mixin prepare failed/i, /org\.spongepowered\.asm\.mixin\.transformer\.throwables/i],
+    build: (text) => ({
+      title: 'Сломался Mixin-патч мода',
+      detail: 'Мод попытался пропатчить чужой класс и не смог: обычно конфликт двух модов или мод не от этой версии игры/лоадера.',
+      actions: [
+        { type: 'copy-report', label: 'Скопировать отчёт' },
+      ],
+      culprit: firstCapture(text, [/MixinApplyError[^\n]*?(\S+\.class)/i, /for (\S+) during/i]),
+    }),
+  },
   {
     id: 'out-of-memory',
     severity: 'fatal',
@@ -159,15 +206,27 @@ const SIGNATURES: Signature[] = [
       /Couldn't set pixel format/i,
       /org\.lwjgl/i,
       /Pixel format not accelerated/i,
+      /GLFW error 65542/i,
+      /EXCEPTION_ACCESS_VIOLATION.*ig[0-9a-z]+\.dll/i,
     ],
-    build: () => ({
-      title: 'Проблема с видеодрайвером / OpenGL',
-      detail: 'Не удалось инициализировать графику (LWJGL/GLFW/OpenGL). Чаще всего помогает обновление драйвера видеокарты или запуск на дискретной GPU.',
-      actions: [
-        { type: 'update-gpu-driver', label: 'Как обновить драйвер' },
-        { type: 'copy-report', label: 'Скопировать отчёт' },
-      ],
-    }),
+    build: () => {
+      const vendor = detectGpuVendor();
+      const url = vendor === 'nvidia'
+        ? 'https://www.nvidia.com/Download/index.aspx'
+        : vendor === 'amd'
+          ? 'https://www.amd.com/en/support/download/drivers.html'
+          : vendor === 'intel'
+            ? 'https://www.intel.com/content/www/us/en/download-center/home.html'
+            : undefined;
+      return {
+        title: 'Проблема с видеодрайвером / OpenGL',
+        detail: 'Не удалось инициализировать графику (LWJGL/GLFW/OpenGL). Чаще всего помогает обновление драйвера видеокарты или запуск на дискретной GPU.',
+        actions: [
+          ...(url ? [{ type: 'update-gpu-driver' as const, label: 'Скачать драйвер', url }] : []),
+          { type: 'copy-report' as const, label: 'Скопировать отчёт' },
+        ],
+      };
+    },
   },
   {
     id: 'native-bridge',
@@ -204,7 +263,11 @@ const SIGNATURES: Signature[] = [
  * и в логах нет признаков ошибки.
  */
 export function analyzeCrash(input: CrashInput): CrashDiagnosis | null {
-  const text = ((input.crashReport || '') + '\n' + (input.logTail || '')).slice(-60_000);
+  // Шапка crash-report (заголовок с описанием) + хвост лога: раньше брали
+  // только последние 60к и слепо резали шапку с главным диагнозом.
+  const head = (input.crashReport || '').slice(0, 20_000);
+  const tail = ((input.crashReport || '') + '\n' + (input.logTail || '')).slice(-60_000);
+  const text = head + '\n' + tail;
 
   for (const sig of SIGNATURES) {
     if (sig.patterns.some((re) => re.test(text))) {

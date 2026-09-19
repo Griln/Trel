@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trel — Установленные · превью</title>
+<link rel="stylesheet" href="trel-design.css">
+<style>
+  .ilist{display:flex;flex-direction:column;gap:12px}
+  .irow{display:flex;align-items:center;gap:16px;padding:18px 20px;border-radius:16px;background:var(--surface-2);
+    border:1px solid var(--border);transition:transform .22s var(--ease),border-color .22s,background .22s,box-shadow .22s;
+    animation:cardIn .5s var(--ease) backwards;position:relative;overflow:hidden}
+  .irow:hover{transform:translateY(-3px);border-color:var(--border-bright);background:var(--surface-3);
+    box-shadow:0 14px 34px -16px rgba(0,0,0,.8)}
+  .irow:nth-child(1){animation-delay:.05s}.irow:nth-child(2){animation-delay:.12s}.irow:nth-child(3){animation-delay:.19s}
+  .irow:nth-child(4){animation-delay:.26s}.irow:nth-child(5){animation-delay:.33s}
+  .irow.is-last{border-color:rgba(94,203,111,.35);
+    background:linear-gradient(120deg,rgba(94,203,111,.06),var(--surface-2) 55%)}
+  .irow.is-last::after{content:"последняя запущенная";position:absolute;top:0;right:0;font-family:var(--mono);
+    font-size:9.5px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#0a0a0a;
+    background:var(--green);padding:4px 12px;border-radius:0 15px 0 10px}
+
+  .icube{width:48px;height:48px;flex-shrink:0;display:grid;place-items:center;border-radius:11px;
+    background:var(--surface-3);border:1px solid var(--border-strong);color:var(--fg-muted);
+    transition:transform .3s var(--ease),color .3s,border-color .3s}
+  .irow:hover .icube{transform:rotate(-8deg) scale(1.07);color:var(--fg-bright);border-color:var(--border-bright)}
+  .irow.bedrock .icube{color:var(--cyan);border-color:rgba(74,237,217,.3)}
+  .irow.modded .icube{color:var(--amber);border-color:rgba(245,168,60,.3)}
+  .icube svg{width:22px;height:22px}
+
+  .i-body{flex:1;min-width:0}
+  .i-top{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .i-id{font-family:var(--display);font-weight:700;font-size:18px;color:var(--fg-bright);letter-spacing:-.4px}
+  .i-sub{font-size:12.5px;color:var(--fg-muted);margin-top:4px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .i-sub .sep{color:var(--fg-subtle)}
+
+  .i-actions{display:flex;align-items:center;gap:8px;flex-shrink:0}
+  .ibtn{width:38px;height:38px;border-radius:10px;display:grid;place-items:center;cursor:pointer;
+    border:1px solid var(--border);background:var(--surface-3);color:var(--fg-muted);transition:.18s}
+  .ibtn svg{width:16px;height:16px}
+  .ibtn:hover{color:#fff;border-color:var(--border-bright);transform:translateY(-2px)}
+  .ibtn.del:hover{color:var(--red);border-color:rgba(212,87,78,.5);background:rgba(212,87,78,.08)}
+
+  .revert-strip{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:10px;padding:10px 14px;
+    border-radius:10px;background:rgba(245,168,60,.06);border:1px dashed rgba(245,168,60,.3)}
+  .revert-strip span{font-size:12.5px;color:var(--fg-muted)}
+  .revert-strip .btn{margin-left:auto}
+
+  .sum-strip{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:22px}
+  .sum-pill{display:flex;align-items:center;gap:9px;padding:11px 16px;border-radius:12px;background:var(--surface-2);
+    border:1px solid var(--border);animation:cardIn .5s var(--ease) backwards}
+  .sum-pill:nth-child(2){animation-delay:.08s}.sum-pill:nth-child(3){animation-delay:.16s}.sum-pill:nth-child(4){animation-delay:.24s}
+  .sum-pill .num{font-family:var(--display);font-weight:900;font-size:20px;color:var(--fg-bright)}
+  .sum-pill .lbl{font-family:var(--mono);font-size:10.5px;letter-spacing:1px;text-transform:uppercase;color:var(--fg-subtle)}
+</style>
+</head>
+<body>
+
+<div class="preview-bar">
+  <span class="tag-prev">ПРЕВЬЮ · УСТАНОВЛЕННЫЕ</span>
+  <button class="on" data-t="list">① список</button>
+  <button data-t="empty">② пусто</button>
+</div>
+
+<div class="page-frame">
+
+  <section class="pane show" id="list">
+    <div class="page-head">
+      <span class="eyebrow">Библиотека</span>
+      <h1 class="page-title">Установленные <span class="count">5</span></h1>
+      <p class="page-sub">Версии, готовые к запуску</p>
+    </div>
+
+    <div class="sum-strip">
+      <div class="sum-pill"><span class="num">3</span><span class="lbl">Java</span></div>
+      <div class="sum-pill"><span class="num">1</span><span class="lbl">Bedrock</span></div>
+      <div class="sum-pill"><span class="num">2</span><span class="lbl">с лоадером</span></div>
+      <div class="sum-pill"><span class="num">1,8</span><span class="lbl">ГБ на диске</span></div>
+    </div>
+
+    <div class="ilist">
+      <div class="irow is-last modded">
+        <div class="icube"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M21 8 12 3 3 8v8l9 5 9-5V8Z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg></div>
+        <div class="i-body">
+          <div class="i-top">
+            <span class="i-id">1.20.1</span>
+            <span class="chip amber">FABRIC 0.16.0</span>
+            <span class="chip green">релиз</span>
+          </div>
+          <div class="i-sub"><span>модов: 14</span><span class="sep">·</span><span>628 МБ</span><span class="sep">·</span><span>Java 17 ✓</span></div>
+          <div class="revert-strip">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
+            <span>Лоадер можно убрать — ваниль 1.20.1 останется, моды не удалятся</span>
+            <button class="btn ghost sm">Вернуть к ванили</button>
+          </div>
+        </div>
+        <div class="i-actions">
+          <button class="btn primary"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>Играть</button>
+          <button class="ibtn" title="Закрепить">📍</button><button class="ibtn" title="Поделиться сборкой (.trelpack)">📤</button><button class="ibtn" title="Папка версии"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.7-.9L9.6 3.9A2 2 0 0 0 7.9 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg></button>
+          <button class="ibtn del" title="Удалить"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg></button>
+        </div>
+      </div>
+
+      <div class="irow">
+        <div class="icube"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M21 8 12 3 3 8v8l9 5 9-5V8Z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg></div>
+        <div class="i-body">
+          <div class="i-top">
+            <span class="i-id">1.21.4</span>
+            <span class="chip green">релиз</span>
+          </div>
+          <div class="i-sub"><span>ваниль</span><span class="sep">·</span><span>412 МБ</span><span class="sep">·</span><span>Java 21 ✓</span></div>
+        </div>
+        <div class="i-actions">
+          <button class="btn primary"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>Играть</button>
+          <button class="ibtn" title="Закрепить">📍</button><button class="ibtn" title="Поделиться сборкой (.trelpack)">📤</button><button class="ibtn" title="Папка версии"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.7-.9L9.6 3.9A2 2 0 0 0 7.9 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg></button>
+          <button class="ibtn del" title="Удалить"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg></button>
+        </div>
+      </div>
+
+      <div class="irow bedrock">
+        <div class="icube"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M12 18h.01"/></svg></div>
+        <div class="i-body">
+          <div class="i-top">
+            <span class="i-id">1.15</span>
+            <span class="chip cyan">bedrock</span>
+          </div>
+          <div class="i-sub"><span>Buzzy Bees</span><span class="sep">·</span><span>APK 94 МБ</span><span class="sep">·</span><span>TrelEmu ✓</span></div>
+        </div>
+        <div class="i-actions">
+          <button class="btn primary"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>Играть</button>
+          <button class="ibtn" title="Закрепить">📍</button><button class="ibtn" title="Поделиться сборкой (.trelpack)">📤</button><button class="ibtn del" title="Удалить"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg></button>
+        </div>
+      </div>
+
+      <div class="irow modded">
+        <div class="icube"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M21 8 12 3 3 8v8l9 5 9-5V8Z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg></div>
+        <div class="i-body">
+          <div class="i-top">
+            <span class="i-id">1.12.2</span>
+            <span class="chip amber">FORGE 14.23</span>
+            <span class="chip green">релиз</span>
+          </div>
+          <div class="i-sub"><span>модов: 38</span><span class="sep">·</span><span>540 МБ</span><span class="sep">·</span><span>Java 8 ✓</span></div>
+        </div>
+        <div class="i-actions">
+          <button class="btn primary"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>Играть</button>
+          <button class="ibtn" title="Закрепить">📍</button><button class="ibtn" title="Поделиться сборкой (.trelpack)">📤</button><button class="ibtn" title="Папка версии"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.7-.9L9.6 3.9A2 2 0 0 0 7.9 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg></button>
+          <button class="ibtn del" title="Удалить"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg></button>
+        </div>
+      </div>
+    </div>
+    <p class="note">* удаление спрашивает: «только версию» или «полностью с модами и папкой». Зелёная рамка — версия, которая запускалась последней (она же на главной).</p>
+  </section>
+
+  <section class="pane" id="empty">
+    <div class="page-head">
+      <span class="eyebrow">Библиотека</span>
+      <h1 class="page-title">Установленные <span class="count">0</span></h1>
+    </div>
+    <div class="empty">
+      <span class="big">📦</span>
+      <b>Пока ничего не установлено</b>
+      Загляни в каталог — там все версии Minecraft, от первой до последней.
+      <div style="margin-top:18px"><button class="btn primary" onclick="switchPane('list')">Открыть каталог</button></div>
+    </div>
+  </section>
+
+</div>
+<script src="trel-preview.js"></script>
+</body>
+</html>

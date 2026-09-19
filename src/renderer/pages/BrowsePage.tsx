@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState, memo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import type {
   DownloadProgress,
   LauncherSettings,
@@ -12,7 +12,6 @@ import type {
   LoaderType,
 } from "../../preload/preload";
 import {
-  IconPlay,
   IconInfo,
   IconAlert,
   IconCheck,
@@ -20,7 +19,6 @@ import {
   IconFolder,
   IconRefresh,
   IconCube,
-  IconSkinOff,
 } from "../components/icons";
 import { bedrockDisplayName, describeVersion } from "../data/versions";
 import { LoaderInstallDialog } from "../components/LoaderInstallDialog";
@@ -261,84 +259,6 @@ const loaderLabel: Record<LoaderType, string> = {
   neoforge: "NeoForge",
 };
 
-interface RowProps {
-  v: VersionInfo | BedrockVersionInfo;
-  selected: boolean;
-  isInstalled: boolean;
-  isLastPlayed: boolean;
-  noSkin: boolean;
-  loaders: InstalledVersionDetail[];
-  typeLabel: Record<string, string>;
-  locale: string;
-  installedTitle: string;
-  notInstalledTitle: string;
-  playedLabel: string;
-  noSkinTitle: string;
-  onSelect: (id: string) => void;
-}
-
-const VersionRow = memo(function VersionRow({
-  v,
-  selected,
-  isInstalled,
-  isLastPlayed,
-  noSkin,
-  loaders,
-  typeLabel,
-  locale,
-  installedTitle,
-  notInstalledTitle,
-  playedLabel,
-  noSkinTitle,
-  onSelect,
-}: RowProps) {
-  const isBedrock = v.type === 'bedrock';
-  const displayName = isBedrock ? bedrockDisplayName(v.id, locale as any) : v.id;
-  return (
-    <div
-      className={"version-row" + (selected ? " selected" : "")}
-      onClick={() => onSelect(v.id)}
-    >
-      <span
-        className={
-          "version-dot " + (isInstalled ? "installed" : "not-installed")
-        }
-        title={isInstalled ? installedTitle : notInstalledTitle}
-      />
-      <div className="version-main">
-        <div className="version-name">
-          {displayName}
-          {isLastPlayed && <span className="pill">{playedLabel}</span>}
-        </div>
-        <div className="version-meta">
-          {new Date(v.releaseTime).toLocaleDateString(locale === 'en' ? 'en-US' : 'ru-RU')}
-          {loaders.map((l) => (
-            <span
-              key={l.id}
-              className="chip accent"
-              style={{ marginLeft: 6 }}
-              title={`${loaderLabel[l.loader!]} ${l.loaderVersion ?? ""}`}
-            >
-              + {loaderLabel[l.loader!]}
-            </span>
-          ))}
-        </div>
-      </div>
-      {noSkin && (
-        <span
-          className="row-noskin"
-          title={noSkinTitle}
-        >
-          <IconSkinOff />
-        </span>
-      )}
-      <span className={"tag " + v.type}>
-        {typeLabel[v.type] ?? v.type}
-      </span>
-    </div>
-  );
-});
-
 interface Props {
   settings: LauncherSettings;
   account: MinecraftAccount | null;
@@ -362,9 +282,17 @@ export const BrowsePage: React.FC<Props> = ({
   const typeLabel: Record<string, string> = {
     release: t('browse.typeRelease'),
     snapshot: t('browse.typeSnapshot'),
-    old_beta: "beta",
-    old_alpha: "alpha",
+    old_beta: t('browse.typeBeta'),
+    old_alpha: t('browse.typeAlpha'),
     bedrock: "Bedrock",
+  };
+  // Английские синоимы типов — чтобы «beta»/«snapshot» находились в любой локали.
+  const typeEn: Record<string, string> = {
+    release: 'release',
+    snapshot: 'snapshot',
+    old_beta: 'beta',
+    old_alpha: 'alpha',
+    bedrock: 'bedrock',
   };
   // TrelEmu pack — Windows-only (qemu-system-x86_64.exe, scrcpy.exe, adb.exe).
   // На Linux/macOS скрываем вкладку Bedrock Edition целиком.
@@ -377,7 +305,18 @@ export const BrowsePage: React.FC<Props> = ({
   const [installed, setInstalled] = useState<Set<string>>(new Set());
   const [details, setDetails] = useState<InstalledVersionDetail[]>([]);
   const [selected, setSelected] = useState<string>("");
-  const [filter, setFilter] = useState<Filter>("release");
+  const [filters, setFilters] = useState<Filter[]>(["release"]);
+  // Мультивыбор типов: клик по чипу добавляет/убирает тип.
+  // «Все» сбрасывает на всё; пустой выбор не оставляем — откат на «все».
+  const toggleFilter = (id: Filter) => {
+    setFilters((prev) => {
+      if (id === 'all') return ['all'];
+      const next = prev.includes(id)
+        ? prev.filter((f) => f !== id)
+        : [...prev.filter((f) => f !== 'all'), id];
+      return next.length ? next : ['all'];
+    });
+  };
   const [query, setQuery] = useState("");
   const [progress, setProgress] = useState<DownloadProgress | null>(null);
   const [status, setStatus] = useState("");
@@ -650,19 +589,44 @@ export const BrowsePage: React.FC<Props> = ({
 
 
   const filtered = useMemo(() => {
+    // Поиск v3: числовые (версионные) токены матчатся по границам сегментов id
+    // («1.0» находит только 1.0, а не даты и не 1.10.2), текстовые — по описанию
+    // патча и типу версии. Несколько слов — каждое должно найтись (И).
+    const q = query.trim().toLowerCase();
+    const parts = q ? q.split(/\s+/).filter(Boolean) : [];
+    const segMatch = (id: string, p: string) =>
+      id === p || id.startsWith(p + '.') || id.startsWith(p + '-') || id.includes('.' + p) || id.includes('-' + p);
+    const matchPart = (id: string, hay: string, p: string) =>
+      /^\d/.test(p) ? segMatch(id, p) : hay.includes(p);
     if (edition === 'bedrock') {
       return bedrockVersions.filter((v) => {
-        if (query && !v.id.toLowerCase().includes(query.toLowerCase())) return false;
-        return true;
+        if (!parts.length) return true;
+        const id = v.id.toLowerCase();
+        const hay = bedrockDisplayName(v.id, t.locale as any).toLowerCase();
+        return parts.every((p) => matchPart(id, hay, p));
       }).map(v => ({ ...v, type: 'bedrock' as const, url: '' }));
     }
     return versions.filter((v) => {
-      if (query && !v.id.toLowerCase().includes(query.toLowerCase()))
-        return false;
-      if (filter === "all") return true;
-      return v.type === filter;
+      if (parts.length) {
+        const id = v.id.toLowerCase();
+        const hay = [describeVersion(v as VersionInfo, t.locale), typeLabel[v.type] ?? '', typeEn[v.type] ?? '', v.type]
+          .join(' ').toLowerCase();
+        if (!parts.every((p) => matchPart(id, hay, p))) return false;
+      }
+      if (filters.includes("all")) return true;
+      return filters.includes(v.type);
     });
-  }, [edition, versions, bedrockVersions, query, filter]);
+  }, [edition, versions, bedrockVersions, query, filters, t.locale]);
+
+  // Пока пользователь ищет, панель деталей следует за первым результатом —
+  // иначе под списком остаётся «поломанный» блок старой выбранной версии,
+  // которой нет в выдаче.
+  useEffect(() => {
+    if (!query.trim()) return;
+    if (filtered.length && !filtered.some((v) => v.id === selected)) {
+      setSelected(filtered[0].id);
+    }
+  }, [query, filtered, selected]);
 
   const selectedVersion = (edition === 'bedrock'
     ? bedrockVersions.find((v) => v.id === selected)
@@ -836,88 +800,76 @@ export const BrowsePage: React.FC<Props> = ({
   const isLoaderVersion = edition === 'java' && !!selected && /^1\.\d+(\.\d+)?$/.test(selected);
 
   return (
-    <div className="catalog">
-      <header className="catalog-head">
-        <div>
-          <h1>{t('browse.title')}</h1>
-          <p>{t('browse.subtitle')}</p>
-          <div className="lib-side-tabs" style={{ marginTop: 8 }}>
-            <button className={"side-tab tab-release" + (edition === 'java' ? " active" : "")} onClick={() => { setEdition('java'); setFilter('release'); }}>
-              <span className="side-tab-dot" />
-              <span className="side-tab-label">Java Edition</span>
-              <span className="count">{versions.length}</span>
-            </button>
-            {isWin && (
-              <button className={"side-tab tab-bedrock" + (edition === 'bedrock' ? " active" : "")} onClick={() => { setEdition('bedrock'); }}>
-                <span className="side-tab-dot" style={{ background: '#00a8ff' }} />
-                <span className="side-tab-label">Bedrock Edition</span>
-                <span className="count">{bedrockVersions.length || '...'}</span>
-              </button>
-            )}
+    <div className="page-frame">
+      <div className="page-head">
+        <span className="eyebrow">{t('browse.eyebrow')}</span>
+        <div className="page-head-row">
+          <div>
+            <h1 className="page-title">{edition === 'bedrock' ? 'Bedrock' : t('browse.title')} <span className="count">{edition === 'bedrock' ? bedrockVersions.length : versions.length}</span></h1>
+            <p className="page-sub">{t('browse.subtitle')}</p>
           </div>
-        </div>
-        <div className="catalog-head-stats">
           {edition === 'java' ? (
-            <>
-              <span className="chip">
-                <b>{versions.length}</b> {t('browse.available')}
-              </span>
-              <span className="chip success">
-                <b>{effectiveInstalledCount(details)}</b> {t('browse.installed')}
-              </span>
-            </>
+            <div className="head-chips">
+              <span className="chip"><b>{versions.length}</b> {t('browse.available')}</span>
+              <span className="chip success"><b>{effectiveInstalledCount(details)}</b> {t('browse.installed')}</span>
+            </div>
           ) : (
-            <>
-              <span className="chip">
-                <b>{bedrockVersions.length}</b> {t('browse.available')}
-              </span>
-              <span className="chip success">
-                <b>{bedrockInstalled.size}</b> {t('browse.installed')}
-              </span>
-            </>
+            <div className="head-chips">
+              <span className="chip"><b>{bedrockVersions.length}</b> {t('browse.available')}</span>
+              <span className="chip success"><b>{bedrockInstalled.size}</b> {t('browse.installed')}</span>
+            </div>
           )}
         </div>
-      </header>
+      </div>
 
-      <div className="catalog-grid">
-        <aside className="catalog-list">
-          <div className="catalog-search">
-            <IconSearch className="search-icon" />
-            <input
-              className="input"
-              placeholder={t('browse.searchPlaceholder')}
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
-          </div>
-
-          <div className="lib-side-tabs">
-            {edition === 'java' ? (
-              filterTabs.map((tab) => (
-                <button
-                  key={tab.id}
-                  className={
-                    "side-tab tab-" +
-                    tab.accent +
-                    (filter === tab.id ? " active" : "")
-                  }
-                  onClick={() => setFilter(tab.id)}
-                >
-                  <span className="side-tab-dot" />
-                  <span className="side-tab-label">{tab.label}</span>
-                  <span className="count">{tab.c}</span>
-                </button>
-              ))
-            ) : (
-              <button className="side-tab tab-bedrock active">
-                <span className="side-tab-dot" style={{ background: '#00a8ff' }} />
-                <span className="side-tab-label">Bedrock</span>
-                <span className="count">{counts.all}</span>
-              </button>
+      <div>
+          <div className="edition-switch">
+            <button className={"ed-btn" + (edition === 'java' ? ' on' : '')} onClick={() => { setEdition('java'); setFilters(['release']); }}>Java</button>
+            {isWin && (
+              <button className={"ed-btn" + (edition === 'bedrock' ? ' on' : '')} onClick={() => { setEdition('bedrock'); }}>Bedrock + TrelEmu</button>
             )}
           </div>
 
-          <div className="catalog-list-scroll">
+          {isWin && edition === 'bedrock' && (
+            <div style={{ marginTop: 12, marginBottom: 8 }}>
+              <TrelEmuBar
+                status={trelEmuStatus}
+                onStart={startTrelEmu}
+                onStop={stopTrelEmu}
+                onRefresh={refreshTrelEmu}
+                onDownload={downloadTrelEmu}
+                onCancelDownload={cancelDownloadTrelEmu}
+                t={t}
+              />
+            </div>
+          )}
+
+          <div className="toolbar">
+            <div className="search-wrap">
+              <IconSearch />
+              <input
+                className="input"
+                placeholder={t('browse.searchPlaceholder')}
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+              />
+            </div>
+            {edition === 'java' && filterTabs.map((tab) => (
+              <button
+                key={tab.id}
+                className={"ftype k-" + tab.accent + (filters.includes(tab.id) ? ' on' : '')}
+                onClick={() => toggleFilter(tab.id)}
+              >
+                {tab.label} <span className="cnt">{tab.c}</span>
+              </button>
+            ))}
+          </div>
+
+          {edition === 'java' && (
+            <div className="vcount">{t('browse.shown')} <b>{filtered.length}</b> {t('browse.shownOf')} <b>{filters.includes('all') ? counts.all : filterTabs.reduce((s, tab) => (filters.includes(tab.id) ? s + tab.c : s), 0)}</b> {filters.includes('all') ? t('browse.filterAll') : filterTabs.filter((tab) => filters.includes(tab.id)).map((tab) => tab.label).join(' + ')}{' '}· {t('browse.autoRefresh')}</div>
+          )}
+
+          <div className="vlist">
             {filtered.length === 0 ? (
               <div className="empty">{t('browse.nothingFound')}</div>
             ) : (
@@ -926,273 +878,111 @@ export const BrowsePage: React.FC<Props> = ({
                 const isInst = edition === 'bedrock' ? bedrockInstalled.has(v.id) : (installed.has(v.id) || rowLoaders.length > 0);
                 const isSel = selected === v.id;
                 const lastId = settings.lastVersionId;
-                const isLastPlayed =
-                  v.id === lastId || rowLoaders.some((l) => l.id === lastId);
+                const isLastPlayed = v.id === lastId || rowLoaders.some((l) => l.id === lastId);
                 const noSkin = !supportsCustomSkin(v.id);
-                return (
-                  <VersionRow
-                    key={`${edition}:${v.id}`}
-                    v={v}
-                    selected={isSel}
-                    isInstalled={isInst}
-                    isLastPlayed={isLastPlayed}
-                    noSkin={noSkin}
-                    loaders={rowLoaders}
-                    typeLabel={typeLabel}
-                    locale={t.locale}
-                    installedTitle={t('browse.isInstalled')}
-                    notInstalledTitle={t('browse.notInstalled')}
-                    playedLabel={t('browse.played')}
-                    noSkinTitle={t('browse.noSkinShort')}
-                    onSelect={setSelected}
-                  />
-                );
-              })
-            )}
-          </div>
-        </aside>
-
-        <main className="catalog-detail">
-          {!selected ? (
-            <div className="catalog-empty">
-              <div className="catalog-empty-icon">
-                <IconCube />
-              </div>
-              <h2>{t('browse.selectVersion')}</h2>
-              <p>
-                {t('browse.selectHint')}
-              </p>
-            </div>
-          ) : (
-            <>
-              {!account && (
-                <div className="banner">
-                  <div>
-                    <h2>{t('browse.noAccount')}</h2>
-                    <div
-                      className="muted"
-                      style={{ fontSize: 12, marginTop: 4 }}
-                    >
-                      {t('browse.noAccountHint')}
-                    </div>
-                  </div>
-                  <button className="btn primary" onClick={onGoToAccounts}>
-                    {t('browse.toAccounts')}
+            const rowProgress = progress && (progress as any).versionId === v.id ? progress : null;
+            const isBedrock = v.type === 'bedrock';
+            const displayName = isBedrock ? bedrockDisplayName(v.id, t.locale as any) : v.id;
+            return (
+              <div
+                key={`${edition}:${v.id}`}
+                className={"vrow" + (isSel ? " sel" : '') + (v.type === 'snapshot' ? " snapshot" : '') + (isBedrock ? " bedrock" : '') + (isInst ? " installed" : '') + (rowProgress && (rowProgress as any).percent > 0 && (rowProgress as any).percent < 100 ? " downloading" : '')}
+                onClick={() => setSelected(v.id)}
+              >
+                <div className="v-id">{displayName}</div>
+                <div className="v-body">
+                  <div className="v-name">{isBedrock ? bedrockDisplayName(v.id, t.locale as any) : (describeVersion(v as VersionInfo, t.locale) || v.id)}</div>
+                  <div className="v-desc">{isBedrock ? bedrockDisplayName(v.id, t.locale as any) : v.id}</div>
+                </div>
+                <div className="v-tags">
+                  <span className={"chip " + v.type}>{typeLabel[v.type] ?? v.type}</span>
+                  {isInst && <span className="chip solid">✓ {t('browse.isInstalled')}</span>}
+                  {isLastPlayed && <span className="chip green">{t('browse.played')}</span>}
+                  {noSkin && <span className="chip warn" title={t('browse.noSkinLong')}>{t('browse.noSkins')}</span>}
+                </div>
+                <div className="loaders">
+                  {rowLoaders.map((l) => (
+                    <span key={l.id} className={"ldr " + l.loader}>{loaderLabel[l.loader!]}</span>
+                  ))}
+                </div>
+                <div className="v-date">{new Date(v.releaseTime).toLocaleDateString(t.locale === 'en' ? 'en-US' : 'ru-RU')}</div>
+                <div className="v-actions">
+                  <button className="btn primary sm" disabled={!canAct || !account} onClick={(e) => { e.stopPropagation(); onInstallAndPlay(); }}>
+                    {isInst ? <><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>{t('browse.btnPlay')}</> : <><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4}><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 21h16"/></svg>{t('browse.btnInstall')}</>}
                   </button>
                 </div>
-              )}
-
-              {status && !busy && (
-                <div
-                  key={`${statusType}:${status}`}
-                  className={(statusType === "error" ? "status-line status-line-prominent " : "status-toast ") + statusType}
-                >
-                  {statusType === "error" ? (
-                    <IconAlert />
-                  ) : statusType === "success" ? (
-                    <IconCheck />
-                  ) : (
-                    <IconInfo />
-                  )}
-                  <span>{status}</span>
-                </div>
-              )}
-
-              <div className="catalog-hero">
-                <div className="catalog-hero-info">
-                  <div className="catalog-hero-eyebrow">
-                    {isInstalled ? (
-                      <>
-                        <IconCheck /> {t('browse.readyEyebrow')}
-                      </>
-                    ) : (
-                      t('browse.notInstalledEyebrow')
-                    )}
-                  </div>
-                  <h2 className="catalog-hero-title">{edition === 'bedrock' ? bedrockDisplayName(selected, t.locale as any) : selected}</h2>
-                  <div className="catalog-hero-meta">
-                    {edition === 'bedrock' && selectedBedrock ? (
-                      <>
-                        <span className="tag bedrock">Bedrock</span>
-                        <span className="chip">
-                          {new Date(selectedBedrock.releaseTime).toLocaleDateString(t.locale === 'en' ? 'en-US' : 'ru-RU')}
-                        </span>
-                        {isInstalled && (
-                          <span className="chip accent">
-                            <IconCheck /> .apk
-                          </span>
-                        )}
-                      </>
-                    ) : selectedVersion && (
-                      <>
-                        <span className={"tag " + selectedVersion.type}>
-                          {typeLabel[selectedVersion.type] ??
-                            selectedVersion.type}
-                        </span>
-                        <span className="chip">
-                          {new Date(
-                            selectedVersion.releaseTime,
-                          ).toLocaleDateString(t.locale === 'en' ? 'en-US' : 'ru-RU')}
-                        </span>
-                        {loadersForSel.map((l) => (
-                          <span
-                            key={l.id}
-                            className="chip accent"
-                            title={t('browse.installedStatus', { id: l.id })}
-                          >
-                            + {loaderLabel[l.loader!]} {l.loaderVersion}
-                          </span>
-                        ))}
-                        {javaPlan && !javaPlan.error && (
-                          <span
-                            className={
-                              "chip " +
-                              (javaPlan.plan === "download"
-                                ? "warn"
-                                : "accent")
-                            }
-                          >
-                            Java {javaPlan.required}
-                            {javaPlan.plan === "reuse" && <> · {t('browse.javaFound')}</>}
-                            {javaPlan.plan === "download" && (
-                              <> · {t('browse.javaWillDownload')}</>
-                            )}
-                            {javaPlan.plan === "user" && <> · {t('browse.javaCustom')}</>}
-                          </span>
-                        )}
-                        {!supportsCustomSkin(selected) && (
-                          <span
-                            className="chip warn"
-                            title={t('browse.noSkinLong')}
-                          >
-                            <IconSkinOff /> {t('browse.noSkins')}
-                          </span>
-                        )}
-                      </>
-                    )}
-                  </div>
-                  {edition === 'bedrock' && (
-                    <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      <TrelEmuBar
-                        status={trelEmuStatus}
-                        onStart={startTrelEmu}
-                        onStop={stopTrelEmu}
-                        onRefresh={refreshTrelEmu}
-                        onDownload={downloadTrelEmu}
-                        onCancelDownload={cancelDownloadTrelEmu}
-                        t={t}
-                      />
-                    </div>
-                  )}
-                </div>
-
-                <button
-                  className="play-btn home-play block"
-                  disabled={!canAct}
-                  onClick={onInstallAndPlay}
-                >
-                  {busy && progress && (
-                    <span
-                      className="progress-fill"
-                      style={{ width: progress.percent + "%" }}
-                    />
-                  )}
-                  <span className="label">
-                    <IconPlay />
-                    {playLabel}
-                  </span>
-                </button>
-
-                {busy && progress && (
-                  <div className="hero-progress">
-                    <div className="ab-progress-info">
-                      <span className="ab-progress-stage">
-                        {progress.stage}
-                      </span>
-                      <span>
-                        {formatProgressBytes(progress, t)}
-                        {progress.percent}%
-                      </span>
-                      {edition === 'bedrock' && (
-                        <button
-                          className="btn cancel-btn"
-                          style={{ marginLeft: 8, padding: '2px 8px', fontSize: 11 }}
-                          onClick={() => window.api.bedrock.cancelDownload()}
-                        >
-                          Отмена
-                        </button>
-                      )}
-                    </div>
-                    <div className="ab-progress-bar">
-                      <div
-                        className="fill"
-                        style={{ width: progress.percent + "%" }}
-                      >
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                <div className="catalog-hero-tools">
-                  {edition === 'bedrock' ? (
-                    <>
-                      {!isInstalled && (
-                        <button className="btn" disabled={!selected || busy} onClick={onInstallOnly}>
-                          <IconRefresh /> {t('browse.downloadOnly')}
-                        </button>
-                      )}
-                      {isInstalled && (
-                        <button className="btn" disabled={!selected}
-                          onClick={() => selected && window.api.bedrock.openFolder(selected)}
-                        >
-                          <IconFolder /> {t('browse.versionFolder')}
-                        </button>
-                      )}
-                    </>
-                  ) : (
-                    <>
-                      {!isInstalled && (
-                        <button className="btn" disabled={!selected || busy} onClick={onInstallOnly}>
-                          <IconRefresh /> {t('browse.downloadOnly')}
-                        </button>
-                      )}
-                      {isInstalled && (
-                        <button className="btn" disabled={!selected}
-                          onClick={() => selected && window.api.minecraft.openFolder("version", selected)}
-                        >
-                          <IconFolder /> {t('browse.versionFolder')}
-                        </button>
-                      )}
-                      {isLoaderVersion && (
-                        <button className="btn" disabled={!selected || busy} onClick={() => setLoaderDialogOpen(true)}>
-                          <IconCube /> {t('browse.modLoader')}
-                        </button>
-                      )}
-                      {loadersForSel.length > 0 && (
-                        <button className="btn" disabled={busy} onClick={onRevertToVanilla} title={t('browse.revertTooltip')}>
-                          <IconRefresh /> {t('browse.revertToVanilla')}
-                        </button>
-                      )}
-                    </>
-                  )}
+                <div className="v-dl">
+                  {rowProgress && (rowProgress as any).percent > 0 && (rowProgress as any).percent < 100 ? (
+                    <><div className="progress" style={{ flex: 1 }}><i style={{ width: (rowProgress as any).percent + '%' }}></i></div><span className="pct">{(rowProgress as any).percent}% · {formatProgressBytes(rowProgress as DownloadProgress, t)}</span></>
+                  ) : ''}
                 </div>
               </div>
-
-              {selectedVersion && describeVersion(selectedVersion, t.locale) && (
-                <div className="about-card">
-                  <div className="about-head">
-                    <span className="about-label">{t('browse.aboutVersion')}</span>
-                    <span className="about-id mono">{selectedVersion.id}</span>
-                  </div>
-                  <p className="about-text">
-                    {describeVersion(selectedVersion, t.locale)}
-                  </p>
-                </div>
-              )}
-            </>
-          )}
-        </main>
+            );
+          })
+        )}
       </div>
+
+      {selected && !query.trim() && (
+        <div className="section">
+          <div className="section-head">
+            <h3>{edition === 'bedrock' ? bedrockDisplayName(selected, t.locale as any) : selected}</h3>
+          </div>
+          {!account && (
+            <div className="banner">
+              <div>
+                <h2>{t('browse.noAccount')}</h2>
+                <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>{t('browse.noAccountHint')}</div>
+              </div>
+              <button className="btn primary" onClick={onGoToAccounts}>{t('browse.toAccounts')}</button>
+            </div>
+          )}
+          {status && !busy && (
+            <div key={`${statusType}:${status}`} className={(statusType === "error" ? "status-line status-line-prominent " : "status-toast ") + statusType}>
+              {statusType === "error" ? <IconAlert /> : statusType === "success" ? <IconCheck /> : <IconInfo />}
+              <span>{status}</span>
+            </div>
+          )}
+          {busy && progress && (
+            <div className="hero-progress">
+              <div className="ab-progress-info">
+                <span className="ab-progress-stage">{progress.stage}</span>
+                <span>{formatProgressBytes(progress, t)}{progress.percent}%</span>
+                  {edition === 'bedrock' && <button className="btn cancel-btn" style={{ marginLeft: 8, padding: '2px 8px', fontSize: 11 }} onClick={() => window.api.bedrock.cancelDownload()}>{t('browse.cancel')}</button>}
+              </div>
+              <div className="ab-progress-bar"><div className="fill" style={{ width: `${Math.min(100, Math.max(0, Number.isFinite(progress.percent) ? progress.percent : 0))}%` }}></div></div>
+            </div>
+          )}
+          {selectedVersion && describeVersion(selectedVersion as VersionInfo, t.locale) && (
+            <div className="about-card">
+              <div className="about-head">
+                <span className="about-label">{t('browse.aboutVersion')}</span>
+                <span className="about-id mono">{selectedVersion.id}</span>
+              </div>
+              <p className="about-text">{describeVersion(selectedVersion as VersionInfo, t.locale)}</p>
+            </div>
+          )}
+          {edition === 'java' && isLoaderVersion && (
+            <button className="btn" disabled={!selected || busy} onClick={() => setLoaderDialogOpen(true)}><IconCube /> {t('browse.modLoader')}</button>
+          )}
+          {edition === 'java' && loadersForSel.length > 0 && (
+            <button className="btn" disabled={busy} onClick={onRevertToVanilla} title={t('browse.revertTooltip')}><IconRefresh /> {t('browse.revertToVanilla')}</button>
+          )}
+          {edition === 'java' && isInstalled && (
+            <button className="btn" disabled={!selected} onClick={() => selected && window.api.minecraft.openFolder("version", selected)}><IconFolder /> {t('browse.versionFolder')}</button>
+          )}
+          {edition === 'bedrock' && isInstalled && (
+            <button className="btn" disabled={!selected} onClick={() => selected && window.api.bedrock.openFolder(selected)}><IconFolder /> {t('browse.versionFolder')}</button>
+          )}
+          {edition === 'java' && !isInstalled && (
+            <button className="btn" disabled={!selected || busy} onClick={onInstallOnly}><IconRefresh /> {t('browse.downloadOnly')}</button>
+          )}
+          {edition === 'bedrock' && !isInstalled && (
+            <button className="btn" disabled={!selected || busy} onClick={onInstallOnly}><IconRefresh /> {t('browse.downloadOnly')}</button>
+          )}
+        </div>
+      )}
+
+      <p className="note">{t('browse.loadersNote')}</p>
 
       <LoaderInstallDialog
         mcVersion={selected}
@@ -1200,13 +990,12 @@ export const BrowsePage: React.FC<Props> = ({
         onClose={() => setLoaderDialogOpen(false)}
         onInstalled={async (versionId) => {
           await refreshInstalled();
-          // Селект остаётся на базовой MC-версии: лоадер впитывает её.
-          // Активной делаем именно лоадер, чтобы "Играть" запустила его.
           onSettingsChange({ ...settings, lastVersionId: versionId, lastVersionEdition: 'java' });
           setStatus(t('browse.installedStatus', { id: versionId }));
           setStatusType("success");
         }}
       />
+    </div>
     </div>
   );
 };

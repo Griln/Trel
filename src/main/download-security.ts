@@ -17,6 +17,8 @@ const TRUSTED_EXACT_HOSTS = new Set([
   'meta.quiltmc.org',
   'bmclapi2.bangbang93.com',
   'mcpehub.org',
+  'api.modrinth.com',
+  'cdn.modrinth.com',
 ]);
 
 const TRUSTED_HOST_SUFFIXES = [
@@ -44,11 +46,17 @@ export interface DownloadSourceTrust {
 export function verifyDownloadSource(url: string): DownloadSourceTrust {
   try {
     const u = new URL(url);
+    const host = u.hostname.toLowerCase();
+    // Loopback без TLS: удалённо не перехватить, а для локальных прокси,
+    // дев-стендов и тестов — необходимость. Внешний http по-прежнему banned.
+    if ((u.protocol === 'http:' || u.protocol === 'https:') &&
+        (host === 'localhost' || host === '127.0.0.1' || host === '::1' || host.endsWith('.localhost'))) {
+      return { allowed: true, host, reason: `Источник автоматически подтверждён: ${host}` };
+    }
     if (u.protocol !== 'https:') {
       return { allowed: false, host: u.hostname, reason: 'Источник не подтверждён: разрешены только HTTPS-ссылки.' };
     }
 
-    const host = u.hostname.toLowerCase();
     if (TRUSTED_EXACT_HOSTS.has(host) || TRUSTED_HOST_SUFFIXES.some((suffix) => host.endsWith(suffix))) {
       return { allowed: true, host, reason: `Источник автоматически подтверждён: ${host}` };
     }

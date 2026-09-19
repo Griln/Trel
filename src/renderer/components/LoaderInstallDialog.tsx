@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import type { LoaderType, LoaderVersionInfo } from '../../preload/preload';
 import { IconRefresh, IconCheck } from './icons';
+import { VersionPicker } from './VersionPicker';
 import { useT } from '../i18n';
 
 interface Props {
@@ -92,18 +93,19 @@ export const LoaderInstallDialog: React.FC<Props> = ({ mcVersion, open, onClose,
                 {t('loader.empty', { loader: LOADERS.find(l => l.id === loader)?.label ?? loader, mcVersion })}
               </div>
             ) : (
-              <select
-                className="select"
+              <VersionPicker
                 value={selected}
-                onChange={(e) => setSelected(e.target.value)}
+                onChange={setSelected}
                 disabled={installing}
-              >
-                {versions.slice(0, 100).map((v) => (
-                  <option key={v.version} value={v.version}>
-                    {v.version}{v.stable ? ` · ${t('loader.stable')}` : ''}
-                  </option>
-                ))}
-              </select>
+                maxItems={100}
+                maxHeight={240}
+                options={versions.map((v) => ({
+                  id: v.version,
+                  title: v.version,
+                  sub: v.stable ? t('loader.stable') : undefined,
+                  tone: v.stable ? '' : 'modded',
+                }))}
+              />
             )}
           </div>
 

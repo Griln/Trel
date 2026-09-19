@@ -1,13 +1,10 @@
 import { createContext, useContext } from 'react';
 import ru from './ru';
 import en from './en';
-import zh from './zh';
-import es from './es';
-import de from './de';
 
-type Locale = 'ru' | 'en' | 'zh' | 'es' | 'de';
+type Locale = 'ru' | 'en';
 
-const dictionaries: Record<Locale, Record<string, string>> = { ru, en, zh, es, de };
+const dictionaries: Record<Locale, Record<string, string>> = { ru, en };
 
 const LocaleContext = createContext<Locale>('ru');
 
@@ -19,7 +16,7 @@ export const LocaleProvider = LocaleContext.Provider;
  * Строки хранятся с Windows-формой (`%APPDATA%\Trel`, `java.exe`, `Trel.exe`),
  * т.к. изначально лаунчер был Windows-only. На Linux/macOS подставляем
  * эквивалент из POSIX-мира, не трогая словари — иначе пришлось бы дублировать
- * каждую строку в ru/en/es/zh/de.
+ * каждую строку в ru/en.
  *
  * Замены осознанно консервативны: `%APPDATA%\Trel` → `~/.config/Trel` (это
  * userData-папка Trel на Linux; на macOS — ~/Library/Application Support/Trel,
@@ -62,7 +59,9 @@ export function useT() {
   const dict = dictionaries[locale] ?? dictionaries.ru;
 
   function t(key: string, params?: Record<string, string | number>): string {
-    const raw = dict[key] ?? dictionaries.ru[key] ?? key;
+    // A missing key must never surface as implementation text (for example,
+    // "settings.unknownOption") in the UI.
+    const raw = dict[key] ?? dictionaries.ru[key] ?? dictionaries.en[key] ?? 'Translation unavailable';
     return interpolate(applyPlatformSubst(raw), params);
   }
 

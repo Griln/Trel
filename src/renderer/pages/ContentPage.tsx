@@ -53,30 +53,19 @@ const HINT_KEY: Record<ContentKind, string> = {
 
 const BEDROCK_TAB_IDS: ContentKind[] = ['mod', 'resourcepack', 'texturepack'];
 
-function bedrockLabel(kind: ContentKind, locale: string): string {
-  const ru = locale === 'ru';
-  if (kind === 'mod') return ru ? 'Аддоны' : 'Add-ons';
-  if (kind === 'resourcepack') return ru ? 'Ресурс-паки' : 'Resource packs';
-  if (kind === 'texturepack') return ru ? 'Миры' : 'Worlds';
-  return ru ? 'Ресурс-паки' : 'Resource packs';
-}
+const BEDROCK_LABEL_KEY: Record<ContentKind, string> = {
+  mod: 'content.bedrockAddons',
+  shader: 'content.tabShaders',
+  resourcepack: 'content.bedrockResourcepacks',
+  texturepack: 'content.bedrockWorlds',
+};
 
-function bedrockHint(kind: ContentKind, locale: string): string {
-  const ru = locale === 'ru';
-  if (kind === 'mod') {
-    return ru
-      ? 'Bedrock не использует Java .jar-моды. Добавляй .mcaddon/.mcpack или распакованные behavior_packs.'
-      : 'Bedrock does not use Java .jar mods. Add .mcaddon/.mcpack files or extracted behavior_packs.';
-  }
-  if (kind === 'resourcepack') {
-    return ru
-      ? 'Для Bedrock сюда подходят .mcpack/.zip или распакованные resource_packs.'
-      : 'For Bedrock, use .mcpack/.zip files or extracted resource_packs here.';
-  }
-  return ru
-    ? 'Для Bedrock сюда подходят .mcworld/.mctemplate/.zip или распакованные minecraftWorlds.'
-    : 'For Bedrock, use .mcworld/.mctemplate/.zip files or extracted minecraftWorlds here.';
-}
+const BEDROCK_HINT_KEY: Record<ContentKind, string> = {
+  mod: 'content.bedrockHintAddons',
+  shader: 'content.hintShader',
+  resourcepack: 'content.bedrockHintResourcepacks',
+  texturepack: 'content.bedrockHintWorlds',
+};
 
 export const ContentPage: React.FC<Props> = ({ lastVersionId, onPickVersion }) => {
   const t = useT();
@@ -85,8 +74,89 @@ export const ContentPage: React.FC<Props> = ({ lastVersionId, onPickVersion }) =
   const [items, setItems] = useState<ContentItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  // Обновления модов (Modrinth): файл -> свежая версия.
+  const [modUpdates, setModUpdates] = useState<Record<string, { latest: string; current?: string; url?: string }>>({});
+  const [checkingUpdates, setCheckingUpdates] = useState(false);
+  const [updatingFile, setUpdatingFile] = useState<string | null>(null);
+  // Профили модов: именованные наборы включённых jar.
+  const [profiles, setProfiles] = useState<Record<string, string[]>>({});
+  const [activeProfile, setActiveProfile] = useState<string>('');
+  const [newProfile, setNewProfile] = useState('');
+
+  const loadProfiles = async (vid: string) => {
+    if (!vid) { setProfiles({}); return; }
+    try { setProfiles(await window.api.content.modProfiles(vid)); }
+    catch { setProfiles({}); }
+  };
+
+  const saveProfile = async () => {
+    const name = newProfile.trim();
+    if (!name || !versionId) return;
+    try {
+      await window.api.content.modProfileSave(versionId, name);
+      setNewProfile('');
+      setActiveProfile(name);
+      await loadProfiles(versionId);
+      setStatus(t('content.profileSaved', { name }));
+    } catch (e) { setStatus(t('content.profileFailed', { message: (e as Error).message })); }
+  };
+  const applyProfile = async (name: string) => {
+    if (!name || !versionId) return;
+    try {
+      const r = await window.api.content.modProfileApply(versionId, name);
+      setActiveProfile(name);
+      setStatus(t('content.profileApplied', { enabled: r.enabled, disabled: r.disabled }));
+      refresh();
+    } catch (e) { setStatus(t('content.profileFailed', { message: (e as Error).message })); }
+  };
+  const deleteProfile = async (name: string) => {
+    if (!name || !versionId) return;
+    try {
+      await window.api.content.modProfileDelete(versionId, name);
+      if (activeProfile === name) setActiveProfile('');
+      await loadProfiles(versionId);
+    } catch (e) { setStatus(t('content.profileFailed', { message: (e as Error).message })); }
+  };
+
+  const checkUpdates = async () => {
+    if (!versionId || !currentDetail || checkingUpdates) return;
+    setCheckingUpdates(true);
+    try {
+      const baseMc = currentDetail.baseMc || versionId;
+      const loaders = currentDetail.loader ? [currentDetail.loader] : [];
+      const list = await window.api.content.checkModUpdates(versionId, baseMc, loaders);
+      const map: Record<string, { latest: string; current?: string; url?: string }> = {};
+      for (const u of list) if (u.url) map[u.file] = { latest: u.latest ?? '?', current: u.current, url: u.url };
+      setModUpdates(map);
+      if (list.length === 0) setStatus(t('content.updatesNone'));
+      else setStatus(t('content.updatesFound', { count: list.length }));
+    } catch (e) {
+      setStatus(t('content.updatesFailed', { message: (e as Error).message }));
+    } finally {
+      setCheckingUpdates(false);
+      refresh();
+    }
+  };
+
+  const applyUpdate = async (file: string) => {
+    const u = modUpdates[file];
+    if (!u?.url || updatingFile) return;
+    setUpdatingFile(file);
+    try {
+      await window.api.content.updateMod(versionId, file, u.url);
+      setModUpdates((m) => { const c = { ...m }; delete c[file]; return c; });
+      setStatus(t('content.updatedOk', { file }));
+    } catch (e) {
+      setStatus(t('content.updatedFailed', { message: (e as Error).message }));
+    } finally {
+      setUpdatingFile(null);
+      refresh();
+    }
+  };
   const [details, setDetails] = useState<InstalledVersionDetail[]>([]);
   const [versionId, setVersionId] = useState<string>(lastVersionId ?? '');
+  React.useEffect(() => { loadProfiles(versionId); setActiveProfile(''); setNewProfile(''); }, [versionId]);
 
   function fmtSize(b: number): string {
     if (b < 1024) return b + ' ' + t('size.b');
@@ -120,7 +190,9 @@ export const ContentPage: React.FC<Props> = ({ lastVersionId, onPickVersion }) =
           filtered[0] ??
           list[0] ??
           null;
-        if (pick) setVersionId(pick.id);
+        // Если среди установленных версий нет текущей (в т.ч. список пуст) —
+        // сбрасываем выбор, чтобы не показывать фантомную версию из настроек.
+        setVersionId(pick ? pick.id : '');
       }
     });
     return () => { cancelled = true; };
@@ -133,22 +205,30 @@ export const ContentPage: React.FC<Props> = ({ lastVersionId, onPickVersion }) =
   const Icon = KindIcon[effectiveTab];
   const noVersionPicked = !versionId || !currentDetail;
   const isModdable = currentDetail?.edition === 'java' && !!currentDetail?.loader;
-  const tabLabel = isBedrock ? bedrockLabel(effectiveTab, t.locale) : t(TAB_LABEL_KEY[effectiveTab]);
-  const placeholderHint = isBedrock ? bedrockHint(effectiveTab, t.locale) : t(HINT_KEY[effectiveTab]);
+  const tabLabel = t(isBedrock ? BEDROCK_LABEL_KEY[effectiveTab] : TAB_LABEL_KEY[effectiveTab]);
+  const placeholderHint = t(isBedrock ? BEDROCK_HINT_KEY[effectiveTab] : HINT_KEY[effectiveTab]);
   const totalSize = items.reduce((acc, it) => acc + it.size, 0);
 
   useEffect(() => {
     if (isBedrock && tab === 'shader') setTab('mod');
   }, [isBedrock, tab]);
 
+  const aliveRef = React.useRef(true);
+  React.useEffect(() => {
+    aliveRef.current = true;
+    return () => { aliveRef.current = false; };
+  }, []);
   const refresh = async () => {
     if (!versionId) { setItems([]); return; }
     setLoading(true);
+    setError(null);
     try {
       const list = await window.api.content.list(effectiveTab, versionId, currentDetail?.edition);
-      setItems(list);
+      if (aliveRef.current) setItems(list);
+    } catch (e) {
+      if (aliveRef.current) setError((e as Error).message);
     } finally {
-      setLoading(false);
+      if (aliveRef.current) setLoading(false);
     }
   };
 
@@ -214,16 +294,12 @@ export const ContentPage: React.FC<Props> = ({ lastVersionId, onPickVersion }) =
 
   const onInstallToBedrock = async (it: ContentItem) => {
     if (!versionId) return;
-    setStatus(t.locale === 'ru' ? `Устанавливаю в Android: ${it.meta?.title || it.displayName}...` : `Installing to Android: ${it.meta?.title || it.displayName}...`);
+    setStatus(t('content.installingToBedrock', { name: it.meta?.title || it.displayName }));
     try {
       const res = await window.api.content.installToBedrock(effectiveTab, it.name, versionId);
-      setStatus(t.locale === 'ru'
-        ? `Установлено в Bedrock (${res.serial}): ${res.target}`
-        : `Installed to Bedrock (${res.serial}): ${res.target}`);
+      setStatus(t('content.installedToBedrock', { serial: res.serial, target: res.target }));
     } catch (e) {
-      setStatus(t.locale === 'ru'
-        ? `Не удалось установить в Bedrock: ${(e as Error).message}`
-        : `Failed to install to Bedrock: ${(e as Error).message}`);
+      setStatus(t('content.installToBedrockFailed', { message: (e as Error).message }));
     }
   };
 
@@ -231,98 +307,84 @@ export const ContentPage: React.FC<Props> = ({ lastVersionId, onPickVersion }) =
   return (
     <div>
       <div className="page-head">
-        <h1>{t('content.title')}</h1>
-        <p>{t('content.subtitle')}</p>
+        <span className="eyebrow">{t('content.eyebrow')}</span>
+        <h1 className="page-title">{t('content.title')}</h1>
+        <p className="page-sub">{t('content.subtitle')}</p>
       </div>
 
-      {/* Version switcher */}
-      <div className="content-version-bar">
-        <label className="muted" style={{ fontSize: 12, marginRight: 8 }}>
-          {t('content.versionLabel')}
-        </label>
-        <select
-          className="select"
-          value={versionId}
-          onChange={(e) => {
-            const id = e.target.value;
-            setVersionId(id);
-            onPickVersion(id);
-          }}
-          disabled={availableVersions.length === 0}
-          style={{ minWidth: 260 }}
-        >
-          {availableVersions.length === 0 && (
-            <option value="">{t('content.noVersionsInstalled')}</option>
-          )}
-          {availableVersions.map((d) => (
-            <option key={d.id} value={d.id}>{prettyVersionName(d)}</option>
-          ))}
-        </select>
-        {currentDetail && (
-          <span className="chip" style={{ marginLeft: 8 }} title={currentDetail.id}>
-            {t('content.folderChip', { id: currentDetail.id })}
+      {/* Version picker */}
+      <div className="vpick" id="vpick">
+        <button className="vpick-btn" onClick={() => { const el = document.getElementById('vpick'); if (el) el.classList.toggle('open'); }}>
+          <span className="vpick-cube"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9}><path d="M21 8 12 3 3 8v8l9 5 9-5V8Z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg></span>
+          <span className="vpick-info">
+            <b id="vpickName">{versionId || t('common.noVersions')}</b>
+            <span id="vpickSub">{currentDetail ? `${currentDetail.loader ? loaderLabel[currentDetail.loader] + ' · ' : ''}${currentDetail.id}` : ''}</span>
           </span>
-        )}
+          <svg className="vpick-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4}><path d="m6 9 6 6 6-6"/></svg>
+        </button>
+        <div className="vpick-panel">
+          {availableVersions.length === 0 && <div className="vpick-empty">{t('common.noVersions')}</div>}
+          {availableVersions.map((d) => (
+            <button key={d.id} className={'vpick-item' + (versionId === d.id ? ' sel' : '') + (d.loader ? ' modded' : '')} onClick={() => { setVersionId(d.id); onPickVersion(d.id); const el = document.getElementById('vpick'); if (el) el.classList.remove('open'); }}>
+              <span className="vi-cube"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9}><path d="M21 8 12 3 3 8v8l9 5 9-5V8Z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg></span>
+              <span className="vi-body"><b>{prettyVersionName(d)}</b><span>{d.id}</span></span>
+              <svg className="vi-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}><path d="m5 12 5 5 9-11"/></svg>
+            </button>
+          ))}
+        </div>
       </div>
 
-      <div className="content-tabs">
-        {visibleTabs.map(id => {
+      {/* Drop zone */}
+      <div className="drop-hint"><b>{t('content.dropHintTitle')}</b> {t('content.dropHintText')} <span style={{ textDecoration: 'underline' }}>{t('content.dropHintChoose')}</span>.</div>
+
+      {/* Filters */}
+      <div className="cfilters">
+        {TAB_IDS.map(id => {
           const T = KindIcon[id];
+          const cnt = items.filter(it => it.kind === id).length;
           return (
-            <button
-              key={id}
-              className={'content-tab' + (tab === id ? ' active' : '')}
-              onClick={() => setTab(id)}
-            >
-              <T />
-              <span>{isBedrock ? bedrockLabel(id, t.locale) : t(TAB_LABEL_KEY[id])}</span>
+            <button key={id} className={'cf' + (tab === id ? ' on' : '')} data-f={id} onClick={() => setTab(id)}>
+              <T /> {t(isBedrock ? BEDROCK_LABEL_KEY[id] : TAB_LABEL_KEY[id])} <span className="cnt">{cnt}</span>
             </button>
           );
         })}
+        <span className="cf-hint">{t('content.filterHint')}</span>
+        {tab === 'mod' && !isBedrock && versionId && (
+          <button className="btn ghost sm" onClick={checkUpdates} disabled={checkingUpdates} title={t('content.checkUpdatesHint')}>
+            {checkingUpdates ? t('content.checkingUpdates') : t('content.checkUpdates')}
+            {Object.keys(modUpdates).length > 0 && ` (${Object.keys(modUpdates).length})`}
+          </button>
+        )}
       </div>
-
-      {isBedrock && (
-        <div className="content-banner info">
-          <div className="content-banner-icon"><IconInfoLocal /></div>
-          <div className="content-banner-body">
-            <h3>{t.locale === 'ru' ? 'Режим Bedrock-контента' : 'Bedrock content mode'}</h3>
-            <p>{t.locale === 'ru'
-              ? 'Bedrock использует не Java-моды, а аддоны, behavior packs, resource packs и .mcworld. Шейдеры Java здесь скрыты, потому что они несовместимы с Bedrock/RenderDragon.'
-              : 'Bedrock uses add-ons, behavior packs, resource packs and .mcworld files instead of Java mods. Java shaders are hidden because they are not compatible with Bedrock/RenderDragon.'}</p>
-          </div>
+      {tab === 'mod' && !isBedrock && versionId && (
+        <div className="prow" style={{ gap: 8, marginTop: 8 }}>
+          <select
+            className="input sm"
+            value={activeProfile}
+            onChange={(e) => { setActiveProfile(e.target.value); if (e.target.value) applyProfile(e.target.value); }}
+            title={t('content.profileHint')}
+          >
+            <option value="">{t('content.profileNone')}</option>
+            {Object.keys(profiles).map((n) => (
+              <option key={n} value={n}>{n} ({profiles[n].length})</option>
+            ))}
+          </select>
+          <input
+            className="input sm"
+            style={{ maxWidth: 170 }}
+            placeholder={t('content.profileNamePh')}
+            value={newProfile}
+            onChange={(e) => setNewProfile(e.target.value)}
+            maxLength={64}
+          />
+          <button className="btn ghost sm" onClick={saveProfile} disabled={!newProfile.trim()}>{t('content.profileSave')}</button>
+          {activeProfile && (
+            <button className="btn ghost sm" onClick={() => deleteProfile(activeProfile)}>{t('content.profileDelete')}</button>
+          )}
         </div>
       )}
 
-      {!isBedrock && tab === 'shader' && (
-        <div className="content-banner info">
-          <div className="content-banner-icon"><IconAlert /></div>
-          <div className="content-banner-body">
-            <h3>{t('content.shaderBannerTitle')}</h3>
-            <p>{t('content.shaderBannerText')}</p>
-          </div>
-        </div>
-      )}
-
-      {!isBedrock && tab === 'texturepack' && (
-        <div className="content-banner warn">
-          <div className="content-banner-icon"><IconAlert /></div>
-          <div className="content-banner-body">
-            <h3>{t('content.texturepackBannerTitle')}</h3>
-            <p>{t('content.texturepackBannerText')}</p>
-          </div>
-        </div>
-      )}
-
-      {!isBedrock && tab === 'mod' && !isModdable && currentDetail && (
-        <div className="content-banner accent">
-          <div className="content-banner-icon"><IconInfoLocal /></div>
-          <div className="content-banner-body">
-            <h3>{t('content.modBannerTitle')}</h3>
-            <p>{t('content.modBannerText', { id: currentDetail.id })}</p>
-          </div>
-        </div>
-      )}
-
+      {/* Content grid */}
       {noVersionPicked ? (
         <div className="content-empty">
           <div className="content-empty-icon"><IconCube /></div>
@@ -332,26 +394,15 @@ export const ContentPage: React.FC<Props> = ({ lastVersionId, onPickVersion }) =
       ) : (
         <>
           <div className="content-toolbar">
-            <button className="btn primary" onClick={onAdd}>
-              {t('content.addFiles')}
-            </button>
-            <button className="btn" onClick={() => window.api.content.openFolder(effectiveTab, versionId, currentDetail?.edition)}>
-              <IconFolder /> {t('content.openFolder')}
-            </button>
-            <button className="btn ghost sm" onClick={refresh} disabled={loading}>
-              <IconRefresh /> {t('content.refresh')}
-            </button>
+            <button className="btn primary" onClick={onAdd}>{t('content.addFiles')}</button>
+            <button className="btn" onClick={() => window.api.content.openFolder(effectiveTab, versionId, currentDetail?.edition)}><IconFolder /> {t('content.openFolder')}</button>
+            <button className="btn ghost sm" onClick={refresh} disabled={loading}><IconRefresh /> {t('content.refresh')}</button>
             <div className="spacer" />
-            <span className="muted" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
-              {t('content.fileSummary', {
-                count: String(items.length),
-                files: t.plural(items.length, t('plural.file.one'), t('plural.file.few'), t('plural.file.many')),
-                size: fmtSize(totalSize),
-              })}
-            </span>
+            <span className="muted content-file-summary">{t('content.fileSummary', { count: String(items.length), files: t.plural(items.length, t('plural.file.one'), t('plural.file.few'), t('plural.file.many')), size: fmtSize(totalSize) })}</span>
           </div>
 
           {status && <div className="hint" style={{ marginBottom: 10 }}>{status}</div>}
+          {error && <div className="hint" style={{ marginBottom: 10, color: 'var(--warning)' }}>{error}</div>}
 
           {loading ? (
             <div className="empty">{t('content.loading')}</div>
@@ -362,51 +413,43 @@ export const ContentPage: React.FC<Props> = ({ lastVersionId, onPickVersion }) =
               <p>{t('content.emptyHint', { folder: tabLabel.toLowerCase() })}<br />{placeholderHint}</p>
             </div>
           ) : (
-            <div className="content-grid">
+            <div className="c-grid">
               {items.map(it => {
                 const ItemIcon = KindIcon[effectiveTab];
+                const isOff = !it.enabled;
                 return (
-                  <div key={it.name} className={'content-card' + (it.enabled ? '' : ' disabled')}>
-                    <div className="content-icon"><ItemIcon /></div>
-                    <div className="content-body">
-                      <div className="content-name" title={it.name}>{it.meta?.title || it.displayName}</div>
-                      <div className="content-meta">
-                        <span className="chip">{fmtSize(it.size)}</span>
-                        {it.meta?.loader && <span className="chip">{it.meta.loader}</span>}
-                        {it.meta?.version && <span className="chip mono">v{it.meta.version}</span>}
-                        {it.isFolder && <span className="chip">{t('content.chipFolder')}</span>}
-                        {!it.enabled && <span className="chip warn">{t('content.chipDisabled')}</span>}
-                        {it.meta?.warnings?.length ? <span className="chip warn">{it.meta.warnings.length} warn</span> : null}
+                  <div key={it.name} className={'ccard' + (isOff ? ' off' : '')}>
+                    <div className="c-top">
+                      <div className={'c-ico' + (it.kind === 'mod' ? ' mod' : it.kind === 'shader' ? ' shader' : it.kind === 'resourcepack' || it.kind === 'texturepack' ? ' pack' : '')}>
+                        <ItemIcon />
                       </div>
-                      {it.meta?.authors?.length ? <div className="content-subtle">{it.meta.authors.slice(0, 3).join(', ')}</div> : null}
-                      {it.meta?.warnings?.length ? <div className="content-warnings">{it.meta.warnings.map((w) => <div key={w}>⚠ {w}</div>)}</div> : null}
+                      <div className="c-name"><b>{it.meta?.title || it.displayName}</b><span>{it.name}</span></div>
+                      <label className="toggle"><input type="checkbox" checked={!isOff} onChange={() => onToggle(it)} /><span className="track" /></label>
                     </div>
-                    <div className="content-actions">
-                      {!isBedrock && effectiveTab === 'mod' && (
-                        <button
-                          className="icon-btn"
-                          onClick={() => onToggle(it)}
-                          title={it.enabled ? t('content.toggleDisable') : t('content.toggleEnable')}
-                        >
-                          {it.enabled ? <IconCheck /> : <IconAlert />}
+                    <div className="c-desc">{it.description || ''}</div>
+                    {it.kind === 'mod' && modUpdates[it.name] && (
+                      <div className="cupd">
+                        <span className="chip green">{t('content.updateAvailable', { ver: modUpdates[it.name].latest })}</span>
+                        {modUpdates[it.name].current && <span className="hint">{modUpdates[it.name].current} → {modUpdates[it.name].latest}</span>}
+                        <button className="btn primary sm" disabled={!!updatingFile} onClick={() => applyUpdate(it.name)}>
+                          {updatingFile === it.name ? t('content.updating') : t('content.updateBtn')}
                         </button>
-                      )}
+                      </div>
+                    )}
+                    <div className="c-foot">
+                      {it.kind === 'mod' && <span className="chip amber">{it.meta?.loader || 'mod'}</span>}
+                      {it.kind === 'shader' && <span className="chip cyan">{t('content.chipShader')}</span>}
+                      {(it.kind === 'resourcepack' || it.kind === 'texturepack') && <span className="chip purple">{t('content.chipResourcepack')}</span>}
+                      <span className="size">{fmtSize(it.size)}</span>
+                    </div>
+                    {it.meta?.warnings?.length ? (
+                      <div className="cwarn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M12 9v4m0 4h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>{it.meta.warnings[0]}</div>
+                    ) : null}
+                    <div className="content-actions" style={{ marginTop: 8 }}>
                       {isBedrock && (
-                        <button
-                          className="icon-btn"
-                          onClick={() => onInstallToBedrock(it)}
-                          title={t.locale === 'ru' ? 'Установить в Android / TrelEmu' : 'Install to Android / TrelEmu'}
-                        >
-                          <IconSpark />
-                        </button>
+                        <button className="icon-btn" onClick={() => onInstallToBedrock(it)} title={t('content.installToBedrock')}><IconSpark /></button>
                       )}
-                      <button
-                        className="icon-btn"
-                        onClick={() => onDelete(it)}
-                        title={t('content.deleteBtn')}
-                      >
-                        <IconTrash />
-                      </button>
+                      <button className="icon-btn" onClick={() => onDelete(it)} title={t('content.deleteBtn')}><IconTrash /></button>
                     </div>
                   </div>
                 );
@@ -415,6 +458,7 @@ export const ContentPage: React.FC<Props> = ({ lastVersionId, onPickVersion }) =
           )}
         </>
       )}
+      <p className="note">{t('content.note')}</p>
     </div>
   );
 };

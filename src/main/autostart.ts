@@ -32,7 +32,7 @@ function linuxAutostartDesktopContent(exePath: string, iconPath: string): string
     'Type=Application',
     'Name=Trel',
     'Comment=Trel — launcher for Minecraft',
-    `Exec=${exePath}`,
+    `Exec="${exePath.replace(/"/g, '')}"`,
     `Icon=${iconPath}`,
     'Terminal=false',
     'Categories=Game;',
@@ -105,9 +105,14 @@ export function getAutoLaunch(): { enabled: boolean; unavailable?: boolean; reas
     if (!fs.existsSync(file)) return { enabled: false };
     try {
       const content = fs.readFileSync(file, 'utf-8');
-      const execMatch = /^Exec=(\S+)/m.exec(content);
+      const execMatch = /^Exec="?([^"\n]+)"?/m.exec(content);
       // Если Exec-пропал/битый — считаем автозапуск выключенным.
-      if (!execMatch || !execMatch[1] || !fs.existsSync(execMatch[1])) return { enabled: false };
+      if (!execMatch || !execMatch[1] || !fs.existsSync(execMatch[1].trim())) return { enabled: false };
+      // Ярлык на старый путь после переезда лаунчера — тоже «выключен»,
+      // иначе UI врёт что автозапуск наш.
+      try {
+        if (fs.realpathSync(execMatch[1].trim()) !== fs.realpathSync(process.execPath)) return { enabled: false };
+      } catch { return { enabled: false }; }
       return { enabled: true };
     } catch { return { enabled: false }; }
   }

@@ -10,7 +10,7 @@ import type { MinecraftService } from './minecraft';
 import { isSafeVersionId } from './safeIds';
 
 const MODRINTH = 'https://api.modrinth.com/v2';
-const UA = 'TrelLauncher/0.4.0 (modpack-manager)';
+const UA = 'TrelLauncher/0.5.0 (modpack-manager)';
 
 export interface ModpackSummary {
   projectId: string;
@@ -103,6 +103,20 @@ export function parseModpackIndex(index: any): ModpackPlan {
   return { name: index.name || 'Модпак', mc, loader, loaderVersion, files };
 }
 
+/**
+ * Приводит версию лоадера к формату, который ждёт LoaderService.install().
+ *
+ * Forge — единственный, кому нужен префикс версии игры: его maven-артефакт
+ * называется `forge-1.20.1-47.2.0-installer.jar`. В метаданных сборок этот
+ * префикс встречается по-разному: modrinth.index.json хранит `forge: 47.2.0`,
+ * CurseForge — `modLoaders[0].id = "forge-47.2.0"`, а Prism/MultiMC уже
+ * `1.20.1-47.2.0`. Без нормализации установка Forge-сборки падала бы на 404.
+ */
+export function normalizeLoaderVersion(loader: string, mc: string, loaderVersion: string): string {
+  if (loader !== 'forge') return loaderVersion;
+  return loaderVersion.startsWith(mc + '-') ? loaderVersion : mc + '-' + loaderVersion;
+}
+
 export class ModpackService {
   constructor(
     private gameDir: string,
@@ -154,15 +168,24 @@ export class ModpackService {
   }
 
   /** Скачивает файл в буфер с проверкой sha (если задан). */
-  private async downloadBuffer(urls: string[], sha1?: string): Promise<Buffer> {
+  private async downloadBuffer(urls: string[], sha1?: string, maxBytes = 1024 * 1024 * 1024): Promise<Buffer> {
     let lastErr: Error | null = null;
     for (const url of urls) {
       try {
-        const { data } = await axios.get(url, { responseType: 'arraybuffer', timeout: 120000, maxRedirects: 10, headers: { 'User-Agent': UA } });
+        // URL из чужого .mrpack-манифеста: только доверенные хосты, иначе
+        // злой пак тянет малварь с любого сервера.
+        const { isUrlAllowed } = await import('./download-security');
+        if (!isUrlAllowed(url)) throw new Error('URL blocked by download policy: ' + url);
+        const { data, headers } = await axios.get(url, { responseType: 'arraybuffer', timeout: 120000, maxRedirects: 5, headers: { 'User-Agent': UA } });
+        const declared = Number(headers?.['content-length']);
+        if (Number.isFinite(declared) && declared > maxBytes) throw new Error('File too large: ' + url);
         const buf = Buffer.from(data);
+        if (buf.length > maxBytes) throw new Error('File too large: ' + url);
         if (sha1) {
           const got = crypto.createHash('sha1').update(buf).digest('hex');
           if (got !== sha1) throw new Error('Хеш не совпал для ' + url);
+        } else {
+          console.warn(`[modpacks] no sha1 for ${url} — integrity not verified`);
         }
         return buf;
       } catch (e) {
@@ -221,6 +244,41 @@ export class ModpackService {
 
     this.report(win, 'Готово', 100);
     return { versionId, name: plan.name, mc: plan.mc, loader: plan.loader, modCount: total };
+  }
+
+  /**
+   * Ставит версию по профилю, распознанному из импортированной сборки
+   * (DetectedModpack). Смысл: вместо тупого копирования файлов из чужого
+   * лаунчера пользователь получает чистую версию с правильным лоадером —
+   * её Trel умеет обновлять сам. Моды/конфиги при этом всё равно идут
+   * через обычный импорт категорий.
+   */
+  async installFromProfile(
+    profile: { mc: string; loader: string; loaderVersion?: string; name?: string },
+    win: BrowserWindow,
+  ): Promise<ModpackInstallResult> {
+    if (!profile || typeof profile.mc !== 'string' || !profile.mc) throw new Error('Некорректный профиль модпака');
+    const loaders = new Set(['vanilla', 'fabric', 'quilt', 'forge', 'neoforge']);
+    if (!loaders.has(profile.loader)) throw new Error('Неизвестный загрузчик: ' + profile.loader);
+
+    this.report(win, 'Установка ' + (profile.loader === 'vanilla' ? 'Minecraft' : profile.loader) + ' ' + profile.mc, 10);
+    let versionId: string;
+    if (profile.loader === 'vanilla') {
+      await this.mc.install(profile.mc, win);
+      versionId = profile.mc;
+    } else {
+      if (!profile.loaderVersion) throw new Error('Не указана версия загрузчика');
+      const res = await this.mc.loaders.install(
+        profile.loader as LoaderType,
+        profile.mc,
+        normalizeLoaderVersion(profile.loader, profile.mc, profile.loaderVersion),
+        win,
+      );
+      versionId = res.versionId;
+    }
+    if (!isSafeVersionId(versionId)) throw new Error('Небезопасный versionId: ' + versionId);
+    this.report(win, 'Готово', 100);
+    return { versionId, name: profile.name ?? versionId, mc: profile.mc, loader: profile.loader, modCount: 0 };
   }
 
   private applyOverrides(zip: any, prefix: string, instDir: string) {

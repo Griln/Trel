@@ -28,7 +28,7 @@ import { EventEmitter } from 'node:events';
  *      .partial → final. Если проверка не прошла — удаляем .partial.
  *
  * Откуда качаем:
- *   По умолчанию — GitHub Releases репозитория mkrlord1000-sketch/Trel.
+ *   По умолчанию — GitHub Releases репозитория Griln/Trel.
  *   Файл `trel-emu-pack.zip` должен быть приложен к релизу.
  *   URL можно переопределить через env `TRELEMU_PACK_URL` (для тестов/зеркал).
  *
@@ -83,7 +83,7 @@ const MAX_RESUME_AGE_MS = 7 * 24 * 60 * 60_000; // неделю — после �
 const HEAD_TIMEOUT_MS = 15_000;
 const CHUNK_TIMEOUT_MS = 30_000;
 
-const DEFAULT_URL = 'https://github.com/mkrlord1000-sketch/Trel/releases/download/trel-emu-v0.3.0/trel-emu-pack.zip';
+const DEFAULT_URL = 'https://github.com/Griln/Trel/releases/download/trel-emu-v0.3.0/trel-emu-pack.zip';
 /** SHA1 эталон. Считается автоматически при упаковке и пишется в .sha1 файл рядом. */
 const DEFAULT_SHA1 = '0000000000000000000000000000000000000000';
 
@@ -296,7 +296,10 @@ export class TrelEmuDownloader extends EventEmitter {
 
       // 5) Верифицируем SHA1.
       this.setState('verifying', downloaded, contentLength, 'Проверяем целостность…');
-      if (expectedSha1 && expectedSha1 !== DEFAULT_SHA1 && expectedSha1 !== sha1Computed) {
+      if (!expectedSha1 || expectedSha1 === DEFAULT_SHA1) {
+        // Апстрим не отдал .sha1: ставим, но честно показываем что без проверки.
+        this.setState('verifying', downloaded, contentLength, 'Внимание:SHA1 нет — целостность не проверена');
+      } else if (expectedSha1 !== sha1Computed) {
         // SHA1 не сошёлся — удаляем .partial чтобы при следующем запуске не resume'или мусор.
         try { await fsp.unlink(partialPath); } catch {}
         await this.clearMeta(targetDir, baseName);
@@ -581,6 +584,11 @@ export class TrelEmuDownloader extends EventEmitter {
     }
 
     await fsp.mkdir(targetDir, { recursive: true });
+    // Zip-бомба: пак эмулятора ~1ГБ распакованного; 4ГБ+ = атака.
+    const totalUncomp = entries.reduce((a, e) => a + (e.isDir ? 0 : e.size), 0);
+    if (entries.length > 100000 || totalUncomp > 4 * 1024 * 1024 * 1024) {
+      throw new Error('Pack too large (zip bomb guard)');
+    }
     for (const entry of entries) {
       if (entry.isDir) continue;
       const safeName = this.sanitizeName(entry.name);

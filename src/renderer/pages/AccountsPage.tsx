@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import type { MinecraftAccount } from '../../shared/types';
-import { IconTrash, IconSkin } from '../components/icons';
 import { SkinFace } from '../components/SkinPreview';
 import { useT } from '../i18n';
 import { useDialog } from '../components/Dialog';
@@ -68,8 +67,9 @@ export const AccountsPage: React.FC<Props> = ({ accounts, activeUuid, onSelect, 
       return (
         <div>
           <p>{t('accounts.deleteConfirm', { name: acc.name })}</p>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12, cursor: 'pointer' }}>
+          <label className="dlg-check" style={{ marginTop: 12 }}>
             <input type="checkbox" checked={v} onChange={(e) => { setV(e.target.checked); clearCache = e.target.checked; }} />
+            <span className="box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3.5}><path d="m5 12 5 5 9-11" /></svg></span>
             <span>{t('accounts.deleteWipeCache')}</span>
           </label>
         </div>
@@ -94,100 +94,66 @@ export const AccountsPage: React.FC<Props> = ({ accounts, activeUuid, onSelect, 
   return (
     <div>
       <div className="page-head">
-        <h1>{t('accounts.title')}</h1>
-        <p>{t('accounts.subtitle')}</p>
+        <span className="eyebrow">{t('accounts.eyebrow')}</span>
+        <h1 className="page-title">{t('accounts.title')} <span className="count">{accounts.length}</span></h1>
+        <p className="page-sub">{t('accounts.subtitle')}</p>
       </div>
 
-      <div className="card">
-        <div className="card-head">
-          <h2>{t('accounts.addMicrosoft')}</h2>
-        </div>
-        <div className="row">
-          <button className="btn primary" onClick={addMicrosoft} disabled={loading}>
-            {loading ? t('app.loading') : t('accounts.addMicrosoft')}
-          </button>
-        </div>
-        <div className="hint" style={{ marginTop: 8 }}>
-          {t('accounts.addMicrosoftHint')}
-        </div>
-      </div>
+      {error && <div className="hint" style={{ color: 'var(--danger)' }}>{error}</div>}
+      <div className="acc-layout">
+        <div>
+          <div className="ms-card">
+            <div className="ms-logo"><i></i><i></i><i></i><i></i></div>
+            <h3>Microsoft</h3>
+            <p>{t('accounts.addMicrosoftHint')}</p>
+            <button className="btn primary" style={{ width: '100%', justifyContent: 'center' }} onClick={addMicrosoft} disabled={loading}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3"/></svg>
+              {t('accounts.addMicrosoft')}
+            </button>
+          </div>
 
-      {error && <div className="hint" style={{ color: 'var(--danger)', marginTop: 8, marginBottom: 16 }}>{error}</div>}
+          <div className="guest-card">
+            <h3>{t('accounts.addGuest')}</h3>
+            <p>{t('accounts.hint')}</p>
+            <div className="guest-row">
+              <input className="input" placeholder={t('accounts.nicknamePlaceholder')} value={name} onChange={(e) => setName(e.target.value)} maxLength={16} />
+              <button className="btn ghost" onClick={addGuest} disabled={loading || !name.trim()}>{t('accounts.addBtn')}</button>
+            </div>
+          </div>
 
-      <div className="card">
-        <div className="card-head">
-          <h2>{t('accounts.addGuest')}</h2>
         </div>
-        <div className="row">
-          <input
-            className="input"
-            placeholder="Steve"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') addGuest(); }}
-            maxLength={16}
-          />
-          <button className="btn primary" onClick={addGuest} disabled={loading || !name.trim()}>
-            {t('accounts.addBtn')}
-          </button>
-        </div>
-        <div className="hint" style={{ marginTop: 8 }}>
-          {t('accounts.hint')}
-        </div>
-      </div>
 
-      <div className="card">
-        <div className="card-head">
-          <h2>{t('accounts.savedTitle')}</h2>
-          <span className="chip">{accounts.length}</span>
-        </div>
-        {accounts.length === 0 ? (
-          <div className="empty">{t('accounts.empty')}</div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            {accounts.map((a) => (
-              <div
-                key={a.uuid}
-                className={'account-tile' + (activeUuid === a.uuid ? ' active' : '')}
-                onClick={() => onSelect(a.uuid)}
-              >
-                <SkinFace skin={a.skin ?? null} size={40} fallbackName={a.name} className="account-avatar" />
-                <div className="info">
-                  <div className="name">{a.name}</div>
-                  <div className="role">{
-                    a.msRefreshToken
-                      ? (activeUuid === a.uuid ? t('accounts.roleActiveMicrosoft') : t('accounts.microsoftRole'))
-                      : (activeUuid === a.uuid ? t('accounts.roleActive') : t('accounts.roleGuest'))
-                  }</div>
+        <div className="acc-list">
+          {accounts.map((a) => (
+            <div
+              key={a.uuid}
+              className={'acc' + (activeUuid === a.uuid ? ' active' : '')}
+              onClick={() => onSelect(a.uuid)}
+            >
+              <SkinFace skin={a.skin ?? null} size={48} fallbackName={a.name} className="account-face" />
+              <div className="acc-body">
+                <div className="acc-name">
+                  {a.name}
+                  {activeUuid === a.uuid && <span className="chip green">{t('accounts.active')}</span>}
                 </div>
-                <button
-                  className="icon-btn"
-                  onClick={(e) => { e.stopPropagation(); onSelect(a.uuid); onGoToSkin(); }}
-                  title={t('accounts.skinBtn')}
-                >
-                  <IconSkin />
+                <div className="acc-sub">
+                  <span>uuid: {a.uuid.slice(0, 8)}…</span>
+                  <span>·</span>
+                  <span>{t('accounts.skin')}: {a.skin ? (a.skin.startsWith('data:') ? t('accounts.skinCustom') : a.skin) : t('accounts.skinDefault')}</span>
+                </div>
+              </div>
+              <div className="acc-actions">
+                <button className="abtn" title={t('accounts.skinBtn')} onClick={(e) => { e.stopPropagation(); onSelect(a.uuid); onGoToSkin(); }}>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
                 </button>
-                {a.type === 'online' && a.msRefreshToken && (
-                  <button
-                    className="icon-btn"
-                    onClick={(e) => { e.stopPropagation(); refresh(a); }}
-                    title={t('accounts.refreshBtn')}
-                    disabled={loading}
-                  >
-                    ↻
-                  </button>
-                )}
-                <button
-                  className="icon-btn"
-                  onClick={(e) => { e.stopPropagation(); remove(a); }}
-                  title={t('accounts.deleteBtn')}
-                >
-                  <IconTrash />
+                {a.type === 'online' && <button className="abtn" title={t('accounts.refreshBtn')} onClick={(e) => { e.stopPropagation(); refresh(a); }}>↻</button>}
+                <button className="abtn del" title={t('accounts.deleteBtn')} onClick={(e) => { e.stopPropagation(); remove(a); }}>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>
                 </button>
               </div>
-            ))}
-          </div>
-        )}
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );

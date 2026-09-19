@@ -1,9 +1,8 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import type { Shot } from '../../preload/preload';
-import { IconTrash, IconRefresh, IconFolder, IconCopy } from '../components/icons';
+import { IconTrash, IconFolder, IconCopy } from '../components/icons';
 import { useDialog } from '../components/Dialog';
 import { useT } from '../i18n';
-const fmtDate = (ms: number) => new Date(ms).toLocaleString();
 const fmtSize = (b: number) => b < 1024 * 1024 ? `${(b / 1024).toFixed(0)} КБ` : `${(b / 1024 / 1024).toFixed(1)} МБ`;
 
 const HOTKEY_LS = 'trel.shots.hotkey';
@@ -74,7 +73,7 @@ export const ScreenshotsPage: React.FC = () => {
   const [sort, setSort] = useState<'new' | 'old' | 'size'>('new');
   const [hotkey, setHotkey] = useState<string>(() => localStorage.getItem(HOTKEY_LS) || 'F2');
   const [capturing, setCapturing] = useState(false);
-  const [showMemo, setShowMemo] = useState(false);
+  const [hotkeyError, setHotkeyError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = React.useRef<number | null>(null);
   const showToast = useCallback((msg: string) => {
@@ -101,21 +100,35 @@ export const ScreenshotsPage: React.FC = () => {
   }, []);
 
 
+  // Коды ошибок из main превращаем в человекочитаемые локализованные сообщения.
+  const reasonText = (r?: string) =>
+    r === 'unsupported-key' ? t('shots.unsupportedKey')
+    : r === 'register-failed' ? t('shots.registerFailed')
+    : (r || t('shots.hotkeyHint'));
+
   useEffect(() => {
     if (!capturing) return;
     const onKey = (e: KeyboardEvent) => {
       e.preventDefault();
       e.stopPropagation();
       if (e.key === 'Escape') { setCapturing(false); return; }
-      const k = e.key === ' ' ? 'Space' : e.key.length === 1 ? e.key.toUpperCase() : e.key;
-      setHotkey(k);
-      localStorage.setItem(HOTKEY_LS, k);
+      const k = e.code === 'Space' ? 'Space'
+        : e.code.startsWith('Key') ? e.code.slice(3)
+        : e.code.startsWith('Digit') ? e.code.slice(5)
+        : e.key.length === 1 ? e.key.toUpperCase() : e.key;
       setCapturing(false);
-      window.api.screenshots.setHotkey(k).catch(() => { /* ignore */ });
+      setHotkeyError(null);
+      void window.api.screenshots.setHotkey(k).then((result) => {
+        if (!result.ok) { setHotkeyError(reasonText(result.reason)); return; }
+        setHotkey(k);
+        localStorage.setItem(HOTKEY_LS, k);
+        const conflict = isReserved(k);
+        if (conflict) showToast(t('shots.conflictWarn', { key: k, action: t(conflict.action) }));
+      }).catch(() => setHotkeyError(t('shots.hotkeyHint')));
     };
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
-  }, [capturing]);
+  }, [capturing, showToast, t]);
 
   const quickDelete = useCallback(async (shot: Shot) => {
     setShots((prev) => prev.filter((x) => x.path !== shot.path));
@@ -135,8 +148,15 @@ export const ScreenshotsPage: React.FC = () => {
     return () => window.removeEventListener('keydown', onKey);
   }, [view, quickDelete]);
 
+  const shotsRef = React.useRef(shots);
+  shotsRef.current = shots;
   const openViewer = async (shot: Shot) => {
-    try { setView({ shot, src: await window.api.screenshots.read(shot.path) }); }
+    try {
+      const src = await window.api.screenshots.read(shot.path);
+      // Пока читали — скрин могли удалить: показ удалённого хуже пустоты.
+      if (!shotsRef.current.some((x) => x.path === shot.path)) return;
+      setView({ shot, src });
+    }
     catch { /* */ }
   };
 
@@ -149,7 +169,9 @@ export const ScreenshotsPage: React.FC = () => {
         { label: t('worlds.deleteCancel'), value: 'cancel', variant: 'ghost' },
         { label: t('shots.deleteAction'), value: 'ok', variant: 'danger' },
       ],
-      defaultIndex: 1,
+      // defaultIndex: 0 (отмена), а не Delete: случайный Enter в фокусе
+      // иначе сносил скриншот без осознанного клика.
+      defaultIndex: 0,
       cancelValue: 'cancel',
     });
     if (choice !== 'ok') return;
@@ -165,135 +187,48 @@ export const ScreenshotsPage: React.FC = () => {
     return list;
   }, [shots, query, sort]);
 
+  const [showAllShots, setShowAllShots] = useState(false);
+  const GALLERY_CAP = 80;
   const groups = useMemo(() => {
-    if (sort === 'size') return [{ label: '', items: filtered }];
+    const capped = showAllShots ? filtered : filtered.slice(0, GALLERY_CAP);
+    if (sort === 'size') return [{ label: '', items: capped }];
     const map = new Map<string, Shot[]>();
-    for (const s of filtered) {
+    for (const s of capped) {
       const label = groupLabel(s.mtime, t);
       if (!map.has(label)) map.set(label, []);
       map.get(label)!.push(s);
     }
     return [...map.entries()].map(([label, items]) => ({ label, items }));
-  }, [filtered, sort, t]);
+  }, [filtered, sort, t, showAllShots]);
 
-  return (
-    <div className="page screenshots-page">
+return (
+    <div>
       <div className="page-head">
-        <div>
-          <h1>{t('shots.title')}</h1>
-          <p className="page-subtitle">{t('shots.subtitle')}</p>
-        </div>
-        <div className="row-gap">
-          <button className="btn sm" onClick={() => window.api.screenshots.capture()}>
-            ⧉ {t('shots.captureNow')}
-          </button>
-          <button className="btn ghost sm" onClick={() => window.api.screenshots.openFolder()}>
-            <IconFolder /> {t('shots.openFolder')}
-          </button>
-          <button className="btn ghost sm" onClick={refresh}>
-            <IconRefresh /> {t('shots.refresh')}
-          </button>
+        <span className="eyebrow">{t('shots.hotkey')}</span>
+        <div className="page-head-row">
+          <div><h1 className="page-title">{t('shots.title')} <span className="count">{filtered.length}</span></h1><p className="page-sub">{t('shots.subtitle')}</p></div>
+          <button className="btn ghost sm" onClick={() => window.api.screenshots.openFolder()}><IconFolder /> {t('shots.openFolder')}</button>
         </div>
       </div>
-
-      <div className="shots-toolbar">
-        <input
-          className="shots-search"
-          type="text"
-          placeholder={t('shots.searchPlaceholder')}
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
-        <div className="shots-sort">
-          <button className={'chip' + (sort === 'new' ? ' accent' : '')} onClick={() => setSort('new')}>{t('shots.sortNew')}</button>
-          <button className={'chip' + (sort === 'old' ? ' accent' : '')} onClick={() => setSort('old')}>{t('shots.sortOld')}</button>
-          <button className={'chip' + (sort === 'size' ? ' accent' : '')} onClick={() => setSort('size')}>{t('shots.sortSize')}</button>
+      <section className="pane show">
+        <div className="shots-toolbar">
+          <div className="search-wrap"><input className="input" placeholder={t('shots.searchPlaceholder')} value={query} onChange={(e) => setQuery(e.target.value)} /></div>
+          <div className="sortseg">
+            {(['new', 'old', 'size'] as const).map((value) => <button key={value} className={sort === value ? 'on' : ''} onClick={() => setSort(value)}>{t(`shots.sort${value[0].toUpperCase() + value.slice(1)}`)}</button>)}
+          </div>
+          <div className="hotslot">{t('shots.hotkey')}: <button className="kbd" onClick={() => setCapturing(true)}>{capturing ? t('shots.pressKey') : hotkey}</button></div>
         </div>
-        <div className="shots-hotkey" title={t('shots.hotkeyHint')}>
-          <span className="shots-hotkey-label">{t('shots.hotkey')}</span>
-          <button
-            className={'kbd-capture' + (capturing ? ' is-capturing' : '')}
-            onClick={() => setCapturing((v) => !v)}
-          >
-            {capturing ? t('shots.pressKey') : hotkey}
+        {capturing && <div className="hint">{t('shots.pressKey')}</div>}
+        {hotkeyError && <div className="hint" style={{ color: 'var(--danger)' }}>{hotkeyError}</div>}
+        {toast && <div className="hint">{toast}</div>}
+        {loading ? <div className="hint">{t('shots.refresh')}</div> : (query.trim() && filtered.length === 0) ? <div className="empty"><h2>{t('shots.noMatch')}</h2><p>{t('shots.noMatchHint')}</p></div> : shots.length === 0 ? <div className="empty"><h2>{t('shots.title')}</h2><p>{t('shots.empty', { key: hotkey })}</p></div> : filtered.length === 0 ? <div className="empty"><h2>{t('shots.noMatch')}</h2><p>{t('shots.noMatchHint')}</p></div> : groups.map((group) => <div className="day-group" key={group.label || 'all'}>{group.label && <div className="day-label"><b>{group.label}</b><i /><span>{group.items.length}</span></div>}<div className="sh-grid">{group.items.map((shot) => <Thumb key={shot.path} shot={shot} selected={view?.shot.path === shot.path} onOpen={() => openViewer(shot)} onQuickDelete={() => quickDelete(shot)} deleteLabel={t('shots.deleteAction')} />)}</div></div>)}
+        {!showAllShots && filtered.length > GALLERY_CAP && (
+          <button className="btn ghost sm" style={{ marginTop: 12 }} onClick={() => setShowAllShots(true)}>
+            {t('shots.showAll', { count: filtered.length - GALLERY_CAP })}
           </button>
-        </div>
-        <button className="btn ghost sm shots-memo-toggle" onClick={() => setShowMemo((v) => !v)}>
-          ⌨ {t('shots.reservedTitle')}
-        </button>
-      </div>
-
-      {isReserved(hotkey) && (
-        <div className="shots-conflict">
-          ⚠ {t('shots.conflictWarn', { key: hotkey, action: t(isReserved(hotkey)!.action) })}
-        </div>
-      )}
-
-      {showMemo && (
-        <div className="shots-memo">
-          <div className="shots-memo-head">{t('shots.reservedHint')}</div>
-          <div className="shots-memo-grid">
-            {MC_RESERVED.map((r) => (
-              <div className="shots-memo-item" key={r.key}>
-                <kbd>{r.key}</kbd>
-                <span>{t(r.action)}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {loading ? (
-        <div className="empty p-24">{t('app.loading')}</div>
-      ) : filtered.length === 0 ? (
-        <div className="empty p-24">{query ? t('shots.noMatch') : t('shots.empty', { key: hotkey })}</div>
-      ) : (
-        <div className="shots-scroll">
-          {groups.map((g) => (
-            <div className="shots-group" key={g.label || 'all'}>
-              {g.label && <div className="shots-group-head">{g.label} <span className="shots-group-count">{g.items.length}</span></div>}
-              <div className="shots-masonry">
-                {g.items.map((s) => (
-                  <Thumb key={s.path} shot={s} selected={view?.shot.path === s.path} onOpen={() => openViewer(s)} onQuickDelete={() => quickDelete(s)} deleteLabel={t('shots.deleteAction')} />
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {view && (
-        <div className="shot-viewer-overlay" onClick={() => setView(null)}>
-          <div className="shot-viewer shot-viewer-split" onClick={(e) => e.stopPropagation()}>
-            <div className="shot-viewer-stage">
-              <img src={view.src} alt={view.shot.name} />
-            </div>
-            <div className="shot-info-panel">
-              <div className="shot-info-title">{view.shot.name}</div>
-              <dl className="shot-info-list">
-                <div><dt>{t('shots.infoDate')}</dt><dd>{fmtDate(view.shot.mtime)}</dd></div>
-                <div><dt>{t('shots.infoSize')}</dt><dd>{fmtSize(view.shot.size)}</dd></div>
-                <div><dt>{t('shots.infoSource')}</dt><dd>{view.shot.source}</dd></div>
-                <div><dt>{t('shots.infoPath')}</dt><dd className="shot-info-path">{view.shot.path}</dd></div>
-              </dl>
-              <div className="shot-info-actions">
-                <button className="btn ghost sm" onClick={() => window.api.screenshots.copy(view.shot.path)}>
-                  <IconCopy /> {t('shots.copy')}
-                </button>
-                <button className="btn ghost sm" onClick={() => window.api.screenshots.reveal(view.shot.path)}>
-                  <IconFolder /> {t('shots.reveal')}
-                </button>
-                <button className="btn danger sm" onClick={() => onDelete(view.shot)}>
-                  <IconTrash /> {t('shots.deleteAction')}
-                </button>
-                <button className="btn sm" onClick={() => setView(null)}>{t('shots.close')}</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {toast && <div className="shots-toast">{toast}</div>}
+        )}
+      </section>
+      {view && <div className="lightbox" onClick={(e) => { if (e.target === e.currentTarget) setView(null); }}><div className="lb-stage"><img className="lb-img" src={view.src} alt={view.shot.name} /><div className="lb-bar"><span className="lb-name">{view.shot.name}</span><button className="btn ghost sm" onClick={() => window.api.screenshots.copy(view.shot.path)}><IconCopy /> {t('shots.copy')}</button><button className="btn ghost sm" onClick={() => window.api.screenshots.reveal(view.shot.path)}><IconFolder /> {t('shots.reveal')}</button><button className="btn danger sm" onClick={() => onDelete(view.shot)}><IconTrash /> {t('shots.deleteAction')}</button><button className="btn ghost sm" onClick={() => setView(null)}>{t('shots.close')}</button></div></div></div>}
     </div>
   );
 };

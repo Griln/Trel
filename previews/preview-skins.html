@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trel — Скины · превью</title>
+<link rel="stylesheet" href="trel-design.css">
+<style>
+  .skin-layout{display:grid;grid-template-columns:300px 1fr;gap:20px;align-items:start}
+  @media(max-width:820px){.skin-layout{grid-template-columns:1fr}}
+
+  /* ===== 3D-просмотр ===== */
+  .viewer{position:relative;border-radius:20px;border:1px solid var(--border);overflow:hidden;
+    background:radial-gradient(400px 300px at 50% 20%, rgba(255,255,255,.07), transparent 65%),var(--surface);
+    min-height:420px;display:flex;flex-direction:column;animation:cardIn .55s var(--ease) backwards}
+  .viewer-stage{flex:1;position:relative;display:grid;place-items:center;min-height:300px}
+  .viewer-stage::after{content:"";position:absolute;bottom:52px;left:50%;transform:translateX(-50%);
+    width:150px;height:26px;border-radius:50%;background:rgba(0,0,0,.55);filter:blur(10px)}
+  /* псевдо-3D Стив из CSS-кубов */
+  .steve{position:relative;width:96px;height:230px;transform-style:preserve-3d;
+    animation:spin 9s linear infinite}
+  @keyframes spin{from{transform:rotateY(0)}to{transform:rotateY(360deg)}}
+  .steve .part{position:absolute;image-rendering:pixelated;border:1px solid rgba(0,0,0,.25)}
+  .steve .head{width:56px;height:56px;left:20px;top:0;
+    background:linear-gradient(180deg,#2b1d10 0 30%,#b98a5e 30%);box-shadow:inset 0 -20px 0 -12px #b98a5e}
+  .steve .head::before{content:"";position:absolute;left:10px;top:24px;width:8px;height:8px;background:#fff;
+    box-shadow:28px 0 0 #fff,10px 0 0 -2px #3d3d9e,28px 0 0 -2px #3d3d9e}
+  .steve .body{width:56px;height:84px;left:20px;top:58px;background:#00a8a8;
+    background-image:linear-gradient(180deg,#00a8a8 0 60%,#3d3d9e 60%)}
+  .steve .arm-l,.steve .arm-r{width:24px;height:84px;top:58px;background:#b98a5e;
+    background-image:linear-gradient(180deg,#00a8a8 0 45%,#b98a5e 45%)}
+  .steve .arm-l{left:-6px;animation:swing 9s linear infinite}
+  .steve .arm-r{left:78px;animation:swing 9s linear infinite reverse}
+  @keyframes swing{0%,100%{transform:rotateX(0)}25%{transform:rotateX(14deg)}75%{transform:rotateX(-14deg)}}
+  .steve .leg-l,.steve .leg-r{width:26px;height:84px;top:142px;background:#3d3d9e}
+  .steve .leg-l{left:20px}.steve .leg-r{left:50px}
+  .viewer-bar{display:flex;align-items:center;gap:10px;padding:14px 16px;border-top:1px solid var(--border);
+    background:var(--surface-2);position:relative;z-index:2}
+  .viewer-bar .who{flex:1;min-width:0}
+  .viewer-bar .who b{font-size:14px;color:var(--fg-bright);display:block}
+  .viewer-bar .who span{font-family:var(--mono);font-size:10.5px;color:var(--fg-subtle)}
+  .model-switch{display:inline-flex;gap:3px;padding:3px;background:var(--surface-3);border-radius:9px;border:1px solid var(--border)}
+  .model-switch button{font-family:var(--mono);font-size:10.5px;font-weight:700;padding:6px 11px;border-radius:6px;
+    border:none;background:transparent;color:var(--fg-muted);cursor:pointer;transition:.15s}
+  .model-switch button.on{background:var(--accent);color:var(--accent-fg)}
+
+  /* ===== галерея ===== */
+  .filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+  .fgroup{display:flex;gap:4px;padding:4px;background:var(--surface);border:1px solid var(--border);border-radius:11px}
+  .fgroup button{font-family:var(--mono);font-size:11px;font-weight:600;padding:7px 13px;border-radius:8px;border:none;
+    background:transparent;color:var(--fg-muted);cursor:pointer;transition:.15s}
+  .fgroup button:hover{color:var(--fg)}
+  .fgroup button.on{background:var(--accent);color:var(--accent-fg);font-weight:700}
+
+  .skin-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:12px}
+  .skincard{position:relative;border-radius:14px;border:1px solid var(--border);background:var(--surface-2);
+    padding:12px 10px 10px;cursor:pointer;text-align:center;overflow:hidden;
+    transition:transform .22s var(--ease),border-color .22s,box-shadow .22s;animation:cardIn .5s var(--ease) backwards}
+  .skincard:hover{transform:translateY(-5px);border-color:var(--border-bright);box-shadow:0 14px 30px -14px rgba(0,0,0,.8)}
+  .skincard.sel{border-color:#fff;box-shadow:0 0 0 1px #fff}
+  .skincard.sel::after{content:"✓";position:absolute;top:7px;right:8px;width:18px;height:18px;border-radius:50%;
+    background:#fff;color:#000;font-size:10px;font-weight:800;display:grid;place-items:center}
+  .skinface{width:56px;height:56px;margin:0 auto 9px;border-radius:9px;image-rendering:pixelated;position:relative;
+    overflow:hidden;border:1px solid rgba(255,255,255,.12);transition:transform .3s var(--ease)}
+  .skincard:hover .skinface{transform:scale(1.12) rotate(-4deg)}
+  .skinface::before{content:"";position:absolute;inset:0;
+    background:linear-gradient(180deg,var(--h,#2b1d10) 0 26%,var(--s,#c69c6d) 26%)}
+  .skinface::after{content:"";position:absolute;left:12px;top:30px;width:7px;height:7px;background:#fff;
+    box-shadow:25px 0 0 #fff,12px 0 0 -2px var(--e,#3d3d9e),25px 0 0 -2px var(--e,#3d3d9e)}
+  .skincard b{font-size:12px;color:var(--fg);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .skincard span{font-family:var(--mono);font-size:9.5px;letter-spacing:.8px;text-transform:uppercase;color:var(--fg-subtle)}
+  .skincard:nth-child(odd){animation-delay:.05s}.skincard:nth-child(even){animation-delay:.1s}
+
+  .dropzone{border:1px dashed var(--border-strong);border-radius:16px;padding:26px;text-align:center;color:var(--fg-muted);
+    cursor:pointer;transition:.2s;margin-bottom:16px;background:var(--surface-2)}
+  .dropzone:hover{border-color:var(--border-bright);color:var(--fg);background:var(--surface-3)}
+  .dropzone .big{font-size:28px;display:block;margin-bottom:8px}
+
+  .warn-strip{display:flex;align-items:center;gap:10px;padding:11px 14px;border-radius:11px;margin-top:16px;
+    background:rgba(245,168,60,.06);border:1px dashed rgba(245,168,60,.3);font-size:12.5px;color:var(--fg-muted)}
+</style>
+</head>
+<body>
+
+<div class="preview-bar">
+  <span class="tag-prev">ПРЕВЬЮ · СКИНЫ</span>
+  <button class="on" data-t="gallery">① галерея</button>
+  <button data-t="upload">② загрузка своего</button>
+</div>
+
+<div class="page-frame">
+
+  <div class="page-head">
+    <span class="eyebrow">Внешность</span>
+    <h1 class="page-title">Скин <span class="count">45</span></h1>
+    <p class="page-sub">Кастомный скин для активного аккаунта</p>
+  </div>
+
+  <div class="skin-layout">
+    <!-- просмотр -->
+    <div class="viewer">
+      <div class="viewer-stage">
+        <div class="steve">
+          <div class="part head"></div><div class="part body"></div>
+          <div class="part arm-l"></div><div class="part arm-r"></div>
+          <div class="part leg-l"></div><div class="part leg-r"></div>
+        </div>
+      </div>
+      <div class="viewer-bar">
+        <div class="who" style="display:flex;align-items:center;gap:10px">
+          <span class="skinface" style="width:34px;height:34px;margin:0;--s:#c69c6d;--e:#3d3d9e"></span>
+          <b>Smotryashiy</b>
+        </div>
+        <div class="model-switch"><button class="on">CLASSIC</button><button>SLIM</button></div>
+        <button class="btn ghost sm" title="Сбросить скин">×</button>
+      </div>
+      <div class="grain"></div>
+    </div>
+
+    <!-- галерея -->
+    <div>
+      <section class="pane show" id="gallery">
+        <div class="dropzone">
+          <span class="big">⬆</span>
+          <b style="color:var(--fg);font-size:14px">Перетащи PNG сюда</b>
+          <div style="font-size:12px;margin-top:4px">PNG · 64×64 или 64×32 · или кликни для выбора файла</div>
+        </div>
+
+        <div class="filters">
+          <div class="fgroup">
+            <button class="on">все</button><button>муж</button><button>жен</button><button>нейтр</button>
+          </div>
+          <div class="fgroup">
+            <button class="on">все стили</button><button>кибер</button><button>фэнтези</button><button>пастель</button>
+          </div>
+        </div>
+
+        <div class="skin-grid">
+          <div class="skincard sel" style="--h:#1a1a2e;--s:#8a8fa8;--e:#4aedd9"><div class="skinface" style="--h:#1a1a2e;--s:#8a8fa8;--e:#4aedd9"></div><b>Neon Blade</b><span>муж · кибер</span></div>
+          <div class="skincard" style="--h:#3d1f3d;--s:#d8a0c8;--e:#ff5fa2"><div class="skinface" style="--h:#3d1f3d;--s:#d8a0c8;--e:#ff5fa2"></div><b>Chrome Drifter</b><span>муж · кибер</span></div>
+          <div class="skincard" style="--h:#0f2f2a;--s:#7fc8b0;--e:#5ecb6f"><div class="skinface" style="--h:#0f2f2a;--s:#7fc8b0;--e:#5ecb6f"></div><b>Pulse Hacker</b><span>муж · кибер</span></div>
+          <div class="skincard" style="--h:#4a2c17;--s:#c69c6d;--e:#3d3d9e"><div class="skinface" style="--h:#4a2c17;--s:#c69c6d;--e:#3d3d9e"></div><b>Steel Samurai</b><span>муж · кибер</span></div>
+          <div class="skincard" style="--h:#5e1f1f;--s:#e0b08a;--e:#d4574e"><div class="skinface" style="--h:#5e1f1f;--s:#e0b08a;--e:#d4574e"></div><b>Voltage</b><span>муж · кибер</span></div>
+          <div class="skincard" style="--h:#2a2a3e;--s:#a8a0d8;--e:#9b7ad4"><div class="skinface" style="--h:#2a2a3e;--s:#a8a0d8;--e:#9b7ad4"></div><b>Neon Vixen</b><span>жен · кибер</span></div>
+          <div class="skincard" style="--h:#e8c8d8;--s:#f5e0e8;--e:#d88ab0"><div class="skinface" style="--h:#e8c8d8;--s:#f5e0e8;--e:#d88ab0"></div><b>Chrome Diva</b><span>жен · кибер</span></div>
+          <div class="skincard" style="--h:#c8d8e8;--s:#e8f0f5;--e:#8ab0d8"><div class="skinface" style="--h:#c8d8e8;--s:#e8f0f5;--e:#8ab0d8"></div><b>Cyber Priestess</b><span>жен · кибер</span></div>
+          <div class="skincard" style="--h:#d8e8c8;--s:#f0f5e0;--e:#a0c878"><div class="skinface" style="--h:#d8e8c8;--s:#f0f5e0;--e:#a0c878"></div><b>Electra</b><span>жен · кибер</span></div>
+          <div class="skincard" style="--h:#101018;--s:#6a6f88;--e:#f5a83c"><div class="skinface" style="--h:#101018;--s:#6a6f88;--e:#f5a83c"></div><b>Ghost Net</b><span>жен · кибер</span></div>
+          <div class="skincard" style="--h:#301a3a;--s:#b090d0;--e:#4aedd9"><div class="skinface" style="--h:#301a3a;--s:#b090d0;--e:#4aedd9"></div><b>Chrome Android</b><span>нейтр · кибер</span></div>
+          <div class="skincard" style="--h:#f0d8c0;--s:#f8ece0;--e:#c8a06a"><div class="skinface" style="--h:#f0d8c0;--s:#f8ece0;--e:#c8a06a"></div><b>Sand Walker</b><span>нейтр · пастель</span></div>
+        </div>
+
+        <div class="warn-strip">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="2"><path d="M12 9v4m0 4h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+          Скины видны в игре только на версиях с поддержкой скин (нужен локальный скин-сервер). На 1.20.1+Fabric всё работает.
+        </div>
+      </section>
+
+      <section class="pane" id="upload">
+        <div class="dropzone" style="border-color:rgba(94,203,111,.5);background:rgba(94,203,111,.04)">
+          <span class="big">🖼</span>
+          <b style="color:var(--green);font-size:14px">my_skin.png — 64×64 ✓</b>
+          <div style="font-size:12px;margin-top:4px">Файл проверен. Модель определяется автоматически, можно поменять ниже.</div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h4>Применить скин</h4></div>
+          <div class="set-row" style="border:none;padding-top:0">
+            <div class="info"><b>Аккаунт</b><span>на кого надеть скин</span></div>
+            <select class="select" style="width:180px"><option>Steve</option><option>Alex_Builder</option></select>
+          </div>
+          <div class="set-row">
+            <div class="info"><b>Модель рук</b><span>classic — 4px, slim — 3px (Alex)</span></div>
+            <div class="model-switch"><button class="on">CLASSIC</button><button>SLIM</button></div>
+          </div>
+          <button class="btn primary" style="margin-top:14px;width:100%;justify-content:center">Применить скин</button>
+        </div>
+        <p class="note">* валидация: только PNG, только 64×64 / 64×32. Ошибки показываются прямо на странице.</p>
+      </section>
+    </div>
+  </div>
+
+</div>
+<script src="trel-preview.js"></script>
+<script>
+  document.querySelectorAll('.fgroup').forEach(g=>{
+    const bs=[...g.querySelectorAll('button')];
+    bs.forEach(b=>b.addEventListener('click',()=>bs.forEach(x=>x.classList.toggle('on',x===b))));
+  });
+  document.querySelectorAll('.skincard').forEach(c=>c.addEventListener('click',()=>{
+    document.querySelectorAll('.skincard').forEach(x=>x.classList.toggle('sel',x===c));
+  }));
+  document.querySelectorAll('.model-switch').forEach(g=>{
+    const bs=[...g.querySelectorAll('button')];
+    bs.forEach(b=>b.addEventListener('click',()=>bs.forEach(x=>x.classList.toggle('on',x===b))));
+  });
+</script>
+</body>
+</html>

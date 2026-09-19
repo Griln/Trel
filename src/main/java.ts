@@ -473,39 +473,13 @@ export class JavaService {
       bytesDownloaded: 0, bytesTotal: 0,
     });
 
-    const response = await axios.get(url, {
-      responseType: 'stream',
-      maxRedirects: 10,
-      timeout: 120000,
-    });
-    const total = Number(response.headers['content-length']) || 0;
-    let downloaded = 0;
-
-    await new Promise<void>((resolve, reject) => {
-      const out = fs.createWriteStream(tmpFile);
-      response.data.on('data', (chunk: Buffer) => {
-        downloaded += chunk.length;
-        if (total > 0) {
-          this.report(win, {
-            stage: `Скачивание Java ${major}`,
-            current: downloaded,
-            total,
-            percent: Math.min(99, Math.floor((downloaded / total) * 100)),
-            bytesDownloaded: downloaded, bytesTotal: total,
-          });
-        }
-      });
-      response.data.on('error', reject);
-      out.on('error', reject);
-      out.on('finish', () => resolve());
-      response.data.pipe(out);
-    });
+    await this.downloadFile(url, tmpFile, major, win);
 
     this.report(win, { stage: `Verifying Java ${major}`, current: 100, total: 100, percent: 99 });
 
     const expectedSha = await this.fetchAdoptiumChecksum(major, osName, arch, 'jre');
     if (expectedSha) {
-      const actual = crypto.createHash('sha256').update(fs.readFileSync(tmpFile)).digest('hex');
+      const actual = await this.sha256File(tmpFile);
       if (actual.toLowerCase() !== expectedSha.toLowerCase()) {
         try { fs.unlinkSync(tmpFile); } catch {}
         throw new Error(`Checksum mismatch for Java ${major}: expected ${expectedSha}, got ${actual}`);
@@ -524,15 +498,34 @@ export class JavaService {
     if (isZip) {
       const zip = new AdmZip(tmpFile);
       // Validate all entries for Zip Slip before extraction
+      let totalUncompressed = 0;
       for (const entry of zip.getEntries()) {
         const resolved = path.resolve(slot, entry.entryName);
         if (!resolved.startsWith(path.resolve(slot) + path.sep) && resolved !== path.resolve(slot)) {
           throw new Error(`Zip Slip detected: ${entry.entryName}`);
         }
+        if (((entry.header.attr >>> 16) & 0o170000) === 0o120000) {
+          throw new Error(`Symlink in JRE archive: ${entry.entryName}`);
+        }
+        totalUncompressed += entry.header.size;
+        // JRE — сотни МБ распакованного; гигабайты = бомба.
+        if (totalUncompressed > 2 * 1024 * 1024 * 1024) throw new Error('JRE archive too large (zip bomb guard)');
       }
       zip.extractAllTo(slot, true);
     } else {
       const { execFileSync } = await import('node:child_process');
+      // tar из PATH — но сначала листинг: ни абсолютных путей, ни ../,
+      // ни симлинков наружу. Распаковка только после проверки всех записей.
+      const listing = execFileSync('tar', ['-tzvf', tmpFile], { windowsHide: true, encoding: 'utf-8', maxBuffer: 8 * 1024 * 1024 });
+      for (const line of listing.split('\n')) {
+        const m = line.match(/^([bcdlps-][rwxst-]{9})\s+\S+\s+(.+)$/);
+        if (!m) continue;
+        if (m[1][0] === 'l') throw new Error(`Symlink in JRE archive: ${m[2]}`);
+        const name = m[2].replace(/\s+->\s+.*$/, '');
+        if (path.isAbsolute(name) || /(^|\/)\.\.(\/|$)/.test(name)) {
+          throw new Error(`Tar Slip detected: ${name}`);
+        }
+      }
       execFileSync('tar', ['-xzf', tmpFile, '-C', slot, '--no-same-owner', '--no-same-permissions'], { windowsHide: true });
     }
     try { fs.unlinkSync(tmpFile); } catch {}
@@ -547,7 +540,99 @@ export class JavaService {
     return fresh;
   }
 
+  /** Скачать файл Java. Если сервер поддерживает Range-запросы и файл крупный —
+   *  качаем параллельно несколькими кусками (в разы быстрее одиночного потока,
+   *  который упирается в лимит CDN на соединение). Иначе фолбэк на один stream. */
+  private async downloadFile(url: string, dest: string, major: number, win?: BrowserWindow): Promise<void> {
+    const CHUNKS = 8;
+    const MIN_PARALLEL = 8 * 1024 * 1024; // меньше 8 МБ дробить нет смысла
+
+    // HEAD: размер + поддержка Range (с редиректами). HEAD может быть запрещён —
+    // тогда просто пойдём одиночным потоком.
+    let total = 0;
+    let acceptRanges = false;
+    try {
+      const head = await axios.head(url, { maxRedirects: 10, timeout: 30000 });
+      total = Number(head.headers['content-length']) || 0;
+      acceptRanges = String(head.headers['accept-ranges'] || '').toLowerCase().includes('bytes');
+    } catch { /* ignore — fallback below */ }
+
+    const onProgress = (downloaded: number, tot: number) => {
+      if (tot <= 0) return;
+      this.report(win, {
+        stage: `Скачивание Java ${major}`,
+        current: downloaded, total: tot,
+        percent: Math.min(99, Math.floor((downloaded / tot) * 100)),
+        bytesDownloaded: downloaded, bytesTotal: tot,
+      });
+    };
+
+    if (acceptRanges && total >= MIN_PARALLEL) {
+      const step = Math.ceil(total / CHUNKS);
+      const ranges: { start: number; end: number }[] = [];
+      for (let start = 0; start < total; start += step) {
+        ranges.push({ start, end: Math.min(start + step - 1, total - 1) });
+      }
+      try {
+        const fd = fs.openSync(dest, 'w');
+        try { fs.ftruncateSync(fd, total); } catch { /* не все ФС умеют — не страшно */ }
+        let downloaded = 0;
+        try {
+          await Promise.all(ranges.map(async (r) => {
+            const resp = await axios.get(url, {
+              responseType: 'arraybuffer',
+              maxRedirects: 10,
+              timeout: 120000,
+              headers: { Range: `bytes=${r.start}-${r.end}` },
+              validateStatus: (s) => s === 206,
+            });
+            const buf = Buffer.from(resp.data);
+            fs.writeSync(fd, buf, 0, buf.length, r.start);
+            downloaded += buf.length;
+            onProgress(downloaded, total);
+          }));
+        } finally {
+          fs.closeSync(fd);
+        }
+        return;
+      } catch {
+        // Range-загрузка не удалась (сервер не вернул 206 и т.п.) — фолбэк ниже.
+        try { fs.unlinkSync(dest); } catch {}
+      }
+    }
+
+    // Фолбэк: одиночный поток.
+    const response = await axios.get(url, { responseType: 'stream', maxRedirects: 10, timeout: 120000 });
+    const tot = Number(response.headers['content-length']) || total;
+    let downloaded = 0;
+    await new Promise<void>((resolve, reject) => {
+      const out = fs.createWriteStream(dest);
+      response.data.on('data', (chunk: Buffer) => { downloaded += chunk.length; onProgress(downloaded, tot); });
+      response.data.on('error', reject);
+      out.on('error', reject);
+      out.on('finish', () => resolve());
+      response.data.pipe(out);
+    });
+  }
+
   private async fetchAdoptiumChecksum(major: number, osName: string, arch: string, imageType: 'jre' | 'jdk'): Promise<string | null> {
+    // Независимый источник: JSON-метаданные релиза, а НЕ заголовок ответа
+    // скачивания (тот же CDN, что отдаёт файл, — компрометация CDN подменяла
+    // бы файл и чексумму парой). Фолбэк на заголовок — только если API молчит.
+    try {
+      const { data } = await axios.get(
+        `https://api.adoptium.net/v3/assets/feature_releases/${major}/ga`,
+        { timeout: 15000, maxRedirects: 5 },
+      );
+      const releases = Array.isArray(data) ? data : data?.releases ?? [];
+      for (const rel of Array.isArray(releases) ? releases : []) {
+        for (const bin of rel?.binaries ?? []) {
+          if (bin?.os !== osName || bin?.architecture !== arch || bin?.image_type !== imageType) continue;
+          const sha = bin?.checksum;
+          if (typeof sha === 'string' && /^[a-f0-9]{64}$/i.test(sha)) return sha;
+        }
+      }
+    } catch { /* фолбэк ниже */ }
     try {
       const url = (
         'https://api.adoptium.net/v3/binary/latest/' +
@@ -560,6 +645,14 @@ export class JavaService {
     } catch {
       return null;
     }
+  }
+
+  /** sha256 файла потоком: JRE весит сотни МБ, грузить целиком в RAM не нужно. */
+  private async sha256File(filePath: string): Promise<string> {
+    const hash = crypto.createHash('sha256');
+    const stream = fs.createReadStream(filePath, { highWaterMark: 1024 * 1024 });
+    for await (const chunk of stream) hash.update(chunk as Buffer);
+    return hash.digest('hex');
   }
 
   private report(win: BrowserWindow | undefined, p: DownloadProgress) {

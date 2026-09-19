@@ -59,13 +59,27 @@ function writeString(s: string): Buffer {
 
 /** Parse "host" or "host:port" → { host, port }. Default port 25565. */
 export function splitAddress(ip: string): { host: string; port: number } {
-  const trimmed = (ip || '').trim();
+  const trimmed = (ip || '').trim().slice(0, 253);
+  if (!trimmed) throw new Error('Empty server address');
+  // IPv6 в скобках: [::1]:25565 — иначе lastIndexOf резал адрес пополам.
+  const bracket = /^\[([^\]]+)\](?::(\d+))?$/.exec(trimmed);
+  if (bracket) {
+    const port = bracket[2] !== undefined ? parseInt(bracket[2], 10) : 25565;
+    if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Bad port');
+    return { host: bracket[1], port };
+  }
   const idx = trimmed.lastIndexOf(':');
   if (idx > 0 && !trimmed.includes('::')) {
     const host = trimmed.slice(0, idx);
-    const port = parseInt(trimmed.slice(idx + 1), 10);
-    if (Number.isFinite(port) && port > 0) return { host, port };
+    const portText = trimmed.slice(idx + 1);
+    // Двоеточие есть, а порт кривой — молча лезть на 25565 хуже, чем ошибка:
+    // юзер опечатался и пингует чужой сервер.
+    if (!/^[0-9]{1,5}$/.test(portText)) throw new Error('Bad port in address');
+    const port = parseInt(portText, 10);
+    if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Bad port in address');
+    return { host, port };
   }
+  // Голый IPv6 без скобок (с ::) — целиком, порт дефолтный.
   return { host: trimmed, port: 25565 };
 }
 
@@ -106,7 +120,14 @@ export class ServerPingService {
   }
 
   ping(ip: string, timeoutMs = 5000): Promise<PingResult> {
-    const { host, port } = splitAddress(ip);
+    let host: string;
+    let port: number;
+    try {
+      ({ host, port } = splitAddress(ip));
+    } catch (e) {
+      // Кривой адрес — это offline с причиной, а не reject в IPC.
+      return Promise.resolve({ online: false, error: (e as Error).message });
+    }
     return new Promise<PingResult>((resolve) => {
       const started = Date.now();
       let buffer = Buffer.alloc(0);
@@ -125,6 +146,8 @@ export class ServerPingService {
 
       socket.on('data', (chunk) => {
         buffer = Buffer.concat([buffer, chunk]);
+        // Бесконечный стрим от злого хоста — кап 2МБ, дальше offline.
+        if (buffer.length > 2 * 1024 * 1024) { finish({ online: false, error: 'response too large' }); return; }
         try {
           const lenInfo = decodeVarInt(buffer, 0);
           const total = lenInfo.size + lenInfo.value;
@@ -140,7 +163,8 @@ export class ServerPingService {
             players: data.players ? { online: data.players.online ?? 0, max: data.players.max ?? 0 } : undefined,
             version: data.version?.name,
             motd: extractMotd(data.description),
-            favicon: typeof data.favicon === 'string' ? data.favicon : undefined,
+            // favicon 10МБ строкой через IPC вешал рендер — режем до 256КБ.
+            favicon: typeof data.favicon === 'string' ? data.favicon.slice(0, 256 * 1024) : undefined,
           });
         } catch { /* keep buffering */ }
       });
