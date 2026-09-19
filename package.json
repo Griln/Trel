@@ -8,11 +8,6 @@
     "email": "griln@example.com"
   },
   "license": "MIT",
-  "overrides": {
-    "esbuild": {
-      "optionalDependencies": {}
-    }
-  },
   "scripts": {
     "dev": "vite",
     "icon": "node scripts/build-icon.js",
@@ -31,7 +26,7 @@
     "smartscreen": "node scripts/smartscreen-hashes.js"
   },
   "dependencies": {
-    "@xmcl/core": "^2.12.0",
+    "@xmcl/core": "2.15.1",
     "adm-zip": "^0.5.17",
     "axios": "^1.7.7",
     "electron-updater": "^6.8.3",
