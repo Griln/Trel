@@ -559,6 +559,8 @@ export class BedrockInstaller {
   }
 
   uninstall(versionId: string): boolean {
+    // Без проверки id строка `../../` снесла бы всё рядом с bedrock/.
+    if (!isSafeVersionId(versionId)) throw new Error(`Invalid versionId: ${versionId}`);
     const dir = this.versionDir(versionId);
     if (!fs.existsSync(dir)) return false;
     fs.rmSync(dir, { recursive: true, force: true });

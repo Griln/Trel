@@ -1,7 +1,10 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import AdmZip from 'adm-zip';
+import axios from 'axios';
 import { dirSize } from './util';
+import { readModId } from './import-ops';
+import { isUrlAllowed } from './download-security';
 import { CONTENT_FOLDERS } from '../shared/types';
 import type { ContentKind, ContentItem } from '../shared/types';
 
@@ -51,14 +54,17 @@ function isInside(child: string, parent: string): boolean {
 function safeExtractZip(zipPath: string, targetDir: string): void {
   const zip = new AdmZip(zipPath);
   fs.mkdirSync(targetDir, { recursive: true });
+  let total = 0;
   for (const entry of zip.getEntries()) {
     const dest = path.resolve(targetDir, entry.entryName);
     if (!isInside(dest, targetDir)) throw new Error(`Unsafe zip entry: ${entry.entryName}`);
-    if (entry.isDirectory) fs.mkdirSync(dest, { recursive: true });
-    else {
-      fs.mkdirSync(path.dirname(dest), { recursive: true });
-      fs.writeFileSync(dest, entry.getData());
-    }
+    if (entry.isDirectory) { fs.mkdirSync(dest, { recursive: true }); continue; }
+    if (((entry.header.attr >>> 16) & 0o170000) === 0o120000) continue; // symlink
+    total += entry.header.size;
+    // Bedrock-пак в сотни МБ распакованного — ок; гигабайты = бомба.
+    if (total > 1024 * 1024 * 1024) throw new Error('Zip bomb guard: pack too large');
+    fs.mkdirSync(path.dirname(dest), { recursive: true });
+    fs.writeFileSync(dest, entry.getData());
   }
 }
 
@@ -108,8 +114,14 @@ function parseModToml(text: string): Record<string, string> {
   return out;
 }
 
+// Метаданные читаем только из вменяемых по размеру jar: 2ГБ «мод»
+ // иначе роняет main-процесс (AdmZip грузит всё в RAM).
+const MOD_META_MAX_BYTES = 512 * 1024 * 1024;
 function parseJavaModMeta(file: string): ContentItem['meta'] | undefined {
   try {
+    try {
+      if (fs.statSync(file).size > MOD_META_MAX_BYTES) return undefined;
+    } catch { return undefined; }
     const zip = new AdmZip(file);
     const fabric = readZipText(zip, 'fabric.mod.json');
     if (fabric) {
@@ -290,6 +302,11 @@ export class ContentService {
         }
         const stat = fs.statSync(src);
         const lower = baseName.toLowerCase();
+        // Троянский .jar исполняется игрой при следующем запуске: файлы >512МБ
+        // не принимаем молча — пользователь пусть положит руками и осознанно.
+        if (!stat.isDirectory() && stat.size > 512 * 1024 * 1024) {
+          throw new Error('File too large (>512MB), add it manually if you trust it: ' + baseName);
+        }
         if (edition === 'bedrock' && stat.isFile() && ['.mcpack', '.mcaddon', '.mcworld', '.mctemplate', '.zip'].some((x) => lower.endsWith(x))) {
           const tmp = path.join(dir, `.import-${Date.now()}-${Math.random().toString(16).slice(2)}`);
           try {
@@ -312,5 +329,155 @@ export class ContentService {
       }
     }
     return { copied, errors };
+  }
+
+  /**
+   * Проверка обновлений модов через Modrinth API. Для каждого jar читаем
+   * modid, ищем проект по slug=modid и сравниваем последнюю версию под эту
+   * игру/лоадер с установленной. Совпадение slug≠modid отбраковываем по
+   * файлам: ищем только если проект вообще отвечает.
+   */
+  async checkModUpdates(versionId: string, gameVersion: string, loaders: string[]): Promise<Array<{
+    file: string; name: string; current?: string; latest?: string; url?: string; filename?: string;
+  }>> {
+    const dir = this.dirFor('mod', versionId, 'java');
+    let entries: fs.Dirent[] = [];
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return []; }
+    const jars = entries.filter((e) => e.isFile() && e.name.toLowerCase().endsWith('.jar')).slice(0, 100);
+    const out: Array<{ file: string; name: string; current?: string; latest?: string; url?: string; filename?: string }> = [];
+    const UA = 'TrelLauncher/1.0 (mod-update-check)';
+    // Пачками по 4: сотня модов иначе висит минуту.
+    for (let i = 0; i < jars.length; i += 4) {
+      const batch = await Promise.all(jars.slice(i, i + 4).map(async (e) => {
+        try {
+          const full = path.join(dir, e.name);
+          const { id, version } = readModId(full);
+          if (!id || !/^[a-z0-9\-_]+$/.test(id)) return null;
+          const q = `https://api.modrinth.com/v2/project/${encodeURIComponent(id)}/version` +
+            `?game_versions=${encodeURIComponent(JSON.stringify([gameVersion]))}` +
+            (loaders.length > 0 ? `&loaders=${encodeURIComponent(JSON.stringify(loaders))}` : '') +
+            `&limit=1`;
+          const { data } = await axios.get(q, { timeout: 10000, headers: { 'User-Agent': UA } });
+          const latest = Array.isArray(data) && data.length > 0 ? data[0] : null;
+          if (!latest?.version_number) return null;
+          if (version && latest.version_number === version) return null; // уже свежий
+          const file = (latest.files ?? []).find((f: { primary?: boolean }) => f.primary) ?? (latest.files ?? [])[0];
+          return { file: e.name, name: id, current: version, latest: latest.version_number as string,
+            url: file?.url as string | undefined, filename: file?.filename as string | undefined };
+        } catch { return null; } // нет на Modrinth / сеть легла — молча пропускаем
+      }));
+      for (const r of batch) if (r) out.push(r);
+    }
+    return out;
+  }
+
+  private profilesFile(versionId: string): string {
+    return path.join(this.gameDir, 'versions', versionId, 'trel-modprofiles.json');
+  }
+
+  private readProfiles(versionId: string): Record<string, string[]> {
+    try {
+      const raw = JSON.parse(fs.readFileSync(this.profilesFile(versionId), 'utf-8'));
+      if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+        const out: Record<string, string[]> = {};
+        for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+          if (typeof k === 'string' && k.length > 0 && k.length <= 64 && Array.isArray(v)) {
+            out[k] = (v as unknown[]).filter((x): x is string => typeof x === 'string').slice(0, 500);
+          }
+        }
+        return out;
+      }
+    } catch { /* нет файла — нет профилей */ }
+    return {};
+  }
+
+  /** Все профили версии: имя → список включённых jar. */
+  listModProfiles(versionId: string): Record<string, string[]> {
+    return this.readProfiles(versionId);
+  }
+
+  /** Сохраняет профиль из ТЕКУЩЕГО состояния папки (включённые jar). */
+  saveModProfile(versionId: string, name: string): string[] {
+    if (!/^[a-zA-Z0-9а-яА-Я_][a-zA-Z0-9а-яА-Я_. \-]{0,63}$/.test(name)) throw new Error('Bad profile name');
+    const dir = this.dirFor('mod', versionId, 'java');
+    let names: string[] = [];
+    try {
+      names = fs.readdirSync(dir)
+        .filter((n) => n.toLowerCase().endsWith('.jar'))
+        .filter((n) => {
+          try { return fs.statSync(path.join(dir, n)).isFile(); } catch { return false; }
+        });
+    } catch { throw new Error('Mods folder not found'); }
+    const all = this.readProfiles(versionId);
+    all[name] = names;
+    fs.mkdirSync(path.dirname(this.profilesFile(versionId)), { recursive: true });
+    fs.writeFileSync(this.profilesFile(versionId), JSON.stringify(all, null, 2), 'utf-8');
+    return names;
+  }
+
+  /** Удаляет профиль (файлы не трогает). */
+  deleteModProfile(versionId: string, name: string): boolean {
+    const all = this.readProfiles(versionId);
+    if (!(name in all)) return false;
+    delete all[name];
+    fs.writeFileSync(this.profilesFile(versionId), JSON.stringify(all, null, 2), 'utf-8');
+    return true;
+  }
+
+  /**
+   * Применяет профиль: всё выключаем (.disabled), из списка — включаем.
+   * Файлы не удаляются, только переименовываются туда-сюда.
+   */
+  applyModProfile(versionId: string, name: string): { enabled: number; disabled: number } {
+    const all = this.readProfiles(versionId);
+    const want = new Set(all[name] ?? []);
+    if (!(name in all)) throw new Error('Profile not found: ' + name);
+    const dir = this.dirFor('mod', versionId, 'java');
+    let enabled = 0;
+    let disabled = 0;
+    let names: string[] = [];
+    try { names = fs.readdirSync(dir); } catch { throw new Error('Mods folder not found'); }
+    for (const n of names) {
+      const low = n.toLowerCase();
+      const full = path.join(dir, n);
+      let st: fs.Stats | null = null;
+      try { st = fs.lstatSync(full); } catch { continue; }
+      if (!st.isFile() || st.isSymbolicLink()) continue;
+      if (low.endsWith('.jar')) {
+        if (!want.has(n)) {
+          fs.renameSync(full, full + '.disabled');
+          disabled++;
+        } else enabled++;
+      } else if (low.endsWith('.jar.disabled')) {
+        const base = n.slice(0, -'.disabled'.length);
+        if (want.has(base)) {
+          fs.renameSync(full, path.join(dir, base));
+          enabled++;
+        } else disabled++;
+      }
+    }
+    return { enabled, disabled };
+  }
+
+  /** Ставит обновление мода: качает jar, старый — в .bak, новый — на место. */
+  async updateMod(versionId: string, fileName: string, url: string): Promise<{ file: string; backup: string }> {
+    if (fileName.includes('/') || fileName.includes('\\') || fileName.includes('..')) throw new Error('Bad file name');
+    if (!isUrlAllowed(url)) throw new Error('URL blocked by download policy');
+    if (!/^https:\/\/cdn\.modrinth\.com\//.test(url) && !/^https:\/\/[^/]*modrinth\.com\//.test(url)) {
+      throw new Error('Only Modrinth CDN urls are allowed');
+    }
+    const dir = this.dirFor('mod', versionId, 'java');
+    const dest = path.join(dir, fileName);
+    if (!fs.existsSync(dest)) throw new Error('Mod file not found: ' + fileName);
+    const tmp = dest + '.trel_tmp';
+    const resp = await axios.get(url, { responseType: 'arraybuffer', timeout: 120000, maxRedirects: 5 });
+    const buf = Buffer.from(resp.data);
+    if (buf.length < 1024) throw new Error('Downloaded file too small');
+    if (buf[0] !== 0x50 || buf[1] !== 0x4b) throw new Error('Downloaded file is not a jar');
+    fs.writeFileSync(tmp, buf);
+    const backup = dest + '.bak';
+    try { fs.renameSync(dest, backup); } catch { /* ignore */ }
+    fs.renameSync(tmp, dest);
+    return { file: fileName, backup: path.basename(backup) };
   }
 }

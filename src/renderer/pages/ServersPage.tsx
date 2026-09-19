@@ -5,9 +5,10 @@ import type {
 import type { VersionInfo } from '../../shared/types';
 import {
   IconPlay, IconStop, IconTrash, IconFolder,
-  IconTerminal, IconPlus, IconServer, IconAlert, IconCopy, IconRefresh,
+  IconTerminal, IconPlus, IconServer, IconAlert, IconCopy, IconRefresh, IconClose,
 } from '../components/icons';
 import { useDialog } from '../components/Dialog';
+import { VersionPicker } from '../components/VersionPicker';
 import { useT } from '../i18n';
 
 const statusTone: Record<ServerStatus, string> = {
@@ -28,6 +29,43 @@ export const ServersPage: React.FC = () => {
   const [showCreate, setShowCreate] = useState(false);
   const [status, setStatus] = useState('');
   const logRef = useRef<HTMLDivElement>(null);
+  // Сохранённые удалённые серверы (servers.dat) + их живой статус.
+  const [saved, setSaved] = useState<Array<{ name: string; ip: string }>>([]);
+  const [savedPing, setSavedPing] = useState<Record<string, { online: boolean; players?: string; motd?: string; latencyMs?: number }>>({});
+  const [pinging, setPinging] = useState(false);
+  const pingRun = useRef(0);
+
+  const refreshSaved = async () => {
+    const run = ++pingRun.current;
+    setPinging(true);
+    try {
+      const list = await window.api.servers.saved();
+      if (pingRun.current !== run) return;
+      setSaved(list);
+      // Пингуем пачками по 4, иначе сотни серверов положат сеть.
+      const out: Record<string, { online: boolean; players?: string; motd?: string; latencyMs?: number }> = {};
+      for (let i = 0; i < list.length; i += 4) {
+        if (pingRun.current !== run) return;
+        const batch = await Promise.all(list.slice(i, i + 4).map(async (sv) => {
+          try {
+            const r = await window.api.servers.ping(sv.ip);
+            return [sv.ip, { online: r.online, latencyMs: r.latencyMs,
+              players: r.players ? `${r.players.online}/${r.players.max}` : undefined,
+              motd: r.motd?.slice(0, 80) }] as const;
+          } catch { return [sv.ip, { online: false }] as const; }
+        }));
+        for (const [ip, st] of batch) out[ip] = st;
+        if (pingRun.current !== run) return;
+        setSavedPing({ ...out });
+      }
+    } catch { /* servers.dat может отсутствовать — секция просто пустая */ }
+    finally { if (pingRun.current === run) setPinging(false); }
+  };
+
+  useEffect(() => {
+    refreshSaved();
+    return () => { pingRun.current++; };
+  }, []);
 
   const statusLabel: Record<ServerStatus, string> = {
     stopped: t('servers.statusStopped'),
@@ -92,22 +130,32 @@ export const ServersPage: React.FC = () => {
   const active = list.find((s) => s.id === activeId) ?? null;
   const activeStatus: ServerStatus = active ? statuses[active.id] ?? 'stopped' : 'stopped';
 
+  // Занятость по серверам: дабл-старт плодил процессы, дабл-стоп гонял state.
+  const [busyIds, setBusyIds] = useState<Record<string, boolean>>({});
   const onStart = async (id: string) => {
+    if (busyIds[id]) return;
+    setBusyIds((b) => ({ ...b, [id]: true }));
     setStatus(t('servers.startingStatus'));
     try {
       await window.api.servers.start(id);
       setStatus('');
     } catch (e) {
       setStatus(t('servers.startError', { message: (e as Error).message }));
+    } finally {
+      setBusyIds((b) => ({ ...b, [id]: false }));
     }
   };
   const onStop = async (id: string) => {
+    if (busyIds[id]) return;
+    setBusyIds((b) => ({ ...b, [id]: true }));
     setStatus(t('servers.stoppingStatus'));
     try {
       await window.api.servers.stop(id);
       setStatus('');
     } catch (e) {
       setStatus(t('servers.stopError', { message: (e as Error).message }));
+    } finally {
+      setBusyIds((b) => ({ ...b, [id]: false }));
     }
   };
   const onDelete = async (s: ServerInstance) => {
@@ -134,60 +182,62 @@ export const ServersPage: React.FC = () => {
 
   return (
     <div>
-      <div className="page-head">
-        <h1>{t('servers.title')}</h1>
-        <p>{t('servers.subtitle')}</p>
+      <div className="page-head v2">
+        <span className="eyebrow">{t('servers.eyebrow')}</span>
+        <h1 className="page-title">{t('servers.title')} <span className="count">{list.length}</span></h1>
+        <p className="page-sub">{t('servers.subtitle')}</p>
       </div>
 
       {status && <div className="hint" style={{ marginBottom: 12 }}>{status}</div>}
 
-      <div className="server-shell">
-        <aside className="server-list">
-          <div className="server-list-head">
-            <span className="muted" style={{ fontSize: 13 }}>{list.length} {t.plural(list.length, t('plural.server.one'), t('plural.server.few'), t('plural.server.many'))}</span>
-            <button className="btn primary sm" onClick={() => setShowCreate(true)}>
-              <IconPlus /> {t('servers.create')}
-            </button>
-          </div>
-
-          {showCreate && (
-            <CreateServerForm
-              onCancel={() => setShowCreate(false)}
-              onCreated={async () => {
-                setShowCreate(false);
-                await refreshList();
-              }}
-            />
-          )}
-
-          {list.length === 0 && !showCreate ? (
-            <div className="card" style={{ padding: 24, textAlign: 'center' }}>
-              <div className="server-empty-icon"><IconServer /></div>
-              <h2 style={{ fontSize: 15, marginBottom: 6 }}>{t('servers.empty')}</h2>
-              <p className="muted" style={{ fontSize: 12.5 }}>
-                {t('servers.emptyHint')}
-              </p>
-            </div>
-          ) : (
-            <div className="server-list-items">
-              {list.map((s) => {
-                const st = statuses[s.id] ?? 'stopped';
+      <div className="srv-layout">
+        <aside className="srv-list">
+          {list.map((s, i) => {
+            const st = statuses[s.id] ?? 'stopped';
+            return (
+              <div
+                key={s.id}
+                className={'srv' + (activeId === s.id ? ' sel' : '')}
+                onClick={() => setActiveId(s.id)}
+              >
+                <div className="srv-ico">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9">
+                    <rect x="2" y="3" width="20" height="7" rx="2" />
+                    <rect x="2" y="14" width="20" height="7" rx="2" />
+                    <path d="M6 6.5h.01M6 17.5h.01" />
+                  </svg>
+                </div>
+                <div className="srv-body">
+                  <b>{s.name}</b>
+                  <span>{s.versionId} · :{s.properties.serverPort}</span>
+                </div>
+                {st === 'running' && <span className="sdot ok" />}
+                {st === 'stopped' && <span className="sdot off" />}
+              </div>
+            );
+          })}
+          <button className="srv srv-add" onClick={() => setShowCreate(true)}>+ {t('servers.create')}</button>
+          {saved.length > 0 && (
+            <div className="srv-saved">
+              <div className="srv-saved-head">
+                <span>{t('servers.savedTitle')}</span>
+                <button className="btn ghost sm" onClick={refreshSaved} disabled={pinging} title={t('servers.refreshSaved')}>
+                  {pinging ? '…' : <IconRefresh />}
+                </button>
+              </div>
+              {saved.map((sv) => {
+                const st = savedPing[sv.ip];
                 return (
-                  <div
-                    key={s.id}
-                    className={'server-item' + (activeId === s.id ? ' active' : '')}
-                    onClick={() => setActiveId(s.id)}
-                  >
-                    <div className={'server-item-dot ' + statusTone[st]} />
-                    <div className="server-item-info">
-                      <div className="server-item-name">{s.name}</div>
-                      <div className="server-item-sub">
-                        <span>{s.versionId}</span>
-                        <span>·</span>
-                        <span>:{s.properties.serverPort}</span>
-                      </div>
+                  <div key={sv.ip} className="srv srv-saved-row" title={sv.ip}>
+                    <span className={'sdot ' + (st ? (st.online ? 'ok' : 'off') : '')} />
+                    <div className="srv-body">
+                      <b>{sv.name}</b>
+                      <span>
+                        {st ? (st.online
+                          ? `${st.players ?? ''}${st.latencyMs != null ? ` · ${st.latencyMs}ms` : ''}${st.motd ? ` · ${st.motd}` : ''}`
+                          : t('servers.savedOffline')) : t('servers.savedChecking')}
+                      </span>
                     </div>
-                    <span className={'chip ' + statusTone[st]}>{statusLabel[st]}</span>
                   </div>
                 );
               })}
@@ -195,19 +245,39 @@ export const ServersPage: React.FC = () => {
           )}
         </aside>
 
-        <main className="server-detail">
-          {!active ? (
-            <div className="catalog-empty">
-              <div className="catalog-empty-icon"><IconServer /></div>
-              <h2>{t('servers.selectServer')}</h2>
-              <p>{t('servers.selectHint')}</p>
-            </div>
+        <main>
+          {showCreate ? (
+            <CreateServerForm
+              onCancel={() => setShowCreate(false)}
+              onCreated={async () => {
+                setShowCreate(false);
+                await refreshList();
+              }}
+            />
+          ) : !active ? (
+            list.length === 0 ? (
+              <div className="empty p-24">
+                <div className=""><IconServer /></div>
+                <h2>{t('servers.empty')}</h2>
+                <p>{t('servers.emptyHint')}</p>
+                <div style={{ marginTop: 18 }}>
+                  <button className="btn primary" onClick={() => setShowCreate(true)}>+ {t('servers.newServer')}</button>
+                </div>
+              </div>
+            ) : (
+              <div className="empty p-24">
+                <div className=""><IconServer /></div>
+                <h2>{t('servers.selectServer')}</h2>
+                <p>{t('servers.selectHint')}</p>
+              </div>
+            )
           ) : (
             <ActiveServer
               server={active}
               status={activeStatus}
               logs={logs[active.id] ?? []}
               logRef={logRef}
+              busy={!!busyIds[active.id]}
               onStart={() => onStart(active.id)}
               onStop={() => onStop(active.id)}
               onDelete={() => onDelete(active)}
@@ -227,6 +297,7 @@ export const ServersPage: React.FC = () => {
           )}
         </main>
       </div>
+      <p className="note">{t('servers.localNote')}</p>
     </div>
   );
 };
@@ -236,6 +307,7 @@ export const ServersPage: React.FC = () => {
 const ActiveServer: React.FC<{
   server: ServerInstance;
   status: ServerStatus;
+  busy?: boolean;
   logs: string[];
   logRef: React.RefObject<HTMLDivElement>;
   onStart: () => void;
@@ -244,7 +316,7 @@ const ActiveServer: React.FC<{
   onUpdate: (patch: Partial<ServerProperties>) => Promise<void>;
   onRename: (name: string) => Promise<void>;
   onSetMemory: (mb: number) => Promise<void>;
-}> = ({ server, status, logs, logRef, onStart, onStop, onDelete, onUpdate, onRename, onSetMemory }) => {
+}> = ({ server, status, busy, logs, logRef, onStart, onStop, onDelete, onUpdate, onRename, onSetMemory }) => {
   const t = useT();
   const [cmd, setCmd] = useState('');
   const [editName, setEditName] = useState(false);
@@ -299,285 +371,72 @@ const ActiveServer: React.FC<{
 
   return (
     <>
-      {/* Hero */}
-      <div className="server-hero">
-        <div className="server-hero-info">
-          <div className="server-hero-eyebrow">
-            <span className={'chip ' + statusTone[status]}>{statusLabel[status]}</span>
-            <span className="chip">{server.versionId}</span>
-          </div>
+      <div className="console-wrap">
+        <div className="console-head">
           {editName ? (
             <input
-              className="input server-name-input"
+              className="input"
               value={name}
               autoFocus
               onChange={(e) => setName(e.target.value)}
-              onBlur={async () => {
-                setEditName(false);
-                if (name.trim() && name !== server.name) await onRename(name);
-              }}
-              onKeyDown={async (e) => {
-                if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-                if (e.key === 'Escape') { setName(server.name); setEditName(false); }
-              }}
+              onBlur={async () => { setEditName(false); if (name.trim() && name !== server.name) await onRename(name); }}
+              onKeyDown={async (e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); if (e.key === 'Escape') { setName(server.name); setEditName(false); } }}
             />
           ) : (
-            <h2
-              className="server-hero-title"
-              onClick={() => setEditName(true)}
-              title={t('servers.renameTitle')}
-            >
-              {server.name}
-            </h2>
+            <span className="nm" onClick={() => setEditName(true)} title={t('servers.renameTitle')} style={{ cursor: 'pointer' }}>{server.name}</span>
           )}
-          <div className="server-hero-meta">
-            <span>{t('servers.port')} {server.properties.serverPort}</span>
-            <span>·</span>
-            <span>{server.memoryMb} {t('servers.memory')}</span>
-            <span>·</span>
-            <span>{t('servers.created')} {new Date(server.createdAt).toLocaleDateString(t.locale === 'en' ? 'en-US' : 'ru-RU')}</span>
+          <span className="chip green"><span className="sdot ok" />{t('servers.serverRunning')}</span>
+          <div className="right">
+            {!isRunning && (
+              <button className="btn primary sm" onClick={onStart} disabled={busy}>
+                <IconPlay /> {t('servers.start')}
+              </button>
+            )}
+            <button className="btn ghost sm" onClick={() => window.api.servers.openFolder(server.id)} title={t('servers.openFolder')}>
+              <IconFolder /> {t('servers.folder')}
+            </button>
+            <button className="btn ghost sm" onClick={() => copyToClipboard(primaryAddr)} title={t('servers.copy')}>
+              <IconCopy /> {copied === primaryAddr ? t('servers.copied') : t('servers.copyIp')}
+            </button>
+            {isRunning ? (
+              <button className="btn danger sm" onClick={onStop} disabled={busy}>
+                <IconStop /> {t('servers.stop')}
+              </button>
+            ) : (
+              <button className="btn danger sm" onClick={onDelete} disabled={busy} title={t('servers.deleteTitle', { name: server.name })}>
+                <IconTrash /> {t('servers.delete')}
+              </button>
+            )}
           </div>
         </div>
-
-        <div className="server-hero-actions">
-          {status === 'running' ? (
-            <button className="btn danger" onClick={onStop}>
-              <IconStop /> {t('servers.stop')}
-            </button>
-          ) : status === 'starting' ? (
-            <button className="btn warn" onClick={onStop}>
-              <IconRefresh /> {t('servers.starting')}
-            </button>
-          ) : (
-            <button className="btn primary" onClick={onStart}>
-              <IconPlay /> {t('servers.start')}
-            </button>
-          )}
-          <button className="icon-btn" onClick={() => window.api.servers.openFolder(server.id)} title={t('servers.openFolder')}>
-            <IconFolder />
-          </button>
-          <button className="icon-btn" onClick={onDelete} disabled={isRunning} title={t('servers.deleteBtn')}>
-            <IconTrash />
-          </button>
-        </div>
-      </div>
-
-      {/* Подключение */}
-      <div className="card server-connect-card">
-        <div className="card-head">
-          <h2>{t('servers.connectTitle')}</h2>
-          {isReady ? (
-            <span className="chip success">{t('servers.serverReady')}</span>
-          ) : status === 'starting' ? (
-            <span className="chip accent">{t('servers.serverStarting')}</span>
-          ) : (
-            <span className="chip">{t('servers.serverStopped')}</span>
-          )}
-        </div>
-        <ol className="server-connect-steps">
-          <li>{t('servers.connectStep1')}</li>
-          <li>{t('servers.connectStep2', { address: primaryAddr })}</li>
-          <li>{t('servers.connectStep3')}</li>
-        </ol>
-        <div className="server-connect-list">
-          {addresses.map((a) => {
-            // Для default-порта 25565 адрес можно писать без `:25565` — это
-            // понятнее. Но в кнопку копирования всё равно кладём явный.
-            const display = a.port === 25565 ? a.host : `${a.host}:${a.port}`;
-            const fullAddr = `${a.host}:${a.port}`;
-            return (
-              <div key={fullAddr} className="server-connect-row">
-                <div className="server-connect-info">
-                  <div className="server-connect-label">{a.label}</div>
-                  <code className="server-connect-addr">{display}</code>
-                </div>
-                <button
-                  className="btn ghost sm"
-                  onClick={() => copyToClipboard(display)}
-                  title={t('servers.copy')}
-                >
-                  <IconCopy /> {copied === display ? t('servers.copied') : t('servers.copy')}
-                </button>
-              </div>
-            );
-          })}
-          {addresses.length === 1 && (
-            <div className="hint" style={{ fontSize: 12 }}>
-              {t('servers.noInterfaces')}
-            </div>
-          )}
-        </div>
-        <div className="hint" style={{ fontSize: 12, marginTop: 10 }}>
-          {t('servers.lanHint')}
-        </div>
-      </div>
-
-      {/* Console */}
-      <div className="card server-console-card">
-        <div className="card-head">
-          <h2><IconTerminal style={{ verticalAlign: 'middle', marginRight: 6 }} /> {t('servers.console')}</h2>
-          <span className="chip">{logs.length} {t.plural(logs.length, t('plural.line.one'), t('plural.line.few'), t('plural.line.many'))}</span>
-        </div>
-        <div className="server-log" ref={logRef}>
+        <div className="console" ref={logRef}>
           {logs.length === 0 ? (
             <div className="muted" style={{ padding: '20px 8px', fontSize: 12.5 }}>
               {status === 'starting' ? t('servers.consoleStarting') : isRunning ? t('servers.consoleWaiting') : t('servers.consoleStopped')}
             </div>
           ) : (
-            logs.map((line, i) => <span key={i}>{line}</span>)
-          )}
-          {status === 'starting' && logs.length > 0 && (
-            <div className="muted" style={{ padding: '4px 8px', fontSize: 12.5 }}>{t('servers.consoleStarting')}</div>
+            // Тысячи строк в DOM вешали вкладку: рисуем хвост в 300 строк.
+            logs.slice(-300).map((line, i) => {
+              const cls = /ERROR|FATAL|Exception|SEVERE/i.test(line) ? 'err' : /WARN/i.test(line) ? 'warn' : /INFO/i.test(line) ? 'info' : '';
+              return <span key={i} className={'log-ln ' + cls}>{line}</span>;
+            })
           )}
         </div>
-        <div className="server-cmd-row">
-          <span className="server-cmd-prompt">/</span>
-          <input
-            className="input"
-            placeholder={isReady ? t('servers.commandPlaceholder') : status === 'starting' ? t('servers.consoleStarting') : t('servers.commandDisabled')}
-            value={cmd}
-            disabled={!isReady}
-            onChange={(e) => setCmd(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') onSendCommand(); }}
-          />
-          <button className="btn" onClick={onSendCommand} disabled={!isReady || !cmd.trim()}>
-            {t('servers.send')}
-          </button>
+        <div className="console-cmd">
+          <input className="input" placeholder={isReady ? t('servers.commandPlaceholder') : status === 'starting' ? t('servers.consoleStarting') : t('servers.commandDisabled')} value={cmd} disabled={!isReady} onChange={(e) => setCmd(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') onSendCommand(); }} />
+          <button className="btn primary sm" onClick={onSendCommand} disabled={!isReady || !cmd.trim()}>{t('servers.send')}</button>
         </div>
       </div>
 
-      {/* Command reference */}
-      <div className="card">
-        <div className="card-head">
-          <h2>{t('servers.cmdRefTitle')}</h2>
-        </div>
-        <div style={{ display: 'grid', gap: 6, fontSize: 13 }}>
-          {[
-            ['stop', t('servers.cmdStop')],
-            ['kick <player> [reason]', t('servers.cmdKick')],
-            ['ban <player> [reason]', t('servers.cmdBan')],
-            ['pardon <player>', t('servers.cmdPardon')],
-            ['ban-ip <ip> [reason]', t('servers.cmdBanIp')],
-            ['pardon-ip <ip>', t('servers.cmdPardonIp')],
-            ['op <player>', t('servers.cmdOp')],
-            ['deop <player>', t('servers.cmdDeop')],
-            ['whitelist on|off', t('servers.cmdWhitelist')],
-            ['whitelist add|remove <player>', t('servers.cmdWhitelistManage')],
-            ['gamemode <mode> <player>', t('servers.cmdGamemode')],
-            ['give <player> <item> [amount]', t('servers.cmdGive')],
-            ['tp <player> <target>', t('servers.cmdTp')],
-            ['time set <value>', t('servers.cmdTime')],
-            ['weather clear|rain|thunder', t('servers.cmdWeather')],
-            ['difficulty peaceful|easy|normal|hard', t('servers.cmdDifficulty')],
-            ['gamerule <rule> <value>', t('servers.cmdGamerule')],
-            ['effect give <player> <effect> [seconds]', t('servers.cmdEffect')],
-            ['fill <x1> <y1> <z1> <x2> <y2> <z2> <block>', t('servers.cmdFill')],
-            ['clone <x1> <y1> <z1> <x2> <y2> <z2> <dest>', t('servers.cmdClone')],
-            ['say <message>', t('servers.cmdSay')],
-            ['tell <player> <message>', t('servers.cmdTell')],
-            ['title <player> <action> <text>', t('servers.cmdTitle')],
-            ['particle <type> <x> <y> <z>', t('servers.cmdParticle')],
-            ['playsound <sound> <player>', t('servers.cmdPlaysound')],
-            ['execute as <entity> run <command>', t('servers.cmdExecute')],
-            ['schedule function <fn> <ticks>', t('servers.cmdSchedule')],
-            ['reload', t('servers.cmdReload')],
-            ['save-all', t('servers.cmdSaveAll')],
-            ['save-off|save-on', t('servers.cmdSaveToggle')],
-            ['seed', t('servers.cmdSeed')],
-            ['list', t('servers.cmdList')],
-            ['tps', t('servers.cmdTps')],
-          ].map(([cmd, desc]) => (
-            <div key={cmd} style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
-              <code style={{ color: 'var(--accent)', minWidth: 280, fontSize: 12, fontFamily: 'monospace' }}>{cmd}</code>
-              <span style={{ color: 'var(--fg-muted)', fontSize: 12 }}>{desc}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Settings */}
-      <div className="card">
-        <div className="card-head">
-          <h2>{t('servers.settings')}</h2>
-          {isRunning && (
-            <span className="hint" style={{ fontSize: 11.5 }}>
-              {t('servers.settingsHint')}
-            </span>
-          )}
-        </div>
-        <div className="server-settings-grid">
-          <Field label={t('servers.motd')}>
-            <input
-              className="input"
-              value={server.properties.motd}
-              onChange={(e) => onUpdate({ motd: e.target.value })}
-            />
-          </Field>
-          <Field label={t('servers.portLabel')}>
-            <input
-              className="input"
-              type="number"
-              value={server.properties.serverPort}
-              onChange={(e) => onUpdate({ serverPort: Math.max(1, Math.min(65535, parseInt(e.target.value, 10) || 25565)) })}
-            />
-          </Field>
-          <Field label={t('servers.maxPlayers')}>
-            <input
-              className="input"
-              type="number"
-              value={server.properties.maxPlayers}
-              onChange={(e) => onUpdate({ maxPlayers: Math.max(1, parseInt(e.target.value, 10) || 1) })}
-            />
-          </Field>
-          <Field label={t('servers.memoryLabel')}>
-            <input
-              className="input"
-              type="number"
-              value={server.memoryMb}
-              onChange={(e) => onSetMemory(Math.max(512, parseInt(e.target.value, 10) || 1024))}
-            />
-          </Field>
-          <Field label={t('servers.gamemode')}>
-            <select
-              className="input"
-              value={server.properties.gamemode}
-              onChange={(e) => onUpdate({ gamemode: e.target.value as ServerProperties['gamemode'] })}
-            >
-              <option value="survival">{t('servers.gmSurvival')}</option>
-              <option value="creative">{t('servers.gmCreative')}</option>
-              <option value="adventure">{t('servers.gmAdventure')}</option>
-              <option value="spectator">{t('servers.gmSpectator')}</option>
-            </select>
-          </Field>
-          <Field label={t('servers.difficulty')}>
-            <select
-              className="input"
-              value={server.properties.difficulty}
-              onChange={(e) => onUpdate({ difficulty: e.target.value as ServerProperties['difficulty'] })}
-            >
-              <option value="peaceful">{t('servers.diffPeaceful')}</option>
-              <option value="easy">{t('servers.diffEasy')}</option>
-              <option value="normal">{t('servers.diffNormal')}</option>
-              <option value="hard">{t('servers.diffHard')}</option>
-            </select>
-          </Field>
-          <Field label={t('servers.spawnProtection')}>
-            <input
-              className="input"
-              type="number"
-              value={server.properties.spawnProtection}
-              onChange={(e) => onUpdate({ spawnProtection: Math.max(0, parseInt(e.target.value, 10) || 0) })}
-            />
-          </Field>
-          <div className="server-toggles">
-            <Toggle label={t('servers.pvp')} value={server.properties.pvp} onChange={(v) => onUpdate({ pvp: v })} />
-            <Toggle label={t('servers.whiteList')} value={server.properties.whiteList} onChange={(v) => onUpdate({ whiteList: v })} />
-            <Toggle label={t('servers.onlineMode')} value={server.properties.onlineMode} onChange={(v) => onUpdate({ onlineMode: v })} />
-          </div>
-        </div>
-        <div className="hint" style={{ marginTop: 14, fontSize: 12 }}>
-          {t('servers.portChangeHint')}
-        </div>
+      <div className="props">
+        <div className="prop"><span>{t('servers.motd')}</span><b>{server.properties.motd}</b></div>
+        <div className="prop"><span>{t('servers.port')}</span><b>{server.properties.serverPort}</b></div>
+        <div className="prop"><span>{t('servers.maxPlayers')}</span><b>{server.properties.maxPlayers}</b></div>
+        <div className="prop"><span>{t('servers.gamemode')}</span><b>{server.properties.gamemode}</b></div>
+        <div className="prop"><span>{t('servers.difficulty')}</span><b>{server.properties.difficulty}</b></div>
+        <div className="prop"><span>PvP</span><b>{server.properties.pvp ? t('servers.on') : t('servers.off')}</b></div>
+        <div className="prop"><span>online-mode</span><b>{server.properties.onlineMode ? t('servers.on') : t('servers.off')}</b></div>
+        <div className="prop"><span>{t('servers.memory')}</span><b>{server.memoryMb} МБ</b></div>
       </div>
     </>
   );
@@ -592,12 +451,15 @@ const Field: React.FC<{ label: string; children: React.ReactNode }> = ({ label, 
 
 const Toggle: React.FC<{ label: string; value: boolean; onChange: (v: boolean) => void }> = ({ label, value, onChange }) => (
   <label className="server-toggle">
-    <input type="checkbox" checked={value} onChange={(e) => onChange(e.target.checked)} />
     <span>{label}</span>
+    <span className="toggle">
+      <input type="checkbox" checked={value} onChange={(e) => onChange(e.target.checked)} />
+      <span className="track" />
+    </span>
   </label>
 );
 
-// ─── Create form (inline в боковой колонке) ─────────────────────────────────
+// ─── Create form (красивая модалка поверх страницы) ──────────────────────────────
 
 const CreateServerForm: React.FC<{
   onCancel: () => void;
@@ -625,6 +487,15 @@ const CreateServerForm: React.FC<{
     return () => { cancelled = true; off(); };
   }, []);
 
+  // Esc закрывает модалку (пока не идёт создание)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !busy) onCancel();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [busy, onCancel]);
+
   const onCreate = async () => {
     if (!versionId) { setError(t('servers.selectVersion')); return; }
     setBusy(true);
@@ -645,66 +516,82 @@ const CreateServerForm: React.FC<{
   };
 
   return (
-    <div className="card server-create-card">
-      <div className="card-head">
-        <h2>{t('servers.newServer')}</h2>
-      </div>
-      <div className="server-create-body">
-        <Field label={t('servers.nameLabel')}>
-          <input
-            className="input"
-            autoFocus
-            placeholder={t('servers.namePlaceholder')}
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            disabled={busy}
-          />
-        </Field>
-        <Field label={t('servers.versionLabel')}>
-          <select
-            className="input"
-            value={versionId}
-            onChange={(e) => setVersionId(e.target.value)}
-            disabled={busy}
-          >
-            {versions.map((v) => (
-              <option key={v.id} value={v.id}>{v.id}</option>
-            ))}
-          </select>
-        </Field>
-        <Field label={t('servers.memoryField')}>
-          <input
-            className="input"
-            type="number"
-            value={memoryMb}
-            onChange={(e) => setMemoryMb(Math.max(512, parseInt(e.target.value, 10) || 1024))}
-            disabled={busy}
-          />
-        </Field>
-        <div className="hint" style={{ fontSize: 12 }}>
-          {t('servers.jarHint')}{' '}{t('servers.eulaHint')}
+    <div className="srv-create-backdrop" onClick={busy ? undefined : onCancel}>
+      <div className="srv-create" onClick={(e) => e.stopPropagation()}>
+        <div className="srv-create-head">
+          <div>
+            <h2><IconServer /> {t('servers.newServer')}</h2>
+            <p>{t('servers.jarHint')} {t('servers.eulaHint')}</p>
+          </div>
+          <button className="onboarding-close" onClick={onCancel} disabled={busy} aria-label={t('servers.cancelCreate')}><IconClose /></button>
         </div>
-        {progress && (
-          <div className="hero-progress">
-            <div className="ab-progress-info">
-              <span className="ab-progress-stage">{progress.stage}</span>
-              <span>{progress.percent}%</span>
+        <div className="server-create-body">
+          <Field label={t('servers.nameLabel')}>
+            <input
+              className="input"
+              autoFocus
+              placeholder={t('servers.namePlaceholder')}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              disabled={busy}
+            />
+          </Field>
+          <Field label={t('servers.versionLabel')}>
+            <VersionPicker
+              value={versionId}
+              onChange={setVersionId}
+              disabled={busy}
+              placeholder={t('servers.selectVersion')}
+              options={versions.map((v) => ({ id: v.id, title: v.id, sub: 'release' }))}
+              maxHeight={260}
+            />
+          </Field>
+          <Field label={t('servers.memoryField')}>
+            <div className="mem-row">
+              <input
+                className="input"
+                type="number"
+                value={memoryMb}
+                onChange={(e) => setMemoryMb(Math.max(512, parseInt(e.target.value, 10) || 1024))}
+                disabled={busy}
+              />
+              <div className="mem-chips">
+                {[1024, 2048, 4096, 8192].map((mb) => (
+                  <button
+                    key={mb}
+                    type="button"
+                    className={'mchip' + (memoryMb === mb ? ' on' : '')}
+                    onClick={() => setMemoryMb(mb)}
+                    disabled={busy}
+                  >
+                    {mb / 1024}G
+                  </button>
+                ))}
+              </div>
             </div>
-            <div className="ab-progress-bar">
-              <div className="fill" style={{ width: progress.percent + '%' }} />
+          </Field>
+          {progress && (
+            <div className="hero-progress">
+              <div className="ab-progress-info">
+                <span className="ab-progress-stage">{progress.stage}</span>
+                <span>{progress.percent}%</span>
+              </div>
+              <div className="ab-progress-bar">
+                <div className="fill" style={{ width: progress.percent + '%' }} />
+              </div>
             </div>
+          )}
+          {error && (
+            <div className="hint" style={{ color: 'var(--danger)' }}>
+              <IconAlert /> {error}
+            </div>
+          )}
+          <div className="srv-create-actions">
+            <button className="btn ghost" onClick={onCancel} disabled={busy}>{t('servers.cancelCreate')}</button>
+            <button className="btn primary" onClick={onCreate} disabled={busy || !versionId}>
+              {busy ? t('servers.creating') : <><IconPlus /> {t('servers.createBtn')}</>}
+            </button>
           </div>
-        )}
-        {error && (
-          <div className="hint" style={{ color: 'var(--danger)' }}>
-            <IconAlert /> {error}
-          </div>
-        )}
-        <div className="row" style={{ gap: 6, justifyContent: 'flex-end' }}>
-          <button className="btn ghost" onClick={onCancel} disabled={busy}>{t('servers.cancelCreate')}</button>
-          <button className="btn primary" onClick={onCreate} disabled={busy || !versionId}>
-            {busy ? t('servers.creating') : t('servers.createBtn')}
-          </button>
         </div>
       </div>
     </div>

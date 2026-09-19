@@ -1,4 +1,4 @@
-import { BrowserWindow } from 'electron';
+import { BrowserWindow, shell } from 'electron';
 import axios, { AxiosRequestConfig } from 'axios';
 import * as crypto from 'node:crypto';
 
@@ -53,7 +53,24 @@ function openAuthWindow(): Promise<string> {
 
     const win = new BrowserWindow({
       width: 480, height: 640, title: 'Microsoft Login',
-      webPreferences: { nodeIntegration: false, contextIsolation: true },
+      webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true },
+    });
+    // Фишинг через редирект: дальше login.live.com / microsoftonline не пускаем,
+    // внешние ссылки — в системный браузер, а не внутрь окна с сессией.
+    const MS_HOSTS = new Set(['login.live.com', 'login.microsoftonline.com']);
+    win.webContents.setWindowOpenHandler(({ url }) => {
+      try {
+        if (!MS_HOSTS.has(new URL(url).hostname)) { void shell.openExternal(url); }
+      } catch { /* ignore */ }
+      return { action: 'deny' };
+    });
+    win.webContents.on('will-navigate', (event, url) => {
+      try {
+        if (!MS_HOSTS.has(new URL(url).hostname)) {
+          event.preventDefault();
+          void shell.openExternal(url);
+        }
+      } catch { event.preventDefault(); }
     });
 
     let resolved = false;
@@ -226,6 +243,17 @@ async function doAuth(msAccessToken: string, cfg: AxiosRequestConfig): Promise<M
 /**
  * Первичный вход: открыть окно → получить профиль.
  */
+/**
+ * Вычищает токены из текста ошибки: axios тащит access/refresh-токены в
+ * message/config, а текст уходит в UI и логи. Токен в логе = угон аккаунта.
+ */
+export function scrubTokens(text: string): string {
+  return text
+    .replace(/[A-Za-z0-9-_]{20,}\.[A-Za-z0-9-_]{20,}\.[A-Za-z0-9-_]{20,}/g, '<jwt>')
+    .replace(/(access_?token|refresh_?token|id_?token)["':=\s]+[A-Za-z0-9._~+\/=-]{8,}/gi, '$1=<redacted>')
+    .replace(/(XBL3\.0 x=)[^;\s]+/g, '$1<redacted>');
+}
+
 export async function authenticateMicrosoft(): Promise<MicrosoftProfile> {
   const cfg = axiosConfig();
 
@@ -235,17 +263,17 @@ export async function authenticateMicrosoft(): Promise<MicrosoftProfile> {
 
   let ms: { accessToken: string; refreshToken: string; idToken?: string };
   try { ms = await msTokenFromCode(code, cfg); }
-  catch (e: any) { throw new Error(`[2/5] MS token: ${e.response?.data?.error_description || e.message}`); }
+  catch (e: any) { throw new Error(scrubTokens(`[2/5] MS token: ${e.response?.data?.error_description || e.message}`)); }
 
   let xbl: { xblToken: string; uhs: string; gamertag?: string };
   try { xbl = await msTokenToXbl(ms.accessToken, cfg); }
-  catch (e: any) { throw new Error(`[3/5] Xbox: ${e.response?.status || ''} ${e.response?.data?.Message || e.message}`); }
+  catch (e: any) { throw new Error(scrubTokens(`[3/5] Xbox: ${e.response?.status || ''} ${e.response?.data?.Message || e.message}`)); }
 
   let xsts: { xstsToken: string; uhs: string };
   try { xsts = await xblToXsts(xbl.xblToken, cfg); }
   catch (e: any) {
     if (e.message.includes('Xbox') || e.message.includes('XSTS') || e.message.includes('child') || e.message.includes('adult')) throw e;
-    throw new Error(`[4/5] XSTS: ${e.response?.status || ''} ${e.message}`);
+    throw new Error(scrubTokens(`[4/5] XSTS: ${e.response?.status || ''} ${e.message}`));
   }
 
   let mc: { uuid: string; name: string; owned: boolean };

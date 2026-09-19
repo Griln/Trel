@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useT } from '../i18n';
 import type { LauncherSettings } from '../../shared/types';
 import type { CrashDiagnosis, CrashFixAction } from '../../preload/preload';
 
@@ -9,13 +10,17 @@ interface Props {
 }
 
 // Crash Doctor — всплывающая карточка с диагнозом краша и кнопками починки.
+// Кнопки реально чинят: память применяется сразу, драйвер открывается
+// у вендора, Java пересканируется перед переходом в настройки.
 export const CrashDoctor: React.FC<Props> = ({ settings, onSettingsChange, onNavigate }) => {
+  const t = useT();
   const [crash, setCrash] = useState<CrashDiagnosis | null>(null);
   const [copied, setCopied] = useState(false);
+  const [applied, setApplied] = useState<string | null>(null);
 
   useEffect(() => {
     if (!window.api?.minecraft?.onCrash) return;
-    const off = window.api.minecraft.onCrash((d) => { setCrash(d); setCopied(false); });
+    const off = window.api.minecraft.onCrash((d) => { setCrash(d); setCopied(false); setApplied(null); });
     return () => { off(); };
   }, []);
 
@@ -23,19 +28,26 @@ export const CrashDoctor: React.FC<Props> = ({ settings, onSettingsChange, onNav
 
   const close = () => setCrash(null);
 
-  const handle = (a: CrashFixAction) => {
+  const handle = async (a: CrashFixAction) => {
     switch (a.type) {
       case 'increase-memory': {
         if (settings) {
           const want = typeof a.hint === 'number' ? a.hint : 4096;
           const next = Math.max(settings.memoryMb || 0, want);
           onSettingsChange({ ...settings, memoryMb: next });
+          try {
+            // Дожимаем persist напрямую: onSettingsChange у родителя может
+            // быть локальным (без записи), а память должна вырасти точно.
+            const cur = await window.api.settings.get();
+            await window.api.settings.set({ ...cur, memoryMb: next });
+            setApplied(t('crash.appliedMemory', { mb: next }));
+          } catch { /* родитель уже обновил локально */ }
         }
-        onNavigate('settings');
-        close();
         break;
       }
       case 'switch-java':
+        // Список Java мог протухнуть — пересканируем перед переходом.
+        try { await window.api.java.scan(); } catch { /* ignore */ }
         onNavigate('settings');
         close();
         break;
@@ -47,12 +59,15 @@ export const CrashDoctor: React.FC<Props> = ({ settings, onSettingsChange, onNav
         window.api?.minecraft?.openFolder?.('game');
         break;
       case 'copy-report': {
-        const text = `${crash.title}\n${crash.detail}` + (crash.culprit ? `\nВиновник: ${crash.culprit}` : '');
-        try { navigator.clipboard.writeText(text); setCopied(true); } catch {}
+        const text = `${crash.title}\n${crash.detail}` + (crash.culprit ? `\n${t('crash.culprit')}: ${crash.culprit}` : '');
+        try { await navigator.clipboard.writeText(text); setCopied(true); } catch {}
         break;
       }
       case 'update-gpu-driver':
-        window.api?.minecraft?.openFolder?.('game');
+        // Ссылка от бэкенда (вендор детекчен); без неё — молча ничего.
+        if (a.url) {
+          try { await window.api.tools.openUrl(a.url); } catch {}
+        }
         break;
       default:
         break;
@@ -69,12 +84,15 @@ export const CrashDoctor: React.FC<Props> = ({ settings, onSettingsChange, onNav
         <h2 className="crash-doctor-title">{crash.title}</h2>
         <p className="crash-doctor-detail">{crash.detail}</p>
         {crash.culprit && (
-          <div className="crash-doctor-culprit">Вероятный виновник: <code>{crash.culprit}</code></div>
+          <div className="crash-doctor-culprit">{t('crash.culprit')}: <code>{crash.culprit}</code></div>
+        )}
+        {applied && (
+          <div className="crash-doctor-applied">{applied}</div>
         )}
         <div className="crash-doctor-actions">
           {crash.actions.map((a, i) => (
-            <button key={i} className={i === 0 ? 'btn-primary' : 'btn-secondary'} onClick={() => handle(a)}>
-              {a.type === 'copy-report' && copied ? 'Скопировано ✓' : a.label}
+            <button key={i} className={i === 0 ? 'btn primary' : 'btn ghost'} onClick={() => handle(a)}>
+              {a.type === 'copy-report' && copied ? t('crash.copied') : a.label}
             </button>
           ))}
         </div>

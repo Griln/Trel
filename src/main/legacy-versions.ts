@@ -156,6 +156,16 @@ export function launchLegacy(opts: {
   const v = getLegacyVersion(opts.id);
   if (!v) throw new Error(`Legacy version not found: ${opts.id}`);
   if (!opts.javaPath || opts.javaPath.includes('\0')) throw new Error('Invalid javaPath');
+  // Бинарь обязан существовать: иначе spawn кидает ENOENT асинхронно и роняет
+  // процесс без диагноза. exec-бит — против подмены на текстовый файл.
+  try {
+    const st = fs.statSync(opts.javaPath);
+    if (!st.isFile()) throw new Error('Invalid javaPath');
+    if (process.platform !== 'win32' && (st.mode & 0o111) === 0) throw new Error('javaPath is not executable');
+  } catch (e) {
+    if ((e as Error).message.startsWith('Invalid javaPath') || (e as Error).message.startsWith('javaPath')) throw e;
+    throw new Error('Invalid javaPath: ' + opts.javaPath);
+  }
   if (!v.mainClass || v.mainClass.includes('\0') || v.mainClass.includes(' ')) throw new Error('Invalid mainClass');
 
   const versionDir = installLegacy(opts.gameDir, opts.id);
@@ -181,6 +191,16 @@ export function launchLegacy(opts: {
     stdio: ['ignore', 'pipe', 'pipe'],
     detached: false,
   });
+  // Без error-хендлера падение спавна (удалённая Java между проверкой и
+  // стартом) кидало необработанное исключение. Фиксируем на объекте.
+  child.on('error', (e) => {
+    (child as unknown as { spawnError?: Error }).spawnError = e;
+    console.error('[legacy] spawn failed:', e.message);
+  });
+  // Осиротевшие legacy-процессы после выхода из лаунчера: убиваем следом.
+  const killOnExit = () => { try { child.kill(); } catch {} };
+  process.once('exit', killOnExit);
+  child.on('close', () => { process.removeListener('exit', killOnExit); });
 
   return child;
 }

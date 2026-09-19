@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trel — Мониторинг серверов · превью</title>
+<link rel="stylesheet" href="trel-design.css">
+<style>
+  .mon-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px}
+  .mon{position:relative;overflow:hidden;padding:18px 19px;border-radius:16px;background:var(--surface-2);
+    border:1px solid var(--border);transition:transform .22s var(--ease),border-color .22s,box-shadow .22s;
+    animation:cardIn .5s var(--ease) backwards}
+  .mon:nth-child(1){animation-delay:.05s}.mon:nth-child(2){animation-delay:.12s}.mon:nth-child(3){animation-delay:.19s}
+  .mon:nth-child(4){animation-delay:.26s}
+  .mon:hover{transform:translateY(-4px);box-shadow:0 14px 34px -15px rgba(0,0,0,.8)}
+  .mon.online{border-color:rgba(94,203,111,.3)}
+  .mon.online::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--green)}
+  .mon.offline{opacity:.75}
+  .mon.offline::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--fg-subtle)}
+  .mon-top{display:flex;align-items:center;gap:13px;margin-bottom:11px}
+  .fav{width:46px;height:46px;flex-shrink:0;border-radius:11px;display:grid;place-items:center;font-size:22px;
+    background:var(--surface-3);border:1px solid var(--border-strong);image-rendering:pixelated;overflow:hidden;
+    transition:transform .3s var(--ease)}
+  .mon:hover .fav{transform:scale(1.08) rotate(-4deg)}
+  .mon-nm{flex:1;min-width:0}
+  .mon-nm b{font-size:15px;color:var(--fg-bright);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .mon-nm span{font-family:var(--mono);font-size:10.5px;color:var(--fg-subtle)}
+  .mon-motd{font-size:12.5px;color:var(--fg-muted);line-height:1.5;padding:9px 11px;border-radius:9px;
+    background:var(--surface-3);border:1px solid var(--border);margin-bottom:11px}
+  .mon-motd .mc-gold{color:var(--amber)}.mon-motd .mc-green{color:var(--green)}.mon-motd .mc-aqua{color:var(--cyan)}
+  .mon-foot{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .players-bar{flex:1;min-width:100px}
+  .players-bar .progress{height:5px}
+  .players-bar .progress > i{background:var(--green)}
+  .pcount{font-family:var(--mono);font-size:11px;color:var(--fg-muted);white-space:nowrap}
+  .lat{font-family:var(--mono);font-size:11px;font-weight:700;padding:4px 9px;border-radius:6px}
+  .lat.good{color:var(--green);background:rgba(94,203,111,.1)}
+  .lat.mid{color:var(--amber);background:rgba(245,168,60,.1)}
+  .lat.bad{color:var(--red);background:rgba(212,87,78,.1)}
+  .pinging{display:flex;align-items:center;gap:9px;font-family:var(--mono);font-size:11.5px;color:var(--fg-subtle)}
+  .spin{width:14px;height:14px;border-radius:50%;border:2px solid var(--border-strong);border-top-color:#fff;
+    animation:rot .7s linear infinite}
+  @keyframes rot{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+
+<div class="preview-bar">
+  <span class="tag-prev">ПРЕВЬЮ · МОНИТОРИНГ</span>
+  <button class="on" data-t="main">① серверы из servers.dat</button>
+</div>
+
+<div class="page-frame">
+
+  <div class="page-head">
+    <span class="eyebrow">Мониторинг</span>
+    <div class="page-head-row">
+      <div>
+        <h1 class="page-title">Статус серверов</h1>
+        <p class="page-sub">Пингует серверы из твоего servers.dat: онлайн, игроки, версия, MOTD и задержка.</p>
+      </div>
+      <button class="btn ghost sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 12a9 9 0 1 1-2.6-6.4M21 3v6h-6"/></svg>Опросить все</button>
+    </div>
+  </div>
+
+  <section class="pane show" id="main">
+    <div class="mon-grid">
+      <div class="mon online">
+        <div class="mon-top">
+          <div class="fav" style="background:linear-gradient(140deg,#1e5f3a,#0d2618)">⛏</div>
+          <div class="mon-nm"><b>Hypixel Network</b><span>mc.hypixel.net</span></div>
+          <span class="sdot ok"></span>
+        </div>
+        <div class="mon-motd"><span class="mc-gold">✦ Hypixel SkyBlock</span> <span class="mc-green">— новое обновление!</span><br><span class="mc-aqua">Bedwars · Duels · Murder Mystery</span></div>
+        <div class="mon-foot">
+          <div class="players-bar"><div class="progress"><i style="width:64%"></i></div></div>
+          <span class="pcount">48 211 / 75 000</span>
+          <span class="lat good">23 ms</span>
+        </div>
+      </div>
+
+      <div class="mon online">
+        <div class="mon-top">
+          <div class="fav" style="background:linear-gradient(140deg,#5f1e1e,#260d0d)">🔥</div>
+          <div class="mon-nm"><b>Наш сервер</b><span>play.ourserv.ru:25565</span></div>
+          <span class="sdot ok"></span>
+        </div>
+        <div class="mon-motd"><span class="mc-green">Выживание с друзьями</span> · заходи, мы онлайн!</div>
+        <div class="mon-foot">
+          <div class="players-bar"><div class="progress"><i style="width:15%"></i></div></div>
+          <span class="pcount">3 / 20</span>
+          <span class="lat mid">87 ms</span>
+        </div>
+      </div>
+
+      <div class="mon online">
+        <div class="mon-top">
+          <div class="fav" style="background:linear-gradient(140deg,#3a1e5f,#170d26)">🔮</div>
+          <div class="mon-nm"><b>2b2t.org</b><span>2b2t.org</span></div>
+          <span class="sdot ok"></span>
+        </div>
+        <div class="mon-motd">The oldest anarchy server in Minecraft</div>
+        <div class="mon-foot">
+          <div class="players-bar"><div class="progress"><i style="width:88%"></i></div></div>
+          <span class="pcount">412 / 470</span>
+          <span class="lat bad">214 ms</span>
+        </div>
+      </div>
+
+      <div class="mon offline">
+        <div class="mon-top">
+          <div class="fav" style="background:var(--surface-3);color:var(--fg-subtle)">💤</div>
+          <div class="mon-nm"><b>Сервер друга</b><span>192.168.1.50:25565</span></div>
+          <span class="sdot off"></span>
+        </div>
+        <div class="mon-motd" style="color:var(--fg-subtle)">Сервер не отвечает — возможно, выключен или порт закрыт.</div>
+        <div class="mon-foot">
+          <span class="chip">offline</span>
+          <span class="pcount" style="margin-left:auto">последний раз онлайн: вчера, 23:40</span>
+        </div>
+      </div>
+    </div>
+    <p class="note">* список берётся из servers.dat (тот же, что видит игра). Пинг — Server List Ping по TCP: handshake + status, парсинг MOTD и favicon.</p>
+  </section>
+
+</div>
+<script src="trel-preview.js"></script>
+</body>
+</html>

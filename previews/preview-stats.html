@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trel — Статистика · превью</title>
+<link rel="stylesheet" href="trel-design.css">
+<style>
+  .st-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:13px;margin-bottom:26px}
+  .stc{position:relative;overflow:hidden;padding:20px;border-radius:16px;background:var(--surface-2);
+    border:1px solid var(--border);transition:transform .22s var(--ease),border-color .22s;animation:cardIn .5s var(--ease) backwards}
+  .stc:hover{transform:translateY(-4px);border-color:var(--border-bright)}
+  .stc:nth-child(1){animation-delay:.05s}.stc:nth-child(2){animation-delay:.11s}
+  .stc:nth-child(3){animation-delay:.17s}.stc:nth-child(4){animation-delay:.23s}
+  .stc .num{font-family:var(--display);font-weight:900;font-size:clamp(24px,3vw,32px);letter-spacing:-.5px;color:var(--fg-bright)}
+  .stc .num em{font-style:normal;color:var(--green)}
+  .stc .lbl{font-family:var(--mono);font-size:10.5px;letter-spacing:1.5px;text-transform:uppercase;color:var(--fg-subtle);margin-top:7px}
+  .stc .bg-ico{position:absolute;right:-8px;bottom:-12px;font-size:58px;opacity:.07;transform:rotate(-10deg)}
+
+  .chart-card{border-radius:18px;border:1px solid var(--border);background:var(--surface-2);padding:22px;margin-bottom:20px;
+    animation:cardIn .55s var(--ease) .15s backwards}
+  .chart-card h3{font-family:var(--display);font-weight:700;font-size:16px;color:var(--fg-bright);margin-bottom:18px;
+    display:flex;align-items:center;gap:11px}
+  .chart-card h3::before{content:"";width:20px;height:2px;background:var(--accent)}
+
+  .day-chart{display:flex;align-items:flex-end;gap:7px;height:150px}
+  .dcol{flex:1;display:flex;flex-direction:column;align-items:center;gap:8px;height:100%}
+  .dbar-wrap{flex:1;width:100%;display:flex;align-items:flex-end;justify-content:center}
+  .dbar{width:100%;max-width:34px;border-radius:6px 6px 3px 3px;background:linear-gradient(180deg,#fff,rgba(255,255,255,.35));
+    transition:height .8s var(--ease),filter .2s;cursor:pointer;position:relative}
+  .dbar:hover{filter:brightness(1.25)}
+  .dbar::after{content:attr(data-v);position:absolute;top:-24px;left:50%;transform:translateX(-50%) scale(.8);
+    font-family:var(--mono);font-size:10px;color:var(--fg);background:var(--surface-4);padding:2px 7px;border-radius:5px;
+    opacity:0;transition:.18s;white-space:nowrap;pointer-events:none}
+  .dbar:hover::after{opacity:1;transform:translateX(-50%) scale(1)}
+  .dlbl{font-family:var(--mono);font-size:9.5px;color:var(--fg-subtle)}
+
+  .split{display:grid;grid-template-columns:300px 1fr;gap:20px;align-items:start}
+  @media(max-width:820px){.split{grid-template-columns:1fr}}
+  .donut-wrap{display:grid;place-items:center;padding:10px 0}
+  .donut circle.seg{transition:stroke-width .2s;cursor:pointer}
+  .donut circle.seg:hover{stroke-width:20}
+  .legend{display:flex;flex-direction:column;gap:8px;margin-top:14px}
+  .lrow{display:flex;align-items:center;gap:9px;font-size:12.5px}
+  .lrow i{width:10px;height:10px;border-radius:3px;flex-shrink:0}
+  .lrow .nm{flex:1;color:var(--fg)}
+  .lrow .pc{font-family:var(--mono);font-size:11px;color:var(--fg-subtle)}
+
+  .ver-rows{display:flex;flex-direction:column;gap:12px}
+  .vrow3{display:flex;align-items:center;gap:14px}
+  .vrow3 .vn{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--fg);min-width:110px}
+  .vrow3 .barw{flex:1;height:9px;border-radius:99px;background:var(--surface-4);overflow:hidden}
+  .vrow3 .barw i{display:block;height:100%;border-radius:99px;transition:width .9s var(--ease)}
+  .vrow3 .tm{font-family:var(--mono);font-size:11px;color:var(--fg-muted);min-width:120px;text-align:right}
+</style>
+</head>
+<body>
+
+<div class="preview-bar">
+  <span class="tag-prev">ПРЕВЬЮ · СТАТИСТИКА</span>
+  <button class="on" data-t="main">① есть данные</button>
+  <button data-t="empty">② пусто</button>
+</div>
+
+<div class="page-frame">
+
+  <div class="page-head">
+    <span class="eyebrow">Статистика</span>
+    <div class="page-head-row">
+      <div>
+        <h1 class="page-title">Время в игре</h1>
+        <p class="page-sub">Trel считает сессии сам: сколько, во что и когда ты играл. Сессии короче 30 секунд не в счёт.</p>
+      </div>
+      <button class="btn ghost sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 12a9 9 0 1 1-2.6-6.4M21 3v6h-6"/></svg>Обновить</button>
+    </div>
+  </div>
+
+  <section class="pane show" id="main">
+    <div class="st-cards">
+      <div class="stc"><div class="num"><em>142</em> ч 36 м</div><div class="lbl">всего в игре</div><span class="bg-ico">⏱</span></div>
+      <div class="stc"><div class="num">287</div><div class="lbl">сессий</div><span class="bg-ico">🎮</span></div>
+      <div class="stc"><div class="num">6</div><div class="lbl">версий опробовано</div><span class="bg-ico">🧊</span></div>
+      <div class="stc"><div class="num" style="font-size:19px;padding-top:8px">сегодня, 21:14</div><div class="lbl">последний запуск</div><span class="bg-ico">🕘</span></div>
+    </div>
+
+    <div class="chart-card">
+      <h3>Последние 14 дней</h3>
+      <div class="day-chart">
+        <div class="dcol"><div class="dbar-wrap"><div class="dbar" style="height:22%" data-v="1 ч 12 м"></div></div><span class="dlbl">15</span></div>
+        <div class="dcol"><div class="dbar-wrap"><div class="dbar" style="height:48%" data-v="2 ч 40 м"></div></div><span class="dlbl">16</span></div>
+        <div class="dcol"><div class="dbar-wrap"><div class="dbar" style="height:12%" data-v="38 м"></div></div><span class="dlbl">17</span></div>
+        <div class="dcol"><div class="dbar-wrap"><div class="dbar" style="height:64%" data-v="3 ч 34 м"></div></div><span class="dlbl">18</span></div>
+        <div class="dcol"><div class="dbar-wrap"><div class="dbar" style="height:30%" data-v="1 ч 41 м"></div></div><span class="dlbl">19</span></div>
+        <div class="dcol"><div class="dbar-wrap"><div class="dbar" style="height:82%" data-v="4 ч 33 м"></div></div><span class="dlbl">20</span></div>
+        <div class="dcol"><div class="dbar-wrap"><div class="dbar" style="height:95%" data-v="5 ч 18 м"></div></div><span class="dlbl">21</span></div>
+        <div class="dcol"><div class="dbar-wrap"><div class="dbar" style="height:40%" data-v="2 ч 14 м"></div></div><span class="dlbl">22</span></div>
+        <div class="dcol"><div class="dbar-wrap"><div class="dbar" style="height:18%" data-v="58 м"></div></div><span class="dlbl">23</span></div>
+        <div class="dcol"><div class="dbar-wrap"><div class="dbar" style="height:55%" data-v="3 ч 02 м"></div></div><span class="dlbl">24</span></div>
+        <div class="dcol"><div class="dbar-wrap"><div class="dbar" style="height:70%" data-v="3 ч 54 м"></div></div><span class="dlbl">25</span></div>
+        <div class="dcol"><div class="dbar-wrap"><div class="dbar" style="height:35%" data-v="1 ч 56 м"></div></div><span class="dlbl">26</span></div>
+        <div class="dcol"><div class="dbar-wrap"><div class="dbar" style="height:58%" data-v="3 ч 12 м"></div></div><span class="dlbl">27</span></div>
+        <div class="dcol"><div class="dbar-wrap"><div class="dbar" style="height:44%;background:linear-gradient(180deg,var(--green),rgba(94,203,111,.3))" data-v="2 ч 26 м · сегодня"></div></div><span class="dlbl">28</span></div>
+      </div>
+    </div>
+
+    <div class="split">
+      <div class="chart-card" style="margin-bottom:0">
+        <h3>Доля по версиям</h3>
+        <div class="donut-wrap">
+          <svg class="donut" viewBox="0 0 140 140" width="190" height="190">
+            <circle cx="70" cy="70" r="54" fill="none" stroke="var(--surface-4)" stroke-width="16"/>
+            <circle class="seg" cx="70" cy="70" r="54" fill="none" stroke="#5ecb6f" stroke-width="16" stroke-dasharray="158 339" stroke-dashoffset="0" transform="rotate(-90 70 70)"/>
+            <circle class="seg" cx="70" cy="70" r="54" fill="none" stroke="#4aedd9" stroke-width="16" stroke-dasharray="88 339" stroke-dashoffset="-158" transform="rotate(-90 70 70)"/>
+            <circle class="seg" cx="70" cy="70" r="54" fill="none" stroke="#f5a83c" stroke-width="16" stroke-dasharray="54 339" stroke-dashoffset="-246" transform="rotate(-90 70 70)"/>
+            <circle class="seg" cx="70" cy="70" r="54" fill="none" stroke="#9b7ad4" stroke-width="16" stroke-dasharray="27 339" stroke-dashoffset="-300" transform="rotate(-90 70 70)"/>
+            <circle class="seg" cx="70" cy="70" r="54" fill="none" stroke="#6c8cff" stroke-width="16" stroke-dasharray="12 339" stroke-dashoffset="-327" transform="rotate(-90 70 70)"/>
+            <text x="70" y="66" text-anchor="middle" style="font-family:var(--display);font-weight:900;font-size:26px;fill:#fff">6</text>
+            <text x="70" y="86" text-anchor="middle" style="font-family:var(--mono);font-size:9px;letter-spacing:1.5px;fill:var(--fg-subtle)">ВЕРСИЙ</text>
+          </svg>
+        </div>
+        <div class="legend">
+          <div class="lrow"><i style="background:#5ecb6f"></i><span class="nm">1.20.1 + Fabric</span><span class="pc">46%</span></div>
+          <div class="lrow"><i style="background:#4aedd9"></i><span class="nm">1.21.4</span><span class="pc">26%</span></div>
+          <div class="lrow"><i style="background:#f5a83c"></i><span class="nm">1.12.2 + Forge</span><span class="pc">16%</span></div>
+          <div class="lrow"><i style="background:#9b7ad4"></i><span class="nm">1.16.5</span><span class="pc">8%</span></div>
+          <div class="lrow"><i style="background:#6c8cff"></i><span class="nm">другие</span><span class="pc">4%</span></div>
+        </div>
+      </div>
+
+      <div class="chart-card" style="margin-bottom:0">
+        <h3>По версиям</h3>
+        <div class="ver-rows">
+          <div class="vrow3"><span class="vn">1.20.1+Fabric</span><div class="barw"><i style="width:100%;background:#5ecb6f"></i></div><span class="tm">65 ч 40 м · 132×</span></div>
+          <div class="vrow3"><span class="vn">1.21.4</span><div class="barw"><i style="width:56%;background:#4aedd9"></i></div><span class="tm">37 ч 05 м · 74×</span></div>
+          <div class="vrow3"><span class="vn">1.12.2+Forge</span><div class="barw"><i style="width:35%;background:#f5a83c"></i></div><span class="tm">22 ч 48 м · 45×</span></div>
+          <div class="vrow3"><span class="vn">1.16.5</span><div class="barw"><i style="width:17%;background:#9b7ad4"></i></div><span class="tm">11 ч 26 м · 22×</span></div>
+          <div class="vrow3"><span class="vn">1.15 bedrock</span><div class="barw"><i style="width:6%;background:#6c8cff"></i></div><span class="tm">3 ч 52 м · 9×</span></div>
+          <div class="vrow3"><span class="vn">b1.7.3</span><div class="barw"><i style="width:3%;background:#d4738f"></i></div><span class="tm">1 ч 45 м · 5×</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="pane" id="empty">
+    <div class="empty">
+      <span class="big">📊</span>
+      <b>Статистики пока нет</b>
+      Сыграй хотя бы одну сессию дольше 30 секунд — и здесь появится график.
+    </div>
+  </section>
+
+</div>
+<script src="trel-preview.js"></script>
+</body>
+</html>

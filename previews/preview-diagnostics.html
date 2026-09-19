@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trel — Диагностика · превью</title>
+<link rel="stylesheet" href="trel-design.css">
+<style>
+  .diag-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .diag-grid .span2{grid-column:1/-1}
+  @media(max-width:820px){.diag-grid{grid-template-columns:1fr}}
+
+  .checks{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  @media(max-width:640px){.checks{grid-template-columns:1fr}}
+  .chk{display:flex;gap:12px;padding:13px 14px;border-radius:12px;background:var(--surface-2);border:1px solid var(--border);
+    transition:transform .2s var(--ease),border-color .2s;animation:cardIn .5s var(--ease) backwards}
+  .chk:hover{transform:translateY(-2px)}
+  .chk:nth-child(1){animation-delay:.04s}.chk:nth-child(2){animation-delay:.08s}.chk:nth-child(3){animation-delay:.12s}
+  .chk:nth-child(4){animation-delay:.16s}.chk:nth-child(5){animation-delay:.2s}.chk:nth-child(6){animation-delay:.24s}
+  .chk:nth-child(7){animation-delay:.28s}.chk:nth-child(8){animation-delay:.32s}
+  .chk-ico{width:34px;height:34px;flex-shrink:0;border-radius:9px;display:grid;place-items:center}
+  .chk-ico svg{width:16px;height:16px}
+  .chk.ok .chk-ico{background:rgba(94,203,111,.1);color:var(--green);border:1px solid rgba(94,203,111,.3)}
+  .chk.ok{border-color:rgba(94,203,111,.2)}
+  .chk.warn .chk-ico{background:rgba(245,168,60,.1);color:var(--amber);border:1px solid rgba(245,168,60,.3)}
+  .chk.warn{border-color:rgba(245,168,60,.25)}
+  .chk.err .chk-ico{background:rgba(212,87,78,.1);color:var(--red);border:1px solid rgba(212,87,78,.3)}
+  .chk.err{border-color:rgba(212,87,78,.3)}
+  .chk-body{flex:1;min-width:0}
+  .chk-body b{font-size:13px;color:var(--fg);display:block}
+  .chk-body p{font-size:11.5px;color:var(--fg-subtle);margin-top:3px;line-height:1.5}
+  .chk-body small{display:block;font-size:11px;color:var(--amber);margin-top:5px}
+
+  .score-ring{position:relative;width:110px;height:110px;flex-shrink:0}
+  .score-ring svg{transform:rotate(-90deg)}
+  .score-ring .val{position:absolute;inset:0;display:grid;place-items:center;font-family:var(--display);
+    font-weight:900;font-size:26px;color:var(--fg-bright)}
+  .score-wrap{display:flex;align-items:center;gap:20px;padding:18px;border-radius:16px;background:var(--surface-2);
+    border:1px solid var(--border);margin-bottom:16px;animation:cardIn .5s var(--ease) backwards}
+  .score-wrap .txt b{font-size:15px;color:var(--fg-bright);display:block}
+  .score-wrap .txt span{font-size:12.5px;color:var(--fg-muted)}
+
+  .prof-row{display:flex;align-items:center;gap:12px;padding:11px 13px;border-radius:11px;background:var(--surface-2);
+    border:1px solid var(--border);margin-bottom:8px;transition:.15s}
+  .prof-row:hover{border-color:var(--border-bright)}
+  .prof-row .pn{flex:1;min-width:0}
+  .prof-row .pn b{font-size:13px;color:var(--fg);display:block}
+  .prof-row .pn span{font-family:var(--mono);font-size:10.5px;color:var(--fg-subtle)}
+
+  .logs-split{display:grid;grid-template-columns:200px 1fr;gap:12px}
+  @media(max-width:640px){.logs-split{grid-template-columns:1fr}}
+  .log-list{display:flex;flex-direction:column;gap:7px}
+  .log-item{display:flex;align-items:center;gap:9px;padding:9px 11px;border-radius:10px;background:var(--surface-2);
+    border:1px solid var(--border);cursor:pointer;font-size:12px;color:var(--fg-muted);transition:.15s;text-align:left}
+  .log-item:hover{border-color:var(--border-bright);color:var(--fg)}
+  .log-item.sel{border-color:#fff;color:var(--fg);box-shadow:0 0 0 1px #fff}
+  .log-item small{margin-left:auto;font-family:var(--mono);font-size:9.5px;color:var(--fg-subtle)}
+  .log-view{font-family:var(--mono);font-size:11px;line-height:1.7;padding:14px 16px;border-radius:12px;background:#0d0d0d;
+    border:1px solid var(--border);color:#9aa0a6;height:220px;overflow-y:auto;white-space:pre-wrap}
+  .log-view .e{color:var(--red)}.log-view .w{color:var(--amber)}.log-view .i{color:#8fd0a0}
+</style>
+</head>
+<body>
+
+<div class="preview-bar">
+  <span class="tag-prev">ПРЕВЬЮ · ДИАГНОСТИКА</span>
+  <button class="on" data-t="main">① полный отчёт</button>
+</div>
+
+<div class="page-frame">
+
+  <div class="page-head">
+    <span class="eyebrow">Инструменты</span>
+    <div class="page-head-row">
+      <div>
+        <h1 class="page-title">Диагностика</h1>
+        <p class="page-sub">Проверка окружения, целостности файлов, логи и профили запуска — всё в одном месте.</p>
+      </div>
+      <button class="btn primary sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 12a9 9 0 1 1-2.6-6.4M21 3v6h-6"/></svg>Проверить снова</button>
+    </div>
+  </div>
+
+  <section class="pane show" id="main">
+    <div class="score-wrap">
+      <div class="score-ring">
+        <svg width="110" height="110" viewBox="0 0 110 110">
+          <circle cx="55" cy="55" r="46" fill="none" stroke="var(--surface-4)" stroke-width="10"/>
+          <circle cx="55" cy="55" r="46" fill="none" stroke="var(--green)" stroke-width="10" stroke-linecap="round"
+            stroke-dasharray="231 289" style="transition:stroke-dasharray 1s var(--ease)"/>
+        </svg>
+        <span class="val">8/10</span>
+      </div>
+      <div class="txt">
+        <b>В целом всё хорошо</b>
+        <span>8 проверок пройдено · 1 предупреждение · 1 требует внимания. Подробности ниже.</span>
+      </div>
+      <button class="btn ghost sm" style="margin-left:auto"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg>Скопировать отчёт</button>
+    </div>
+
+    <div class="diag-grid">
+      <div class="card span2">
+        <div class="card-head"><h4>Проверки окружения</h4><span class="chip">10 checks</span></div>
+        <div class="checks">
+          <div class="chk ok"><div class="chk-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="m5 12 5 5 9-11"/></svg></div>
+            <div class="chk-body"><b>Java для 1.20.1</b><p>Java 17 найдена: C:\Program Files\Eclipse Adoptium\jdk-17</p></div></div>
+          <div class="chk ok"><div class="chk-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="m5 12 5 5 9-11"/></svg></div>
+            <div class="chk-body"><b>Папка игры</b><p>%APPDATA%\Trel доступна для записи, 212 ГБ свободно</p></div></div>
+          <div class="chk ok"><div class="chk-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="m5 12 5 5 9-11"/></svg></div>
+            <div class="chk-body"><b>TrelEmu</b><p>Скачан в %APPDATA%\Trel\trel-emu · WHPX доступен</p></div></div>
+          <div class="chk ok"><div class="chk-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="m5 12 5 5 9-11"/></svg></div>
+            <div class="chk-body"><b>ADB</b><p>platform-tools на месте, сервер отвечает на :5038</p></div></div>
+          <div class="chk ok"><div class="chk-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="m5 12 5 5 9-11"/></svg></div>
+            <div class="chk-body"><b>Виртуализация</b><p>Hyper-V / WHPX включены, kernel-irqchip=off</p></div></div>
+          <div class="chk warn"><div class="chk-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 9v4m0 4h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg></div>
+            <div class="chk-body"><b>Память</b><p>Выделено 14 ГБ из 16 — игре может не хватить на систему</p>
+              <small>Рекомендация: снизить до 8 ГБ в настройках</small></div></div>
+          <div class="chk err"><div class="chk-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 9v4m0 4h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg></div>
+            <div class="chk-body"><b>Файл версии 1.12.2</b><p>Отсутствует client.jar — версия не запустится</p>
+              <small>Действие: «Проверить файлы» ниже попытается докачать</small></div></div>
+          <div class="chk ok"><div class="chk-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="m5 12 5 5 9-11"/></svg></div>
+            <div class="chk-body"><b>Сеть</b><p>launchermeta.mojang.com и piston-meta доступны</p></div></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h4>Проверка файлов</h4></div>
+        <label class="field-label">Версия</label>
+        <select class="select"><option>1.12.2 + Forge (java/forge)</option><option>1.20.1 + Fabric (java/fabric)</option><option>1.21.4 (java)</option><option>1.15 (bedrock)</option></select>
+        <div class="hint">Проверяет jar / json / libraries / assets. Для Bedrock — APK и TrelEmu. При проблемах запускает докачку.</div>
+        <button class="btn primary sm" style="margin-top:12px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l1.9 5.7L19.6 10l-5.7 1.9L12 17.6l-1.9-5.7L4.4 10l5.7-1.9L12 3Z"/></svg>Проверить файлы</button>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h4>Профили запуска</h4></div>
+        <div style="display:flex;gap:8px;margin-bottom:12px">
+          <input class="input" placeholder="Название профиля" value="Для модпака" style="flex:1">
+          <button class="btn ghost sm">Сохранить</button>
+        </div>
+        <div class="prof-row"><div class="pn"><b>Основной</b><span>1.20.1 + Fabric · 4096 МБ</span></div>
+          <button class="btn ghost sm">Применить</button><button class="btn ghost sm icon" style="color:var(--red)">✕</button></div>
+        <div class="prof-row"><div class="pn"><b>Хардкор</b><span>1.16.5 · 2048 МБ · -XX:+UseG1GC</span></div>
+          <button class="btn ghost sm">Применить</button><button class="btn ghost sm icon" style="color:var(--red)">✕</button></div>
+      </div>
+
+      <div class="card span2">
+        <div class="card-head"><h4>Логи</h4>
+          <button class="btn ghost sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 12a9 9 0 1 1-2.6-6.4M21 3v6h-6"/></svg>Обновить</button></div>
+        <div class="logs-split">
+          <div class="log-list">
+            <button class="log-item sel">launcher.log<small>128 КБ</small></button>
+            <button class="log-item">trel-emu.log<small>64 КБ</small></button>
+            <button class="log-item">scrcpy.log<small>8 КБ</small></button>
+            <button class="log-item">crash.log<small>2 КБ</small></button>
+          </div>
+          <div class="log-view"><span class="i">[21:14:02] [main] Trel v0.4.0 started, userData=%APPDATA%\Trel</span>
+<span class="i">[21:14:02] [main] app:// protocol registered</span>
+<span class="i">[21:14:03] [ipc] minecraft.versions() → 784 entries (cache hit)</span>
+<span class="w">[21:14:05] [updater] latest.yml: 304 Not Modified — up to date</span>
+<span class="i">[21:15:10] [trelemu] find() → downloaded @ %APPDATA%\Trel\trel-emu</span>
+<span class="i">[21:15:11] [trelemu] extractBootFiles: initrd rebuilt (3.85 MB, adbd+socat+net)</span>
+<span class="i">[21:15:12] [trelemu] QEMU spawn: -accel whpx,kernel-irqchip=off -cpu qemu64</span>
+<span class="i">[21:15:40] [adb] 127.0.0.1:5555 → device (product:android_x86_64)</span>
+<span class="e">[21:18:44] [minecraft] 1.12.2: client.jar missing — integrity check failed</span>
+<span class="w">[21:18:44] [minecraft] will attempt re-download on next launch</span></div>
+        </div>
+      </div>
+    </div>
+    <p class="note">* «Скопировать отчёт» собирает сводку: версии, Java, TrelEmu, ADB, хвосты логов — удобно присылать при багах.</p>
+  </section>
+
+</div>
+<script src="trel-preview.js"></script>
+<script>
+  document.querySelectorAll('.log-item').forEach(l=>l.addEventListener('click',()=>{
+    document.querySelectorAll('.log-item').forEach(x=>x.classList.toggle('sel',x===l));
+  }));
+</script>
+</body>
+</html>

@@ -18,7 +18,7 @@
  *      в build-trel-emu-cache/source/
  *   2) Запусти `node scripts/build-trel-emu-pack.js`
  *   3) Получишь dist/trel-emu-pack.zip + .sha1
- *   4) Загрузи на GitHub Releases в репозиторий mkrlord1000-sketch/Trel
+ *   4) Загрузи на GitHub Releases в репозиторий Griln/Trel
  *      с тегом trel-emu-v0.3.0 и именем trel-emu-pack.zip
  *
  * Кэш распакованного QEMU должен лежать в build-trel-emu-cache/qemu/,
@@ -251,7 +251,7 @@ log(`Wrote ${OUT_ZIP}`);
 log(`Wrote ${OUT_SHA1}`);
 log('');
 log('Next steps:');
-log('  1) Upload dist/trel-emu-pack.zip to GitHub Releases of mkrlord1000-sketch/Trel');
+log('  1) Upload dist/trel-emu-pack.zip to GitHub Releases of Griln/Trel');
 log('  2) Use tag trel-emu-v0.3.0 (must match TrelEmuDownloader.DEFAULT_URL)');
 log('  3) Upload dist/trel-emu-pack.zip.sha1 to the same release');
 log('  4) Test: Trel.app → BrowsePage → click "Скачать"');

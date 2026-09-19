@@ -2,13 +2,16 @@ import React from 'react';
 import { useT } from '../i18n';
 import type { Page } from '../../shared/types';
 import type { MinecraftAccount } from '../../shared/types';
-import { IconPlay, IconCube, IconCheck, IconUser, IconSettings, IconGlobe, IconArchive, IconSkin, IconServer, IconImport, IconAlert } from './icons';
+import { IconPlay, IconCube, IconCheck, IconUser, IconSettings, IconGlobe, IconArchive, IconSkin, IconServer, IconImport, IconAlert, IconCamera, IconChart } from './icons';
 import { SkinFace } from './SkinPreview';
 
 interface Props {
   page: Page;
   onChange: (p: Page) => void;
   activeAccount: MinecraftAccount | null;
+  /** Рейка 64px: только иконки, подписи в title. */
+  collapsed?: boolean;
+  onToggleCollapse?: () => void;
   /** Дополнительные счётчики/индикаторы для пунктов меню. */
   installedCount?: number;
   hasRunningServer?: boolean;
@@ -32,19 +35,18 @@ interface NavGroup {
 const SidebarBase: React.FC<Props> = ({
   page, onChange, activeAccount,
   installedCount, hasRunningServer, hasUpdate,
+  collapsed, onToggleCollapse,
 }) => {
   const t = useT();
-  // Группируем пункты по логическим разделам. Раньше было 2 группы
-  // (PRIMARY/SECONDARY) — это смешивало «Контент» и «Скин» с разной семантикой.
-  // Теперь:
+  // Группируем пункты по логическим разделам:
   //   ИГРАТЬ — что сделать прямо сейчас (запуск, выбор версии, серверы)
-  //   ДАННЫЕ — работа с тем что уже есть в игре (миры, моды, паки)
+  //   БИБЛИОТЕКА — то, что уже есть в игре (миры, моды, паки, снимки, статистика)
+  //   ИНСТРУМЕНТЫ — служебное (импорт, диагностика)
   //   ПРОФИЛЬ — кто я (аккаунт, скин) и настройки лаунчера
   const groups: NavGroup[] = [
     {
       label: t('nav.play'),
       items: [
-        { id: 'home',      label: t('nav.home'),      Icon: IconPlay },
         { id: 'browse',    label: t('nav.browse'),     Icon: IconCube },
         { id: 'installed', label: t('nav.installed'),  Icon: IconCheck,
           badge: installedCount && installedCount > 0 ? installedCount : null },
@@ -57,11 +59,16 @@ const SidebarBase: React.FC<Props> = ({
       items: [
         { id: 'worlds',  label: t('nav.worlds'),   Icon: IconGlobe },
         { id: 'content', label: t('nav.content'),  Icon: IconArchive },
-        { id: 'modpacks', label: t.locale === 'ru' ? 'Модпаки' : 'Modpacks', Icon: IconCube },
-        { id: 'screenshots', label: t.locale === 'ru' ? 'Скриншоты' : 'Screenshots', Icon: IconArchive },
-        { id: 'stats', label: t.locale === 'ru' ? 'Статистика' : 'Stats', Icon: IconCheck },
+        { id: 'modpacks', label: t('nav.modpacks'), Icon: IconCube },
+        { id: 'screenshots', label: t('nav.screenshots'), Icon: IconCamera },
+        { id: 'stats', label: t('nav.stats'), Icon: IconChart },
+      ],
+    },
+    {
+      label: t('nav.tools'),
+      items: [
         { id: 'import',  label: t('nav.import'),    Icon: IconImport },
-        { id: 'diagnostics', label: t.locale === 'ru' ? 'Диагностика' : 'Diagnostics', Icon: IconAlert },
+        { id: 'diagnostics', label: t('nav.diagnostics'), Icon: IconAlert },
       ],
     },
     {
@@ -80,6 +87,7 @@ const SidebarBase: React.FC<Props> = ({
       key={it.id}
       className={'nav-item' + (page === it.id ? ' active' : '')}
       onClick={() => onChange(it.id)}
+      title={collapsed ? it.label : undefined}
     >
       <it.Icon />
       <span className="nav-item-label">{it.label}</span>
@@ -96,7 +104,21 @@ const SidebarBase: React.FC<Props> = ({
   );
 
   return (
-    <aside className="sidebar">
+    <aside className={'sidebar' + (collapsed ? ' rail-collapsed' : '')}>
+      {/* «Главная» — отдельный hero-пункт: самый верх панели, крупнее и
+          заметнее остальных, активное состояние залито акцентом. */}
+      <div
+        className={'nav-hero' + (page === 'home' ? ' active' : '')}
+        onClick={() => onChange('home')}
+      >
+        <span className="hero-ico"><IconPlay /></span>
+        <span className="hero-txt">
+          <b>{t('nav.home')}</b>
+          <span className="sub">{t('nav.homeSub')}</span>
+        </span>
+      </div>
+      <div className="nav-divider" />
+
       {groups.map((group, idx) => (
         <React.Fragment key={group.label}>
           <div className="nav-group">
@@ -108,11 +130,24 @@ const SidebarBase: React.FC<Props> = ({
       ))}
 
       <div className="spacer" />
+      {onToggleCollapse && (
+        <button
+          className="rail-toggle"
+          onClick={onToggleCollapse}
+          title={collapsed ? t('nav.expand') : t('nav.collapse')}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+            {collapsed
+              ? <path d="m9 18 6-6-6-6" />
+              : <path d="m15 18-6-6 6-6" />}
+          </svg>
+        </button>
+      )}
       {activeAccount && (
         <button
           className="account-chip"
           onClick={() => onChange('accounts')}
-          title={t('nav.openAccounts')}
+          title={collapsed ? activeAccount.name : t('nav.openAccounts')}
         >
           <SkinFace
             skin={activeAccount.skin ?? null}
@@ -124,6 +159,7 @@ const SidebarBase: React.FC<Props> = ({
             <div className="name">{activeAccount.name}</div>
             <div className="role">{t('nav.guest')}</div>
           </div>
+          <svg className="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m9 18 6-6-6-6" /></svg>
         </button>
       )}
     </aside>

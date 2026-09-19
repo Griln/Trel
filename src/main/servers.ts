@@ -64,14 +64,29 @@ export class ServerService {
       if (!fs.existsSync(this.indexFile)) return [];
       const raw = JSON.parse(fs.readFileSync(this.indexFile, 'utf-8'));
       if (!Array.isArray(raw)) return [];
-      return raw as ServerInstance[];
+      // Битые записи не роняют весь список: чистим по одной, мусор дропаем.
+      const out: ServerInstance[] = [];
+      for (const inst of raw) {
+        try { out.push(this.sanitize(inst)); } catch { /* bad entry dropped */ }
+      }
+      return out;
     } catch {
       return [];
     }
   }
 
   private save(list: ServerInstance[]): void {
-    fs.writeFileSync(this.indexFile, JSON.stringify(list, null, 2), 'utf-8');
+    // Атомарно: краш посреди записи больше не оставляет пустой index.json
+    // (= потеря ВСЕХ серверов из UI).
+    const tmp = this.indexFile + '.trel_tmp';
+    fs.writeFileSync(tmp, JSON.stringify(list, null, 2), 'utf-8');
+    try { fs.renameSync(tmp, this.indexFile); }
+    catch { fs.copyFileSync(tmp, this.indexFile); try { fs.unlinkSync(tmp); } catch {} }
+  }
+
+  /** Чистит запись сервера: id/порт/motd/имя из недоверенного index.json. */
+  private sanitize(inst: ServerInstance): ServerInstance {
+    return sanitizeServerInstance(inst as unknown as Record<string, unknown>);
   }
 
   private getOrThrow(id: string): ServerInstance {
@@ -187,9 +202,29 @@ export class ServerService {
     const list = this.list();
     const idx = list.findIndex((s) => s.id === id);
     if (idx < 0) throw new Error('Сервер не найден');
+    // Патч тоже чистим: порт в диапазон, motd без CRLF — иначе stored-XSS
+    // и роняющий бинд порт прилетали через «доверенный» вызов.
+    const clean: Partial<ServerProperties> = { ...patch };
+    if (clean.serverPort !== undefined) {
+      const p = Number(clean.serverPort);
+      clean.serverPort = Number.isInteger(p) && p >= 1 && p <= 65535 ? p : list[idx].properties.serverPort;
+    }
+    if (typeof (clean as Record<string, unknown>).motd === 'string') {
+      (clean as Record<string, unknown>).motd = ((clean as Record<string, unknown>).motd as string).replace(/[\r\n]/g, ' ').slice(0, 128);
+    }
+    if (typeof (clean as Record<string, unknown>).maxPlayers === 'number') {
+      const mp = Number((clean as Record<string, unknown>).maxPlayers);
+      (clean as Record<string, unknown>).maxPlayers = Number.isInteger(mp) && mp >= 1 && mp <= 1000 ? mp : list[idx].properties.maxPlayers;
+    }
+    if ((clean as Record<string, unknown>).levelName !== undefined) {
+      const ln = String((clean as Record<string, unknown>).levelName);
+      if (!/^[a-zA-Z0-9а-яА-Я_\- ]{1,64}$/.test(ln) || ln.includes('..')) {
+        throw new Error('Bad levelName');
+      }
+    }
     const updated: ServerInstance = {
       ...list[idx],
-      properties: { ...list[idx].properties, ...patch },
+      properties: { ...list[idx].properties, ...clean },
     };
     list[idx] = updated;
     this.save(list);
@@ -206,7 +241,8 @@ export class ServerService {
     const list = this.list();
     const idx = list.findIndex((s) => s.id === id);
     if (idx < 0) throw new Error('Сервер не найден');
-    list[idx] = { ...list[idx], name: name.trim() || list[idx].name };
+    // Имя едет в UI и index.json: режем CRLF (stored-XSS) и длину.
+    list[idx] = { ...list[idx], name: name.replace(/[\r\n]/g, ' ').trim().slice(0, 64) || list[idx].name };
     this.save(list);
     return list[idx];
   }
@@ -435,6 +471,8 @@ export class ServerService {
     if (/[\n\r\0]/.test(command)) {
       throw new Error('Command contains forbidden characters (newline or null)');
     }
+    // Лимит длины: флуд 10МБ строкой забивал stdin-буфер сервера (DoS).
+    if (command.length > 512) throw new Error('Command too long (max 512 chars)');
     // Команды Minecraft не требуют ведущий «/», stdin его не понимает —
     // снимаем если пользователь его написал.
     const trimmed = command.replace(/^\/+/, '').trimEnd();
@@ -588,7 +626,47 @@ export class ServerService {
       `enforce-secure-profile=false`,
       `prevent-proxy-connections=false`,
     ];
+    if (p.levelName) lines.push(`level-name=${p.levelName}`);
     return lines.join('\n') + '\n';
+  }
+
+  /**
+   * Публикация одиночного мира как сервера: рядом с server.jar кладём копию
+   * мира и level-name в properties. Копия, а не перенос — мир остаётся играть
+   * и в одиночке. session.lock и прочие рантайм-файлы не копируем.
+   */
+  async publishWorld(worldDir: string, worldName: string, versionId: string, memoryMb: number): Promise<ServerInstance> {
+    const safeWorld = worldName.replace(/[^a-zA-Z0-9а-яА-Я_\- ]/g, '_').trim().slice(0, 64);
+    if (!safeWorld) throw new Error('Bad world name');
+    const inst = await this.create({ name: safeWorld, versionId, memoryMb });
+    try {
+      const dest = path.join(this.serverDir(inst.id), safeWorld);
+      fs.mkdirSync(dest, { recursive: true });
+      const SKIP = new Set(['session.lock', 'session.lock.old']);
+      const walk = (dir: string, rel: string) => {
+        for (const name of fs.readdirSync(dir)) {
+          if (SKIP.has(name)) continue;
+          const full = path.join(dir, name);
+          const st = fs.lstatSync(full);
+          if (st.isSymbolicLink()) continue;
+          if (st.isDirectory()) {
+            fs.mkdirSync(path.join(dest, rel, name), { recursive: true });
+            walk(full, rel ? `${rel}/${name}` : name);
+          } else if (st.isFile()) {
+            fs.copyFileSync(full, path.join(dest, rel, name));
+          }
+        }
+      };
+      walk(worldDir, '');
+      const withLevel = await this.setProperties(inst.id, { levelName: safeWorld } as Partial<ServerProperties>);
+      return withLevel;
+    } catch (e) {
+      // Не вышло — сносим недосервер целиком, мусора не оставляем.
+      try { fs.rmSync(this.serverDir(inst.id), { recursive: true, force: true }); } catch { /* ignore */ }
+      const list = this.list().filter((x) => x.id !== inst.id);
+      this.save(list);
+      throw e;
+    }
   }
 
   private async fetchVersionJson(versionId: string): Promise<any> {
@@ -650,4 +728,22 @@ function escapePropValue(v: string): string {
     .replace(/=/g, '\\=')
     .replace(/:/g, '\\:')
     .replace(/\n/g, '\\n');
+}
+
+/** Чистит запись сервера из недоверенного index.json (экспорт для тестов). */
+export function sanitizeServerInstance(inst: Record<string, unknown>): ServerInstance {
+  const id = typeof inst.id === 'string' && /^[a-zA-Z0-9_-]{1,64}$/.test(inst.id) ? inst.id : null;
+  if (!id) throw new Error('Bad server id in index.json');
+  const props = (inst.properties ?? {}) as Record<string, unknown>;
+  const port = Number(props.serverPort);
+  const serverPort = Number.isInteger(port) && port >= 1 && port <= 65535 ? port : 25565;
+  const str = (v: unknown, max: number) => typeof v === 'string' ? v.replace(/[\r\n]/g, ' ').slice(0, max) : '';
+  const mp = Number(props.maxPlayers);
+  return {
+    ...(inst as object),
+    id,
+    name: str(inst.name, 64) || id,
+    properties: { ...props, serverPort, maxPlayers: Number.isInteger(mp) && mp >= 1 && mp <= 1000 ? mp : 20, motd: str(props.motd, 128) || 'Trel Server' },
+    memoryMb: Number.isFinite(inst.memoryMb as number) ? Math.max(512, Math.min(inst.memoryMb as number, 65536)) : 2048,
+  } as ServerInstance;
 }

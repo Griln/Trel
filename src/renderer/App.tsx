@@ -1,11 +1,11 @@
-import React, { useEffect, useMemo, useState, lazy, Suspense, useCallback } from 'react';
+import React, { useEffect, useMemo, useState, useRef, lazy, Suspense, useCallback } from 'react';
 import { TitleBar } from './components/TitleBar';
 import { Sidebar } from './components/Sidebar';
 import { HomePage } from './pages/HomePage';
 import { WelcomePage } from './pages/WelcomePage';
 import { DialogProvider } from './components/Dialog';
 import { IntroAnimation } from './components/IntroAnimation';
-import { OnboardingTour } from './components/OnboardingTour';
+import { Onboarding } from './components/Onboarding';
 import { CrashDoctor } from './components/CrashDoctor';
 import { LocaleProvider, useT } from './i18n';
 import type { DownloadProgress, LauncherSettings, MinecraftAccount, Page } from '../shared/types';
@@ -25,7 +25,6 @@ const ContentPage = lazy(() => import('./pages/ContentPage').then(m => ({ defaul
 const ModpacksPage = lazy(() => import('./pages/ModpacksPage').then(m => ({ default: m.ModpacksPage })));
 const ScreenshotsPage = lazy(() => import('./pages/ScreenshotsPage').then(m => ({ default: m.ScreenshotsPage })));
 const StatsPage = lazy(() => import('./pages/StatsPage').then(m => ({ default: m.StatsPage })));
-const ServerMonitorPage = lazy(() => import('./pages/ServerMonitorPage').then(m => ({ default: m.ServerMonitorPage })));
 const SkinPage = lazy(() => import('./pages/SkinPage').then(m => ({ default: m.SkinPage })));
 const ServersPage = lazy(() => import('./pages/ServersPage').then(m => ({ default: m.ServersPage })));
 const AccountsPage = lazy(() => import('./pages/AccountsPage').then(m => ({ default: m.AccountsPage })));
@@ -124,7 +123,7 @@ const GlobalActivityBar: React.FC<{
 };
 
 class PageErrorBoundary extends React.Component<
-  { page: Page; children: React.ReactNode },
+  { page: Page; children: React.ReactNode; t: (k: string) => string },
   { error: Error | null }
 > {
   state: { error: Error | null } = { error: null };
@@ -147,10 +146,10 @@ class PageErrorBoundary extends React.Component<
     if (this.state.error) {
       return (
         <div className="empty p-24" style={{ maxWidth: 720, margin: '32px auto' }}>
-          <h2>Страница не загрузилась</h2>
-          <p className="muted">Trel поймал ошибку интерфейса вместо чёрного экрана. Перейдите на другую вкладку или перезагрузите страницу.</p>
+          <h2>{this.props.t('app.crashTitle')}</h2>
+          <p className="muted">{this.props.t('app.crashMsg')}</p>
           <pre className="mono text-xs" style={{ whiteSpace: 'pre-wrap', marginTop: 12 }}>{this.state.error.message}</pre>
-          <button className="btn primary" style={{ marginTop: 12 }} onClick={() => this.setState({ error: null })}>Попробовать снова</button>
+          <button className="btn primary" style={{ marginTop: 12 }} onClick={() => this.setState({ error: null })}>{this.props.t('app.crashRetry')}</button>
         </div>
       );
     }
@@ -249,19 +248,58 @@ export const App: React.FC = () => {
   }, [settings, accountsReady, minLoadingDone, loadStartTime]);
 
   // Первый запуск: открываем обучение один раз после интро или сразу,
-  // если интро отключено. Ключ v2 специально новый, чтобы проверить текущий тур.
+  // если интро отключено. Ключ v5 специально новый, чтобы обновлённый тур
+  // (18 шагов по всем разделам) показался один раз после обновления.
+  // На WelcomePage (нет аккаунтов) тур не открываем — там свои шаги,
+  // а навигация по страницам недоступна; тур покажется после создания аккаунта.
   useEffect(() => {
     if (!settings || !accountsReady || !minLoadingDone || onboardingChecked) return;
     if (settings.showIntro !== false && !introDone) return;
+    if (accounts.length === 0) return;
     setOnboardingChecked(true);
     try {
-      if (localStorage.getItem('trel:onboarding-seen:v2') !== '1') {
+      if (localStorage.getItem('trel:onboarding-seen:v5') !== '1') {
         setOnboardingOpen(true);
       }
     } catch {
       setOnboardingOpen(true);
     }
-  }, [settings, accountsReady, minLoadingDone, introDone, onboardingChecked]);
+  }, [settings, accountsReady, minLoadingDone, introDone, onboardingChecked, accounts.length]);
+
+  // Автоскрытие левой панели: если пользователь находится на вкладке дольше
+  // 5 секунд и не наводит курсор на панель — она плавно сворачивается,
+  // отдавая место контенту. Наведение на левый край (полоску) возвращает её.
+  // При открытом онбординге не прячем — туры подсвечивают элементы панели.
+  const [sideHidden, setSideHidden] = useState(false);
+  const [railCollapsed, setRailCollapsed] = useState(() => {
+    try { return localStorage.getItem('trel-side-collapsed') === '1'; } catch { return false; }
+  });
+  const toggleRail = () => {
+    setRailCollapsed((v) => {
+      try { localStorage.setItem('trel-side-collapsed', v ? '0' : '1'); } catch { /* ignore */ }
+      return !v;
+    });
+  };
+  const sideTimer = useRef<number | null>(null);
+  const sideHover = useRef(false);
+  const autoHideSidebar = settings?.autoHideSidebar !== false;
+
+  const armSideHide = useCallback(() => {
+    if (sideTimer.current != null) window.clearTimeout(sideTimer.current);
+    sideTimer.current = window.setTimeout(() => {
+      if (!sideHover.current) setSideHidden(true);
+    }, 5000);
+  }, []);
+
+  useEffect(() => {
+    if (sideTimer.current != null) window.clearTimeout(sideTimer.current);
+    sideTimer.current = null;
+    if (!autoHideSidebar || onboardingOpen) { setSideHidden(false); return; }
+    // Новая вкладка — панель видна, таймер 5 секунд стартует заново.
+    setSideHidden(false);
+    armSideHide();
+    return () => { if (sideTimer.current != null) window.clearTimeout(sideTimer.current); };
+  }, [page, autoHideSidebar, onboardingOpen, armSideHide]);
 
   const installedCount = useMemo(
     () => effectiveInstalledCount(installedDetails),
@@ -288,7 +326,9 @@ export const App: React.FC = () => {
 
   const updateSettings = (s: LauncherSettings) => {
     setSettings(s);
-    window.api.settings.set(s);
+    // Fire-and-forget ронял unhandled rejection при ошибке IPC —
+    // UI думал что сохранилось, а settings.json — нет.
+    window.api.settings.set(s).catch((e) => console.error('[app] settings.set failed:', e));
   };
 
   // Применяем тему на корневой <html> при загрузке и каждой смене.
@@ -326,11 +366,6 @@ export const App: React.FC = () => {
             <TitleBar />
             <WelcomePage onDone={refreshAccounts} />
           </div>
-          <OnboardingTour
-            open={onboardingOpen}
-            onClose={() => setOnboardingOpen(false)}
-            onNavigate={(nextPage) => { try { localStorage.setItem('trel:onboarding-seen:v2', '1'); } catch {} setPage(nextPage); setOnboardingOpen(false); }}
-          />
           {!introDone && settings?.showIntro !== false && <IntroAnimation theme={currentTheme} onDone={onIntroDone} />}
         </DialogProvider>
       </LocaleProvider>
@@ -353,7 +388,12 @@ export const App: React.FC = () => {
             updaterState={updaterState}
           />
           <CrashDoctor settings={settings} onSettingsChange={updateSettings} onNavigate={(p) => setPage(p)} />
-          <div className="main">
+          <div className={'main' + (sideHidden && autoHideSidebar ? ' side-hidden' : '')}>
+          <div
+            className="side-wrap"
+            onMouseEnter={() => { sideHover.current = true; if (sideHidden) setSideHidden(false); if (autoHideSidebar && !onboardingOpen) armSideHide(); }}
+            onMouseLeave={() => { sideHover.current = false; if (autoHideSidebar && !sideHidden && !onboardingOpen) armSideHide(); }}
+          >
           <Sidebar
             page={page}
             onChange={setPage}
@@ -361,9 +401,19 @@ export const App: React.FC = () => {
             installedCount={installedCount}
             hasRunningServer={hasRunningServer}
             hasUpdate={hasUpdate}
+            collapsed={railCollapsed}
+            onToggleCollapse={toggleRail}
           />
+          </div>
+          {sideHidden && autoHideSidebar && (
+            <div
+              className="side-reveal"
+              title={t('nav.sideRevealHint')}
+              onMouseEnter={() => { sideHover.current = false; setSideHidden(false); if (autoHideSidebar) armSideHide(); }}
+            />
+          )}
           <div className={'content' + (isFlush ? ' flush' : '')}>
-            <PageErrorBoundary page={page}>
+            <PageErrorBoundary page={page} t={t}>
             <Suspense fallback={<div className="empty p-24">{t('app.loading')}</div>}>
             {page === 'home' && (
               <HomePage
@@ -404,7 +454,6 @@ export const App: React.FC = () => {
             {page === 'modpacks' && <ModpacksPage />}
             {page === 'screenshots' && <ScreenshotsPage />}
             {page === 'stats' && <StatsPage />}
-            {page === 'monitor' && <ServerMonitorPage />}
             {page === 'servers' && <ServersPage />}
             {page === 'accounts' && (
               <AccountsPage
@@ -439,10 +488,10 @@ export const App: React.FC = () => {
           </div>
         </div>
         </div>
-        <OnboardingTour
+        <Onboarding
           open={onboardingOpen}
           onClose={() => setOnboardingOpen(false)}
-          onNavigate={(nextPage) => { try { localStorage.setItem('trel:onboarding-seen:v2', '1'); } catch {} setPage(nextPage); setOnboardingOpen(false); }}
+          onNavigate={(nextPage) => setPage(nextPage)}
         />
         {!introDone && settings?.showIntro !== false && <IntroAnimation theme={currentTheme} onDone={onIntroDone} />}
       </DialogProvider>

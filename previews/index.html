@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trel — все превью вкладок</title>
+<link rel="stylesheet" href="trel-design.css">
+<style>
+  .idx{max-width:1040px;margin:0 auto;padding:40px 28px 90px}
+  .idx-head{margin-bottom:34px}
+  .idx-head .eyebrow{margin-bottom:14px}
+  .idx-head h1{font-family:var(--display);font-weight:900;font-size:clamp(30px,5vw,46px);letter-spacing:-1px;color:var(--fg-bright)}
+  .idx-head p{color:var(--fg-muted);margin-top:12px;max-width:600px;line-height:1.65;font-size:15px}
+  .idx-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px}
+  .idx-card{display:flex;flex-direction:column;gap:11px;padding:20px;border-radius:16px;background:var(--surface-2);
+    border:1px solid var(--border);text-decoration:none;color:inherit;position:relative;overflow:hidden;
+    transition:transform .22s var(--ease),border-color .22s,box-shadow .22s;animation:cardIn .55s var(--ease) backwards}
+  .idx-card:nth-child(1){animation-delay:.03s}.idx-card:nth-child(2){animation-delay:.07s}.idx-card:nth-child(3){animation-delay:.11s}
+  .idx-card:nth-child(4){animation-delay:.15s}.idx-card:nth-child(5){animation-delay:.19s}.idx-card:nth-child(6){animation-delay:.23s}
+  .idx-card:nth-child(7){animation-delay:.27s}.idx-card:nth-child(8){animation-delay:.31s}.idx-card:nth-child(9){animation-delay:.35s}
+  .idx-card:nth-child(10){animation-delay:.39s}.idx-card:nth-child(11){animation-delay:.43s}.idx-card:nth-child(12){animation-delay:.47s}
+  .idx-card:nth-child(13){animation-delay:.51s}.idx-card:nth-child(14){animation-delay:.55s}
+  .idx-card:hover{transform:translateY(-5px);border-color:var(--border-bright);box-shadow:0 16px 38px -16px rgba(0,0,0,.85)}
+  .idx-card::before{content:"";position:absolute;top:0;left:0;right:0;height:3px;background:var(--c,#fff);opacity:.85}
+  .idx-ico{font-size:26px;width:48px;height:48px;border-radius:12px;display:grid;place-items:center;
+    background:var(--surface-3);border:1px solid var(--border-strong);transition:transform .3s var(--ease)}
+  .idx-card:hover .idx-ico{transform:scale(1.1) rotate(-6deg)}
+  .idx-card b{font-family:var(--display);font-weight:700;font-size:15px;color:var(--fg-bright)}
+  .idx-card span{font-size:12.5px;color:var(--fg-muted);line-height:1.5}
+  .idx-card .go{font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:1px;color:var(--fg-subtle);
+    margin-top:auto;display:flex;align-items:center;gap:7px;transition:.18s}
+  .idx-card:hover .go{color:#fff}
+  .idx-card:hover .go svg{transform:translateX(4px)}
+  .idx-card .go svg{width:13px;height:13px;transition:transform .2s}
+  .idx-note{margin-top:30px;font-family:var(--mono);font-size:12px;color:var(--fg-subtle);line-height:1.7;
+    padding:16px 18px;border-radius:13px;border:1px dashed var(--border-strong)}
+</style>
+</head>
+<body>
+<div class="idx">
+  <div class="idx-head">
+    <span class="eyebrow">Trel · редизайн v2</span>
+    <h1>Превью всех вкладок</h1>
+    <p>14 страниц в едином стиле главной: Unbounded / Manrope / JetBrains Mono, тёмный монолит, живые карточки и микроанимации. Открывай по очереди, в каждом превью есть переключатель состояний сверху.</p>
+  </div>
+
+  <div class="idx-grid">
+    <a class="idx-card" href="preview-shell.html" style="--c:var(--green)"><span class="idx-ico">🖼</span><b>Каркас приложения</b><span>Новая вкладка внутри реального лаунчера: titlebar + новая панель v3</span><span class="go">ОТКРЫТЬ <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></span></a>
+    <a class="idx-card" href="preview-sidebar.html" style="--c:var(--green)"><span class="idx-ico">🧭</span><b>Панель навигации v3</b><span>«Главная» — hero-карточка на самом верху, чип аккаунта с кольцом и шевроном</span><span class="go">ОТКРЫТЬ <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></a>
+    <a class="idx-card" href="preview-welcome.html" style="--c:var(--cyan)"><span class="idx-ico">👋</span><b>Первый запуск</b><span>Интро, приветствие с ником и обучающий тур</span><span class="go">ОТКРЫТЬ <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></span></a>
+    <a class="idx-card" href="preview-dialogs.html" style="--c:var(--red)"><span class="idx-ico">💬</span><b>Диалоги и уведомления</b><span>Подтверждения, тосты и Crash Doctor</span><span class="go">ОТКРЫТЬ <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></span></a>
+    <a class="idx-card" href="preview-browse.html" style="--c:var(--green)"><span class="idx-ico">🗂</span><b>Каталог</b><span>Java/Bedrock, фильтры, лоадеры, прогресс скачивания в строке</span><span class="go">ОТКРЫТЬ <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></span></a>
+    <a class="idx-card" href="preview-installed.html" style="--c:var(--green)"><span class="idx-ico">📦</span><b>Установленные</b><span>Лоадеры, «вернуть к ванили», последняя запущенная</span><span class="go">ОТКРЫТЬ <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></span></a>
+    <a class="idx-card" href="preview-worlds.html" style="--c:var(--green)"><span class="idx-ico">🌍</span><b>Миры</b><span>Карточки, панель деталей, бэкапы и восстановление</span><span class="go">ОТКРЫТЬ <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></span></a>
+    <a class="idx-card" href="preview-content.html" style="--c:var(--amber)"><span class="idx-ico">🧩</span><b>Контент</b><span>Моды/шейдеры/паки, тумблеры, предупреждения, Bedrock-аддоны</span><span class="go">ОТКРЫТЬ <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></span></a>
+    <a class="idx-card" href="preview-modpacks.html" style="--c:var(--amber)"><span class="idx-ico">🚀</span><b>Модпаки</b><span>Поиск Modrinth, выбор версии, живой прогресс установки</span><span class="go">ОТКРЫТЬ <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></span></a>
+    <a class="idx-card" href="preview-servers.html" style="--c:var(--cyan)"><span class="idx-ico">🖥</span><b>Серверы</b><span>Список, live-консоль с командами, свойства сервера</span><span class="go">ОТКРЫТЬ <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></span></a>
+    <a class="idx-card" href="preview-monitor.html" style="--c:var(--cyan)"><span class="idx-ico">📡</span><b>Мониторинг</b><span>Пинг серверов из servers.dat: онлайн, игроки, MOTD</span><span class="go">ОТКРЫТЬ <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></span></a>
+    <a class="idx-card" href="preview-screenshots.html" style="--c:var(--purple)"><span class="idx-ico">📸</span><b>Скриншоты</b><span>Галерея по дням, хоткей, полноэкранный просмотр</span><span class="go">ОТКРЫТЬ <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></span></a>
+    <a class="idx-card" href="preview-stats.html" style="--c:var(--purple)"><span class="idx-ico">📊</span><b>Статистика</b><span>Время в игре, график 14 дней, донат по версиям</span><span class="go">ОТКРЫТЬ <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></span></a>
+    <a class="idx-card" href="preview-skins.html" style="--c:var(--blue)"><span class="idx-ico">🎭</span><b>Скины</b><span>3D-просмотр, галерея 45 скинов, фильтры, загрузка</span><span class="go">ОТКРЫТЬ <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></span></a>
+    <a class="idx-card" href="preview-accounts.html" style="--c:var(--blue)"><span class="idx-ico">👤</span><b>Аккаунты</b><span>Microsoft и оффлайн-профили, активный аккаунт</span><span class="go">ОТКРЫТЬ <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></span></a>
+    <a class="idx-card" href="preview-settings.html" style="--c:#fff"><span class="idx-ico">⚙️</span><b>Настройки</b><span>Темы, память, Java, окно игры, опасная зона</span><span class="go">ОТКРЫТЬ <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></span></a>
+    <a class="idx-card" href="preview-import.html" style="--c:var(--amber)"><span class="idx-ico">📥</span><b>Импорт</b><span>Автопоиск лаунчеров, выбор категорий, прогресс</span><span class="go">ОТКРЫТЬ <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></span></a>
+    <a class="idx-card" href="preview-diagnostics.html" style="--c:var(--red)"><span class="idx-ico">🩺</span><b>Диагностика</b><span>Проверки окружения, целостность файлов, логи, профили</span><span class="go">ОТКРЫТЬ <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></span></a>
+  </div>
+
+  <div class="idx-note">
+    Шрифт грузится с Google Fonts — нужен интернет при первом открытии.<br>
+    Главная (preview-home.html) уже одобрена и лежит в корне проекта, она не дублируется здесь.
+  </div>
+</div>
+</body>
+</html>

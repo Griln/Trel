@@ -1,9 +1,16 @@
-import { app, BrowserWindow, ipcMain, shell, Tray, Menu, nativeImage } from 'electron';
+import { app, BrowserWindow, ipcMain, shell, Tray, Menu, nativeImage, protocol } from 'electron';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 import { registerIpc } from './ipc';
 import { LauncherUpdater } from './updater';
 import { pathToFileURL } from 'node:url';
+
+// Схема app:// используется Electron'ом как «секурная» custom protocol.
+// Регистрируем ДО app.ready (обязательно по Electron docs).
+protocol.registerSchemesAsPrivileged([
+  { scheme: 'app', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, bypassCSP: true } },
+]);
 
 const userDataArg = process.argv.find((arg) => arg.startsWith('--trel-user-data-dir='));
 const customUserDataDir = userDataArg
@@ -14,6 +21,78 @@ if (customUserDataDir && customUserDataDir.trim().length > 0) {
   if (!resolvedUserDataDir.includes('\0')) {
     app.setPath('userData', resolvedUserDataDir);
     console.log('[main] Using custom userData dir:', resolvedUserDataDir);
+  }
+}
+
+// На Linux/macOS userData может оказаться недоступным для записи —
+// например когда ~/.config/Trel это symlink на read-only NTFS-том
+// (частый сценарий при dual-boot Windows/Linux миграции). Electron
+// в таком случае падает при создании SingletonLock / GPU-кэша с
+// EROFS ещё до показа окна (серый экран 3 сек → вылет).
+// Проверяем writability реального пути (через realpath — иначе symlink
+// на ro-том даст ложное OK), и если недоступен — переключаем на fallback
+// на нативной writable FS. Не трогаем Windows: там %APPDATA% всегда rw.
+function isWritableDir(dir: string): boolean {
+  try {
+    const real = fs.realpathSync(dir);
+    // accessSync с W_OK проверяет только права (mode), но на read-only
+    // mount даже root с rw получит EROFS. Делаем фактическую пробу записи.
+    const probe = path.join(real, `.trel-writable-probe-${process.pid}`);
+    fs.writeFileSync(probe, '');
+    fs.unlinkSync(probe);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+if (process.platform !== 'win32') {
+  // На Linux/macOS Electron берёт userData/appData из XDG. Если прошлый
+  // пользователь имел лаунчер под именем "Trel" (до того, как мы сменили
+  // имя пакета на "trel-launcher"), в ~/.config/Trel остался симлинк или
+  // битая папка, ссылающаяся на read-only том (типичный dual-boot
+  // Windows/Linux). В этом случае запись accounts.json/settings.json
+  // даёт EROFS, а UI получит cryptic-ошибку.
+  //
+  // Решение: проверить `~/.config/Trel` как кандидат-путь для окна
+  // Trel-launcher, и если он read-only или не-resolvable — переключить
+  // userData/appData на ${XDG_CONFIG_HOME}/Trel-fallback, чтобы всё
+  // писалось в надёжную writable-директорию на нативном FS.
+  const dbg = (msg: string): void => {
+    try { fs.appendFileSync('/tmp/trel-startup.log', `[${new Date().toISOString()}] ${msg}\n`); } catch {}
+    try { process.stderr.write(`[main] ${msg}\n`); } catch {}
+  };
+  dbg(`userData init: ${((): unknown => { try { return app.getPath('userData'); } catch { return '?'; } })()}`);
+
+  const xdg = process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config');
+  const candidateTrel = path.join(xdg, 'Trel');
+  const fallback = path.join(xdg, 'Trel-fallback');
+  // Проверяем, что ~/.config/Trel либо: (a) за-writable через realpath
+  // → симлинк на read-only том, или (b) реально не существует/доступен.
+  // Если (a) — мигрируем в fallback.
+  let mustFallback = false;
+  try {
+    const real = fs.realpathSync(candidateTrel);
+    const probe = path.join(real, `.trel-writable-probe-${process.pid}`);
+    fs.writeFileSync(probe, '');
+    fs.unlinkSync(probe);
+    dbg(`candidate ${candidateTrel} is writable (realpath=${real})`);
+  } catch (e) {
+    // EROFS / ENOENT / NotADir — всё значит fallback
+    mustFallback = true;
+    dbg(`candidate ${candidateTrel} not writable: ${(e as NodeJS.ErrnoException)?.code ?? (e as Error).message}`);
+  }
+
+  if (mustFallback) {
+    try { fs.mkdirSync(fallback, { recursive: true }); } catch {}
+    try {
+      app.setPath('userData', fallback);
+      try { app.setPath('appData', fallback); } catch {}
+      try { app.setPath('sessionData', path.join(fallback, 'session')); } catch {}
+      dbg(`userData → fallback: ${fallback}`);
+    } catch (e) {
+      dbg(`setPath fallback failed: ${(e as Error).message}`);
+    }
   }
 }
 
@@ -54,8 +133,18 @@ process.on('unhandledRejection', (reason, promise) => {
 app.commandLine.appendSwitch('js-flags', '--max-old-space-size=256');
 app.commandLine.appendSwitch(
   'disable-features',
-  'Translate,MediaRouter,OptimizationHints,AutofillServerCommunication,InterestFeedContentSuggestions,CalculateNativeWinOcclusion,AudioServiceOutOfProcess'
+  'Translate,MediaRouter,OptimizationHints,AutofillServerCommunication,InterestFeedContentSuggestions,CalculateNativeWinOcclusion,AudioServiceOutOfProcess,VizDisplayCompositor'
 );
+// На Linux AppImage не отключаем GPU — SkinViewer3D рендерит через Three.js
+// и ему нужен WebGL. Без GPU SkinPage падает с зависанием.
+// НО: на Linux (AppImage + NVIDIA) GPU-процесс может не стартовать с
+// error_code=1002 из-за песочницы → FATAL "GPU process isn't usable. Goodbye."
+// и вылет всего аппа (в т.ч. прямо посреди скачивания версии/Java — отсюда
+// «папки создаются, а файлы нет»). disable-gpu-sandbox снимает песочницу
+// GPU-процесса, оставляя сам GPU и WebGL рабочими. Только для Linux.
+if (process.platform === 'linux') {
+  app.commandLine.appendSwitch('disable-gpu-sandbox');
+}
 app.commandLine.appendSwitch('disable-software-rasterizer');
 app.commandLine.appendSwitch('renderer-process-limit', '1');
 app.commandLine.appendSwitch('disable-background-networking');
@@ -199,16 +288,62 @@ function createWindow(): BrowserWindow {
     backgroundColor: '#0e1016',
     title: APP_NAME,
     icon: resolveAppIconPath(),
+    // CSP встаёт из vite/meta в index.html и блокирует inline <script>.
+    // С data: URL мы своих скриптов нет, но inline `<style>` тоже под CSP.
+    // Для AppImage фикс один — отключить CSP на webRequest уровне либо
+    // убрать <meta http-equiv="Content-Security-Policy"> при инлайне.
     webPreferences: {
       preload: preloadPath,
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
-      // Когда окно скрыто (свёрнуто / на другом рабочем столе) — Chromium
-      // притормаживает таймеры и rAF в renderer. Это режет CPU/память
-      // во время игры, пока лаунчер фоном.
       backgroundThrottling: true,
     },
+  });
+
+  // Удаляем CSP из загруженного HTML, потому что мы инлайним скрипты в
+  // data:-форме, а CSP vite-built запрещает inline script-src.
+  // ВНИМАНИЕ: работает только для renderer'а нашего приложения, в нём
+  // нет внешних скриптов кроме IPC + Google Fonts/styles уже встроенные.
+  win.webContents.session.webRequest.onHeadersReceived((details, cb) => {
+    cb({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'content-security-policy': [''],
+      },
+    });
+  });
+
+  // Диагностика renderer: логируем ошибки загрузки страницы, JS-исключения
+  // и console сообщения, чтобы «чёрный экран» можно было разобрать удалённо.
+  win.webContents.on('did-fail-load', (_e, code, desc, url) => {
+    const msg = `[renderer] did-fail-load code=${code} desc=${desc} url=${url}`;
+    try { fs.appendFileSync('/tmp/trel-startup.log', `[${new Date().toISOString()}] ${msg}\n`); } catch {}
+    try { process.stderr.write(msg + '\n'); } catch {}
+  });
+  win.webContents.on('render-process-gone', (_e, details) => {
+    const msg = `[renderer] render-process-gone reason=${details.reason} exit=${details.exitCode}`;
+    try { fs.appendFileSync('/tmp/trel-startup.log', `[${new Date().toISOString()}] ${msg}\n`); } catch {}
+    try { process.stderr.write(msg + '\n'); } catch {}
+    // Если renderer падает — НЕ закрываем main, пробуем перезагрузить страницу.
+    // Это позволяет окну вернуться к лайфу (например при GPU crash).
+    if (details.reason !== 'clean-exit') {
+      setTimeout(() => {
+        try { win.webContents.reload(); } catch {}
+      }, 1000);
+    }
+  });
+  win.webContents.on('console-message', (_e, level, message, line, source) => {
+    const lvlMap = ['verbose', 'info', 'warning', 'error'] as const;
+    const lvl = lvlMap[level] ?? `L${level}`;
+    // Ограничим длину на лог: длинный source/data:URL не нужен.
+    const trimmed = message.length > 300 ? message.slice(0, 300) + '...' : message;
+    const srcShort = source.length > 200 ? source.slice(0, 200) + '...' : source;
+    const msg = `[renderer] console[${lvl}] ${srcShort}:${line} ${trimmed}`;
+    try { fs.appendFileSync('/tmp/trel-startup.log', `[${new Date().toISOString()}] ${msg}\n`); } catch {}
+  });
+  win.webContents.on('did-finish-load', () => {
+    try { fs.appendFileSync('/tmp/trel-startup.log', `[${new Date().toISOString()}] [renderer] did-finish-load\n`); } catch {}
   });
 
   win.setMenuBarVisibility(false);
@@ -226,9 +361,88 @@ function createWindow(): BrowserWindow {
   win.on('show', updateTrayMenu);
   win.on('hide', updateTrayMenu);
 
-  const loadBuilt = () => win.loadFile(path.join(app.getAppPath(), 'dist', 'index.html'));
+  // Renderer index.html. На Linux Electron 33 внутри AppImage блокирует
+  // file:// для путей вне песочницы (ERR_FAILED -2). dist упакован в asar
+  // (Linux AppImage: <mount>/resources/app.asar/dist/). Читаем через app.getAppPath()
+  // который указывает на корень пакета (asar root). Custom protocol
+  // app://localhost/ с привилегиями standard+secure (зарегистрирован на
+  // top of module выше через protocol.registerSchemesAsPrivileged) достаёт
+  // файлы через fs.readFileSync. fs.existsSync/fs.statSync не работают
+  // корректно с asar-путями, поэтому убраны проверки и читаем напрямую.
+  const distDir = path.join(app.getAppPath(), 'dist');
+  const dbg = (msg: string): void => {
+    try { fs.appendFileSync('/tmp/trel-startup.log', `[${new Date().toISOString()}] ${msg}\n`); } catch {}
+    try { process.stderr.write(`[main] ${msg}\n`); } catch {}
+  };
+  dbg(`loadBuilt: distDir=${distDir} exists=${fs.existsSync(distDir)}`);
+  const mimeOf = (p: string): string => {
+    const ext = path.extname(p).toLowerCase();
+    if (ext === '.html') return 'text/html; charset=utf-8';
+    if (ext === '.js' || ext === '.mjs') return 'application/javascript; charset=utf-8';
+    if (ext === '.css') return 'text/css; charset=utf-8';
+    if (ext === '.json') return 'application/json; charset=utf-8';
+    if (ext === '.svg') return 'image/svg+xml';
+    if (ext === '.png') return 'image/png';
+    if (ext === '.jpg' || ext === '.jpeg') return 'image/jpeg';
+    if (ext === '.webp') return 'image/webp';
+    if (ext === '.ico') return 'image/x-icon';
+    if (ext === '.woff') return 'font/woff';
+    if (ext === '.woff2') return 'font/woff2';
+    if (ext === '.map') return 'application/json; charset=utf-8';
+    return 'application/octet-stream';
+  };
+  const registerTrelProtocol = (): void => {
+    try {
+      protocol.registerSchemesAsPrivileged([
+        { scheme: 'app', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, bypassCSP: true } },
+      ]);
+    } catch { /* already registered at top */ }
+    // Один раз регистрируем обработчик
+    if ((protocol as unknown as { _trelHandlerRegistered?: boolean })._trelHandlerRegistered) return;
+    (protocol as unknown as { _trelHandlerRegistered: boolean })._trelHandlerRegistered = true;
+    try {
+      protocol.handle('app', async (req) => {
+        try {
+          const u = new URL(req.url);
+          // host=localhost, pathname=/file.ext
+          let p = decodeURIComponent(u.pathname);
+          if (p === '/' || !p) p = '/index.html';
+          const safe = path.normalize(p).replace(/^\/+/, '');
+          const full = path.join(distDir, safe);
+          dbg(`app://${u.host}${u.pathname} -> ${full}`);
+          if (!full.startsWith(distDir)) {
+            return new Response('', { status: 404, headers: { 'content-type': 'text/plain' } });
+          }
+          let buf: Buffer;
+          try {
+            buf = fs.readFileSync(full);
+          } catch {
+            return new Response('', { status: 404, headers: { 'content-type': 'text/plain' } });
+          }
+          return new Response(buf as unknown as BodyInit, { status: 200, headers: { 'content-type': mimeOf(full), 'cache-control': 'no-store' } });
+        } catch (e) {
+          return new Response('', { status: 500, headers: { 'content-type': 'text/plain' } });
+        }
+      });
+    } catch (e) {
+      dbg(`protocol.handle failed: ${(e as Error).message}`);
+    }
+  };
+  registerTrelProtocol();
+  const loadBuilt = (): Promise<void> => {
+    // HTML загружаем напрямую; относительные пути /assets/... резолвятся
+    // как app://localhost/assets/... — наш handler их читает с диска.
+    // Главное: vite-built HTML использует абсолютные пути (/assets/...),
+    // которые браузер резолвит относительно origin `app://localhost`.
+    const fileUrl = 'app://localhost/index.html';
+    dbg(`loadBuilt: fileUrl=${fileUrl}`);
+    return win.loadURL(fileUrl).catch((e) => {
+      dbg(`loadURL failed: ${e.message ?? e}`);
+      return Promise.resolve();
+    });
+  };
   if (isDev) {
-    win.loadURL('http://localhost:5173').catch(loadBuilt);
+    win.loadURL('http://localhost:5173').catch(() => loadBuilt());
   } else {
     loadBuilt();
   }
@@ -240,8 +454,7 @@ function createWindow(): BrowserWindow {
 
   win.webContents.on('will-navigate', (event, url) => {
     if (isDev && url.startsWith('http://localhost:5173')) return;
-    const builtUrl = pathToFileURL(path.join(app.getAppPath(), 'dist', 'index.html')).toString();
-    if (!isDev && url === builtUrl) return;
+    if (!isDev && url.startsWith('trel://')) return;
     event.preventDefault();
     if (isSafeExternalUrl(url)) shell.openExternal(url).catch((e) => console.warn('[main] openExternal failed:', e));
   });
@@ -249,44 +462,71 @@ function createWindow(): BrowserWindow {
   return win;
 }
 
-function ensureLauncherDir(): string {
-  const newDir = path.join(app.getPath('appData'), APP_NAME);
-  const oldDir = path.join(app.getPath('appData'), LEGACY_APP_NAME);
+/** Портативный режим: данные рядом с бинарём, ничего в системе. */
+export function portableDir(): string | null {
+  // Маркер portable.txt рядом с exe (положил — стал портативным),
+  // флаг --portable или env TREL_PORTABLE=1.
+  try {
+    const exeDir = path.dirname(process.execPath);
+    if (process.argv.includes('--portable') || process.env.TREL_PORTABLE === '1') {
+      return path.join(exeDir, 'TrelData');
+    }
+    if (fs.existsSync(path.join(exeDir, 'portable.txt'))) {
+      return path.join(exeDir, 'TrelData');
+    }
+  } catch { /* ignore */ }
+  return null;
+}
 
-  // Миграция данных пользователей со старого имени (AuroraLauncher → Trel).
-  // Если новой папки ещё нет, а старая существует — переименовываем.
-  if (!fs.existsSync(newDir) && fs.existsSync(oldDir)) {
+function ensureLauncherDir(): string {
+  // Портативка важнее всего: флешка не должна мусорить в ~/.config.
+  const portable = portableDir();
+  if (portable) {
+    if (!fs.existsSync(portable)) fs.mkdirSync(portable, { recursive: true });
+    return portable;
+  }
+  // app.getPath('userData') указывает прямо на каталог Trel-launcher.
+  // На Linux после пользовательского fallback (см. блок выше) userData
+  // уже переставлен на writable "Trel-fallback", и Trel-данные должны
+  // жить прямо здесь, а не как `<...>/Trel/` под ним (иначе мы опять
+  // идём в ~/.config/Trel — симлинк на read-only NTFS).
+  const newDir = app.getPath('userData');
+  if (!fs.existsSync(newDir)) fs.mkdirSync(newDir, { recursive: true });
+
+  // Одноразовая миграция: если userData пустой/свежий, а в ~/.config/Trel
+  // уже лежат данные со старого пути (типичная история: dual-boot, симлинк
+  // на read-only NTFS), копируем их в fallback, чтобы пользователь не
+  // потерял аккаунты. Копируем только если файлы ещё не существуют в newDir.
+  if (process.platform !== 'win32') {
+    const xdg = process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config');
+    const legacyTrel = path.join(xdg, 'Trel');
     try {
-      fs.renameSync(oldDir, newDir);
-      // Внутри settings.json gameDir мог хранить полный путь со старым именем —
-      // переписываем, чтобы лаунчер дальше работал с обновлённым путём.
-      // Сравнение case-insensitive: на Windows пути `C:\Users\...` и
-      // `c:\users\...` указывают на одно место, а простой includes
-      // регистро-чувствителен и пропускал такие случаи.
-      const settingsFile = path.join(newDir, 'settings.json');
-      if (fs.existsSync(settingsFile)) {
-        try {
-          const raw = fs.readFileSync(settingsFile, 'utf-8');
-          const parsed = JSON.parse(raw);
-          if (typeof parsed.gameDir === 'string') {
-            const lcDir = parsed.gameDir.toLowerCase();
-            const lcOld = oldDir.toLowerCase();
-            if (lcDir.includes(lcOld)) {
-              const idx = lcDir.indexOf(lcOld);
-              // Заменяем сохраняя регистр окружающих символов: берём префикс/суффикс из оригинала
-              parsed.gameDir = parsed.gameDir.slice(0, idx) + newDir + parsed.gameDir.slice(idx + oldDir.length);
-              fs.writeFileSync(settingsFile, JSON.stringify(parsed, null, 2), 'utf-8');
+      const realLegacy = fs.realpathSync(legacyTrel);
+      const realNew = fs.realpathSync(newDir);
+      if (realLegacy !== realNew) {
+        // Read-only симлинк: данные технически доступны через realpath,
+        // но мы НЕ хотим писать туда. В таком случае только копируем в newDir,
+        // оставляя исходник как есть.
+        const tryCopy = (name: string): void => {
+          const srcFile = path.join(legacyTrel, name);
+          const dstFile = path.join(newDir, name);
+          if (fs.existsSync(srcFile) && !fs.existsSync(dstFile)) {
+            try {
+              fs.copyFileSync(srcFile, dstFile);
+              const m = (s: string): void => { try { fs.appendFileSync('/tmp/trel-startup.log', `[${new Date().toISOString()}] [main] migrated ${s} ${srcFile} -> ${dstFile}\n`); } catch {} };
+              m('copied');
+            } catch (e) {
+              // EROFS внутри legacyTrel — пропускаем молча.
             }
           }
-        } catch {}
+        };
+        for (const f of ['accounts.json', 'settings.json', 'playtime.json', 'java-cache.json', '.theme']) {
+          tryCopy(f);
+        }
       }
-    } catch {
-      // Если переименовать не удалось (файл занят и т.п.) — fallback: используем старую папку.
-      if (fs.existsSync(oldDir)) return oldDir;
-    }
+    } catch { /* realpath failed — безопасно игнорируем */ }
   }
 
-  if (!fs.existsSync(newDir)) fs.mkdirSync(newDir, { recursive: true });
   return newDir;
 }
 

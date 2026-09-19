@@ -13,6 +13,7 @@ describe('TrelEmuService', () => {
   // на машине разработчика) и вернёт его до того, как дойдёт до resourcesPath.
   let tmpRoot: string;
   let origAppData: string | undefined;
+  let origXdgConfig: string | undefined;
   beforeEach(() => {
     tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'trel-emu-test-'));
     Object.defineProperty(process, 'resourcesPath', {
@@ -21,10 +22,17 @@ describe('TrelEmuService', () => {
     });
     origAppData = process.env.APPDATA;
     process.env.APPDATA = tmpRoot;
+    // На Linux TrelEmuDownloader использует XDG_CONFIG_HOME (default ~/.config).
+    // Без изоляции тесты находят реальный ~/.config/Trel/trel-emu на машине
+    // разработчика и падают. Подменяем на tmpRoot — там нет Trel/trel-emu.
+    origXdgConfig = process.env.XDG_CONFIG_HOME;
+    process.env.XDG_CONFIG_HOME = tmpRoot;
   });
   afterEach(() => {
     if (origAppData === undefined) delete process.env.APPDATA;
     else process.env.APPDATA = origAppData;
+    if (origXdgConfig === undefined) delete process.env.XDG_CONFIG_HOME;
+    else process.env.XDG_CONFIG_HOME = origXdgConfig;
     try { fs.rmSync(tmpRoot, { recursive: true, force: true }); } catch { /* ignore */ }
   });
 

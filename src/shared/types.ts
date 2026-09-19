@@ -59,10 +59,20 @@ export interface LauncherSettings {
   lockOnLaunch?: boolean;
   prevGameDir?: string;
   showIntro?: boolean;
-  locale?: 'ru' | 'en' | 'zh' | 'es' | 'de';
+  /** Автоскрытие левой панели через 5 секунд бездействия на вкладке. */
+  autoHideSidebar?: boolean;
+  locale?: 'ru' | 'en';
   showConsole?: boolean;
   preCommand?: string;
   postCommand?: string;
+  /** HTTP(S)-прокси для всех скачиваний: http(s)://[user:pass@]host:port. */
+  proxyUrl?: string;
+  /** Пресет производительности, применённый последним (информация). */
+  perfPreset?: 'potato' | 'balanced' | 'ultra';
+  /** Автобэкап миров перед запуском (не чаще раза в сутки). */
+  autoBackup?: boolean;
+  /** Закреплённые сборки (id версий сверху списков). */
+  pinnedVersions?: string[];
 }
 
 /** Список тем UI. Совпадает с data-theme атрибутами в styles.css. */
@@ -77,6 +87,8 @@ export type ServerStatus = 'stopped' | 'starting' | 'running' | 'stopping' | 'er
 
 export interface ServerProperties {
   motd: string;
+  /** Имя папки мира (level-name). Пусто = vanilla-мир сервера. */
+  levelName?: string;
   serverPort: number;
   maxPlayers: number;
   gamemode: 'survival' | 'creative' | 'adventure' | 'spectator';
@@ -106,6 +118,7 @@ export interface ContentItem {
   size: number;
   enabled: boolean;
   isFolder: boolean;
+  description?: string;
   meta?: {
     title?: string;
     version?: string;
@@ -117,9 +130,9 @@ export interface ContentItem {
   };
 }
 
-export type Page = 'home' | 'browse' | 'installed' | 'worlds' | 'content' | 'modpacks' | 'servers' | 'monitor' | 'screenshots' | 'stats' | 'skin' | 'accounts' | 'settings' | 'import' | 'diagnostics';
+export type Page = 'home' | 'browse' | 'installed' | 'worlds' | 'content' | 'modpacks' | 'servers' | 'screenshots' | 'stats' | 'skin' | 'accounts' | 'settings' | 'import' | 'diagnostics';
 
-export type Locale = 'ru' | 'en' | 'zh' | 'es' | 'de';
+export type Locale = 'ru' | 'en';
 
 export const CONTENT_FOLDERS = ['mods', 'shaderpacks', 'resourcepacks', 'texturepacks'] as const;
 export type ContentFolder = typeof CONTENT_FOLDERS[number];

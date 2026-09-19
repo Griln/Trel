@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { IconAlert, IconInfo } from './icons';
 
 export interface DialogButton {
@@ -35,19 +35,33 @@ type Resolver = (value: string) => void;
 
 export const DialogProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [opts, setOpts] = useState<DialogOptions | null>(null);
-  const [resolver, setResolver] = useState<Resolver | null>(null);
+  // Очередь: повторный show() во время открытого диалога раньше затирал
+  // resolver — первый промис висел вечно, а вызывающий код ждал вечно.
+  const queue = useRef<Array<{ opts: DialogOptions; resolve: Resolver }>>([]);
+  const currentResolve = useRef<Resolver | null>(null);
 
   const show = useCallback((next: DialogOptions): Promise<string> => {
     return new Promise<string>((resolve) => {
-      setOpts(next);
-      setResolver(() => resolve);
+      queue.current.push({ opts: next, resolve });
+      // Если диалог уже открыт — встанем в очередь, иначе покажем сразу.
+      if (!currentResolve.current) {
+        const first = queue.current.shift()!;
+        currentResolve.current = first.resolve;
+        setOpts(first.opts);
+      }
     });
   }, []);
 
   const close = (value: string) => {
-    if (resolver) resolver(value);
-    setOpts(null);
-    setResolver(null);
+    currentResolve.current?.(value);
+    currentResolve.current = null;
+    const next = queue.current.shift();
+    if (next) {
+      currentResolve.current = next.resolve;
+      setOpts(next.opts);
+    } else {
+      setOpts(null);
+    }
   };
 
   useEffect(() => {
@@ -55,6 +69,10 @@ export const DialogProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') close(opts.cancelValue ?? 'cancel');
       if (e.key === 'Enter' && opts.defaultIndex !== undefined) {
+        // Enter в поле ввода — не confirm: иначе ввод имени мира/команды
+        // случайно жал «удалить/запустить» по дефолтной кнопке.
+        const t = e.target as HTMLElement | null;
+        if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
         const btn = opts.buttons[opts.defaultIndex];
         if (btn) close(btn.value);
       }

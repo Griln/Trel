@@ -425,7 +425,10 @@ const ADB_TCP_SNIPPET = Buffer.from([
  * (извлечённый из ramdisk.img) триггер включения ADB по TCP.
  */
 export function patchInitrdForAdbTcp(initrdBuf: Buffer, socatBuf?: Buffer, adbdBuf?: Buffer, houdiniBuf?: Buffer): Buffer {
+  // initrd — десятки МБ; сотни = бомба, gunzipSync раздует в RAM.
+  if (initrdBuf.length > 256 * 1024 * 1024) throw new Error('initrd too large');
   const raw = zlib.gunzipSync(initrdBuf);
+  if (raw.length > 512 * 1024 * 1024) throw new Error('initrd decompresses too large');
   const entries = parseCpio(raw);
   let patchedInit = false;
   for (const e of entries) {
@@ -521,6 +524,9 @@ export function patchInitrdForAdbTcp(initrdBuf: Buffer, socatBuf?: Buffer, adbdB
  */
 export async function extractBootFiles(isoPath: string, outDir: string): Promise<{ kernel: string; initrd: string }> {
   await fsp.mkdir(outDir, { recursive: true });
+  // ISO Android-x86 — сотни МБ; гигабайты = чужой/битый файл, в RAM не тянем.
+  const st = await fsp.stat(isoPath).catch(() => null);
+  if (!st?.isFile() || st.size > 2 * 1024 * 1024 * 1024) throw new Error('ISO too large or missing');
   const data = await fsp.readFile(isoPath);
   const iso = new IsoReader(data);
 

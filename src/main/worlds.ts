@@ -29,9 +29,14 @@ function longToNumber(val: bigint | [number, number]): number {
  */
 function parseLevelDat(file: string): { name?: string; lastPlayed?: number; gameMode?: number; hardcore?: boolean; version?: string } {
   try {
+    // level.dat — килобайты; мегабайты = чужой/битый файл, в RAM не тянем.
+    try {
+      if (fs.statSync(file).size > 8 * 1024 * 1024) return {};
+    } catch { return {}; }
     let raw: Buffer;
     try {
       raw = zlib.gunzipSync(fs.readFileSync(file));
+      if (raw.length > 16 * 1024 * 1024) return {};
     } catch {
       raw = fs.readFileSync(file);
     }
@@ -291,7 +296,16 @@ export class WorldService {
         continue;
       }
       const levelDat = path.join(dir, 'level.dat');
-      if (fs.existsSync(levelDat)) return { kind: 'folder', dir, levelDat };
+      if (fs.existsSync(levelDat)) {
+        // Симлинк-папка внутри saves/ обошла бы resolve-проверку выше:
+        // сверяем РЕАЛЬНЫЙ путь (symlink на /etc не пройдёт).
+        try {
+          const realDir = fs.realpathSync(dir);
+          const realRoot = fs.realpathSync(root);
+          if (realDir !== realRoot && !realDir.startsWith(realRoot + path.sep)) continue;
+        } catch { continue; }
+        return { kind: 'folder', dir, levelDat };
+      }
     }
     return null;
   }
@@ -308,6 +322,9 @@ export class WorldService {
     const p = path.join(r.dir, 'icon.png');
     if (!fs.existsSync(p)) return null;
     try {
+      // Иконка мира — десятки КБ; мегабайты через IPC душат рендер.
+      const st = fs.statSync(p);
+      if (!st.isFile() || st.size > 2 * 1024 * 1024) return null;
       const buf = fs.readFileSync(p);
       return 'data:image/png;base64,' + buf.toString('base64');
     } catch {
@@ -426,12 +443,54 @@ export class WorldService {
     const out = path.join(backupsDir, `${safeName}-${stamp}.zip`);
     const zip = new AdmZip();
     if (r.kind === 'folder') {
-      zip.addLocalFolder(r.dir, path.basename(r.dir));
+      // Вручную, а не addLocalFolder: симлинк внутри мира (хоть на ~/.ssh)
+      // иначе уехал бы в бэкап и утёк при шаринге. Симлинки пропускаем.
+      const base = path.basename(r.dir);
+      let count = 0;
+      const walk = (dir: string, rel: string) => {
+        for (const name of fs.readdirSync(dir)) {
+          if (count > 50000) throw new Error('World has too many files');
+          const full = path.join(dir, name);
+          const st = fs.lstatSync(full);
+          if (st.isSymbolicLink()) continue;
+          if (st.isDirectory()) walk(full, `${rel}/${name}`);
+          else if (st.isFile()) {
+            zip.addFile(`${base}/${rel ? rel + '/' : ''}${name}`, fs.readFileSync(full));
+            count++;
+          }
+        }
+      };
+      walk(r.dir, '');
     } else {
       zip.addLocalFile(r.levelDat);
     }
     zip.writeZip(out);
+    // Ротация: держим последние N бэкапов этого мира, старые — в утиль.
+    // Иначе папка backups пухнет гигабайтами и никто её не чистит.
+    this.pruneBackups(worldName, 10);
     return out;
+  }
+
+  /** Удаляет бэкапы мира старше keep последних. Возвращает число удалённых. */
+  pruneBackups(worldName: string, keep = 10): number {
+    if (keep < 0) keep = 0;
+    const dir = this.backupsDir();
+    let names: string[] = [];
+    try { names = fs.readdirSync(dir); } catch { return 0; }
+    const safeName = worldName.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const mine = names
+      .filter((n) => n.startsWith(safeName + '-') && n.endsWith('.zip'))
+      .map((n) => ({ n, mtime: 0 as number }))
+      .map((e) => {
+        try { e.mtime = fs.statSync(path.join(dir, e.n)).mtimeMs; } catch { /* ignore */ }
+        return e;
+      })
+      .sort((a, b) => b.mtime - a.mtime);
+    let removed = 0;
+    for (const e of mine.slice(keep)) {
+      try { fs.unlinkSync(path.join(dir, e.n)); removed++; } catch { /* ignore */ }
+    }
+    return removed;
   }
 
   /** Path to the backups directory. */
@@ -471,6 +530,16 @@ export class WorldService {
     const zip = new AdmZip(resolved);
     const entries = zip.getEntries();
     if (entries.length === 0) throw new Error('Backup is empty');
+    // Zip-slip: чужой zip с ../../ перезаписал бы mods/.desktop и дал бы RCE.
+    // Проверяем ВСЕ записи до распаковки, а не только первую.
+    for (const e of entries) {
+      const name = e.entryName.replace(/\\/g, '/');
+      const norm = path.posix.normalize(name);
+      if (norm.startsWith('..') || path.posix.isAbsolute(norm) || /^[a-zA-Z]:/.test(norm)) {
+        throw new Error(`Unsafe entry in backup zip: ${name}`);
+      }
+    }
+    if (entries.length > 20000) throw new Error('Backup zip has too many entries');
 
     const savesDir = path.join(this.gameDir, 'saves');
     fs.mkdirSync(savesDir, { recursive: true });

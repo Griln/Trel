@@ -78,6 +78,7 @@ export function aggregateStats(sessions: PlaySession[], now: number = Date.now()
 export class PlaytimeService {
   private file: string;
   private open = new Map<string, number>(); // versionId → start ms
+  private refs = new Map<string, number>(); // versionId → running instances
   // cap stored sessions to avoid unbounded growth
   private static MAX = 5000;
 
@@ -88,7 +89,12 @@ export class PlaytimeService {
   private read(): PlaySession[] {
     try {
       const raw = JSON.parse(fs.readFileSync(this.file, 'utf-8'));
-      return Array.isArray(raw?.sessions) ? raw.sessions : [];
+      if (!Array.isArray(raw?.sessions)) return [];
+      // Схема: битые записи дропаем по одной, а не весь файл целиком.
+      return raw.sessions.filter((x: unknown): x is PlaySession =>
+        !!x && typeof x === 'object'
+        && Number.isFinite((x as PlaySession).start) && Number.isFinite((x as PlaySession).end)
+        && typeof (x as PlaySession).versionId === 'string');
     } catch {
       return [];
     }
@@ -98,7 +104,11 @@ export class PlaytimeService {
     try {
       const trimmed = sessions.slice(-PlaytimeService.MAX);
       fs.mkdirSync(path.dirname(this.file), { recursive: true });
-      fs.writeFileSync(this.file, JSON.stringify({ sessions: trimmed }, null, 2));
+      // Атомарно: краш посреди записи больше не оставляет пустой json.
+      const tmp = this.file + '.trel_tmp';
+      fs.writeFileSync(tmp, JSON.stringify({ sessions: trimmed }));
+      try { fs.renameSync(tmp, this.file); }
+      catch { fs.copyFileSync(tmp, this.file); try { fs.unlinkSync(tmp); } catch {} }
     } catch (e) {
       console.warn('playtime write failed:', e);
     }
@@ -107,13 +117,22 @@ export class PlaytimeService {
   /** Record the moment a version starts running. */
   recordStart(versionId: string) {
     if (!versionId) return;
-    this.open.set(versionId, Date.now());
+    // Счётчик инстансов: два окна одной версии дают одну общую сессию
+    // от первого старта до последнего выхода, а не две рваные.
+    this.refs.set(versionId, (this.refs.get(versionId) ?? 0) + 1);
+    if (!this.open.has(versionId)) this.open.set(versionId, Date.now());
   }
 
   /** Record exit; computes duration and appends a session. Ignores <30s noise. */
   recordEnd(versionId: string) {
     const start = this.open.get(versionId);
     if (!start) return;
+    const left = (this.refs.get(versionId) ?? 1) - 1;
+    if (left > 0) {
+      this.refs.set(versionId, left);
+      return; // ещё есть живые окна — сессия продолжается
+    }
+    this.refs.delete(versionId);
     this.open.delete(versionId);
     const end = Date.now();
     const durationMs = end - start;

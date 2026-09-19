@@ -1091,7 +1091,7 @@ export function describeVersion(v: VersionInfo | BedrockVersionInfo | undefined,
   if ((v as BedrockVersionInfo).type === 'bedrock') {
     return bedrockDescription(v.id, locale);
   }
-  if (locale === 'en' || locale === 'zh' || locale === 'es' || locale === 'de') {
+  if (locale === 'en') {
     return DICT_EN[v.id] ?? fallbackEnDescription(v as VersionInfo);
   }
   return DICT[v.id] ?? `Minecraft ${v.id}.`;

@@ -90,7 +90,21 @@ export class ResetService {
       const settings = JSON.parse(settingsRaw);
       const prevGameDir = typeof settings.prevGameDir === 'string' && settings.prevGameDir.length > 0
         ? settings.prevGameDir : '';
-      if (prevGameDir && prevGameDir !== this.gameDir && isPathAllowed(prevGameDir)) {
+      // prevGameDir приходит из правимого settings.json: доверяем только после
+      // строгой проверки (realpath от симлинков, запрет дома/корня/системы),
+      // иначе отравленный путь превращает сброс в удаление чужих данных.
+      const prevOk = (() => {
+        if (!prevGameDir || prevGameDir === this.gameDir || !isPathAllowed(prevGameDir)) return false;
+        const resolved = path.resolve(prevGameDir);
+        if (resolved === path.parse(resolved).root) return false;
+        if (resolved === os.homedir()) return false;
+        try {
+          const real = fs.realpathSync(resolved);
+          if (real !== resolved) return false; // симлинк — не трогаем
+        } catch { return false; } // нет папки — нечего чистить
+        return true;
+      })();
+      if (prevOk) {
         remove(path.join(prevGameDir, 'versions'));
         remove(path.join(prevGameDir, 'libraries'));
         remove(path.join(prevGameDir, 'assets'));
@@ -100,6 +114,7 @@ export class ResetService {
           remove(path.join(prevGameDir, 'saves'));
           remove(path.join(prevGameDir, 'backups'));
           remove(path.join(prevGameDir, 'resourcepacks'));
+          remove(path.join(prevGameDir, 'texturepacks'));
           remove(path.join(prevGameDir, 'shaderpacks'));
           remove(path.join(prevGameDir, 'mods'));
           remove(path.join(prevGameDir, 'screenshots'));
@@ -123,13 +138,22 @@ export class ResetService {
       remove(path.join(this.gameDir, 'saves'));
       remove(path.join(this.gameDir, 'backups'));
       remove(path.join(this.gameDir, 'resourcepacks'));
+      remove(path.join(this.gameDir, 'texturepacks'));
       remove(path.join(this.gameDir, 'shaderpacks'));
       remove(path.join(this.gameDir, 'mods'));
+      remove(path.join(this.gameDir, 'coremods'));
+      remove(path.join(this.gameDir, 'schematics'));
       remove(path.join(this.gameDir, 'screenshots'));
       remove(path.join(this.gameDir, 'options.txt'));
       remove(path.join(this.gameDir, 'usercache.json'));
       remove(path.join(this.gameDir, 'launcher_profiles.json'));
       remove(path.join(this.gameDir, '.trel_import.json'));
+      // Кеш хешей дедупликации: он описывает файлы, которых после сброса уже
+      // нет, и держать его бессмысленно (пересоберётся на первом импорте).
+      remove(path.join(this.gameDir, '.trel_hash_cache.json'));
+      // Журнал и лог импорта относятся к тем же удалённым файлам.
+      remove(path.join(this.gameDir, '.trel_import_journal.json'));
+      remove(path.join(this.gameDir, '.trel_import.log'));
 
       // Pre-Classic (rd-*, c0.*, in-*, inf-*, ранний alpha) хранит мир как
       // одинокий `level.dat` прямо в корне APPDATA/.minecraft (или, при

@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trel — Импорт · превью</title>
+<link rel="stylesheet" href="trel-design.css">
+<style>
+  .src-list{display:flex;flex-direction:column;gap:13px;margin-bottom:26px}
+  .src{display:flex;align-items:center;gap:16px;padding:18px 20px;border-radius:16px;background:var(--surface-2);
+    border:1px solid var(--border);cursor:pointer;transition:.22s var(--ease);animation:cardIn .5s var(--ease) backwards;position:relative;overflow:hidden}
+  .src:nth-child(1){animation-delay:.05s}.src:nth-child(2){animation-delay:.12s}.src:nth-child(3){animation-delay:.19s}
+  .src:hover{transform:translateY(-3px);border-color:var(--border-bright);background:var(--surface-3);box-shadow:0 12px 30px -14px rgba(0,0,0,.8)}
+  .src-ico{width:46px;height:46px;flex-shrink:0;border-radius:12px;display:grid;place-items:center;font-size:22px;
+    background:var(--surface-3);border:1px solid var(--border-strong);transition:transform .3s var(--ease)}
+  .src:hover .src-ico{transform:scale(1.08) rotate(-5deg)}
+  .src-body{flex:1;min-width:0}
+  .src-body b{font-size:15px;color:var(--fg-bright);display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+  .src-body .path{font-family:var(--mono);font-size:11px;color:var(--fg-subtle);margin-top:4px;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .src-cats{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+  .src-go{flex-shrink:0}
+
+  /* выбор категорий */
+  .cats-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:9px;margin:16px 0}
+  .cat{display:flex;align-items:center;gap:11px;padding:11px 13px;border-radius:11px;background:var(--surface-2);
+    border:1px solid var(--border);cursor:pointer;transition:.15s;font-size:13px;color:var(--fg)}
+  .cat:hover{border-color:var(--border-bright)}
+  .cat input{display:none}
+  .cat .box{width:18px;height:18px;flex-shrink:0;border-radius:5px;border:1.5px solid var(--border-strong);
+    display:grid;place-items:center;transition:.15s;background:var(--surface-3)}
+  .cat .box svg{width:11px;height:11px;color:#000;opacity:0;transition:.15s}
+  .cat input:checked ~ .box{background:#fff;border-color:#fff}
+  .cat input:checked ~ .box svg{opacity:1}
+  .cat .sz{margin-left:auto;font-family:var(--mono);font-size:10.5px;color:var(--fg-subtle)}
+
+  .dedup{display:flex;align-items:center;gap:12px;padding:13px 15px;border-radius:12px;background:rgba(94,203,111,.05);
+    border:1px solid rgba(94,203,111,.25);margin-bottom:18px}
+  .dedup .info{flex:1}
+  .dedup .info b{font-size:13.5px;color:var(--fg);display:block}
+  .dedup .info span{font-size:12px;color:var(--fg-subtle)}
+
+  /* прогресс импорта */
+  .imp-progress{padding:22px;border-radius:16px;background:var(--surface-2);border:1px solid var(--border);text-align:center}
+  .imp-stage{font-family:var(--mono);font-size:12px;color:var(--fg-muted);margin:12px 0 14px}
+  .imp-files{display:flex;flex-direction:column;gap:7px;margin-top:16px;text-align:left;max-width:420px;margin-left:auto;margin-right:auto}
+  .ifile{display:flex;align-items:center;gap:10px;font-size:12.5px;color:var(--fg-subtle)}
+  .ifile .sdot{width:9px;height:9px}
+  .ifile.done{color:var(--fg-muted)}
+  .ifile.done .sdot{background:var(--green);box-shadow:none;animation:none}
+  .ifile.now{color:var(--fg)}
+
+  .custom-pick{display:flex;gap:10px;align-items:center;padding:16px;border-radius:14px;border:1px dashed var(--border-strong);
+    background:var(--surface-2);cursor:pointer;transition:.2s}
+  .custom-pick:hover{border-color:var(--border-bright)}
+  .custom-pick .info b{font-size:14px;color:var(--fg);display:block}
+  .custom-pick .info span{font-size:12px;color:var(--fg-subtle)}
+</style>
+</head>
+<body>
+
+<div class="preview-bar">
+  <span class="tag-prev">ПРЕВЬЮ · ИМПОРТ</span>
+  <button class="on" data-t="detect">① найдены источники</button>
+  <button data-t="select">② выбор категорий</button>
+  <button data-t="progress">③ импорт идёт</button>
+</div>
+
+<div class="page-frame">
+
+  <div class="page-head">
+    <span class="eyebrow">Импорт</span>
+    <h1 class="page-title">Импорт</h1>
+    <p class="page-sub">Перенос данных из других лаунчеров и установок Minecraft</p>
+  </div>
+
+  <!-- ① НАЙДЕНО -->
+  <section class="pane show" id="detect">
+    <div class="card-head" style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+      <h4 style="flex:1">Источники импорта</h4>
+      <button class="btn ghost sm">⟳ Обновить</button>
+    </div>
+    <p class="hint" style="margin-bottom:12px">Trel нашёл эти установки Minecraft. Можно также указать любую папку .minecraft вручную.</p>
+    <div class="src-list">
+      <div class="src" onclick="switchPane('select')">
+        <div class="src-ico">🟠</div>
+        <div class="src-body">
+          <b>TLauncher <span class="chip amber">TLauncherProfile.json</span></b>
+          <div class="path">C:\Users\user\AppData\Roaming\.minecraft</div>
+          <div class="src-cats">
+            <span class="chip">7 версий</span><span class="chip">3 мира</span><span class="chip">12 модов</span><span class="chip">2 аккаунта</span><span class="chip">4,2 ГБ</span>
+          </div>
+        </div>
+        <button class="btn primary sm src-go">Импортировать</button>
+      </div>
+      <div class="src" onclick="switchPane('select')">
+        <div class="src-ico">🔵</div>
+        <div class="src-body">
+          <b>Minecraft Launcher <span class="chip blue">launcher_accounts.json</span></b>
+          <div class="path">C:\Users\user\AppData\Roaming\.minecraft</div>
+          <div class="src-cats">
+            <span class="chip">2 версии</span><span class="chip">1 мир</span><span class="chip">1 аккаунт</span><span class="chip">890 МБ</span>
+          </div>
+        </div>
+        <button class="btn primary sm src-go">Импортировать</button>
+      </div>
+      <div class="src" onclick="switchPane('select')">
+        <div class="src-ico">📁</div>
+        <div class="src-body">
+          <b>Папка с данными Minecraft <span class="chip">обычная .minecraft</span></b>
+          <div class="path">D:\Games\minecraft-old\.minecraft</div>
+          <div class="src-cats">
+            <span class="chip">5 миров</span><span class="chip">8 скриншотов</span><span class="chip">servers.dat</span><span class="chip">1,1 ГБ</span>
+          </div>
+        </div>
+        <button class="btn primary sm src-go">Импортировать</button>
+      </div>
+    </div>
+
+    <div class="custom-pick">
+      <div class="src-ico">🗂</div>
+      <div class="info" style="flex:1">
+        <b>Или укажите папку .minecraft вручную</b>
+        <span>%APPDATA%\.minecraft</span>
+      </div>
+      <button class="btn ghost sm">Обзор</button>
+      <button class="btn ghost sm">Из .zip/.mrpack</button>
+    </div>
+    <p class="note">* Импорт копирует данные в Trel и не удаляет исходные файлы.</p>
+    <p class="note">Поддерживаются: Minecraft (официальный и Microsoft Store), TLauncher, SKlauncher (включая skprofiles), ATLauncher, Crystal, Cristalix, Prism Launcher, PolyMC, PollyMC, Fjord Launcher, MultiMC, Salwyrr, CurseForge, GDLauncher (включая Carbon), Modrinth App, HMCL, Technic, FTB App, Betacraft, Nostalgia, Legacy Fabric, LabyMod и обычные папки .minecraft.</p>
+  </section>
+
+  <!-- ② ВЫБОР -->
+  <section class="pane" id="select">
+    <div class="card" style="max-width:720px">
+      <div class="card-head">
+        <h4>TLauncher — что переносим?</h4>
+        <button class="btn ghost sm" onclick="switchPane('detect')">← назад</button>
+      </div>
+      <div class="cats-grid">
+        <label class="cat"><input type="checkbox" checked><span class="box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><path d="m5 12 5 5 9-11"/></svg></span>Аккаунты<span class="sz">2</span></label>
+        <label class="cat"><input type="checkbox" checked><span class="box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><path d="m5 12 5 5 9-11"/></svg></span>Миры<span class="sz">3 · 1,8 ГБ</span></label>
+        <label class="cat"><input type="checkbox" checked><span class="box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><path d="m5 12 5 5 9-11"/></svg></span>Моды<span class="sz">12 · 240 МБ</span></label>
+        <label class="cat"><input type="checkbox" checked><span class="box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><path d="m5 12 5 5 9-11"/></svg></span>Шейдеры<span class="sz">2 · 8 МБ</span></label>
+        <label class="cat"><input type="checkbox" checked><span class="box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><path d="m5 12 5 5 9-11"/></svg></span>Ресурс-паки<span class="sz">4 · 120 МБ</span></label>
+        <label class="cat"><input type="checkbox" checked><span class="box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><path d="m5 12 5 5 9-11"/></svg></span>Серверы (servers.dat)<span class="sz">1</span></label>
+        <label class="cat"><input type="checkbox"><span class="box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><path d="m5 12 5 5 9-11"/></svg></span>Скриншоты<span class="sz">28 · 64 МБ</span></label>
+        <label class="cat"><input type="checkbox" checked><span class="box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><path d="m5 12 5 5 9-11"/></svg></span>Настройки (options.txt)<span class="sz">1</span></label>
+        <label class="cat"><input type="checkbox" checked><span class="box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><path d="m5 12 5 5 9-11"/></svg></span>Версии (установленные)<span class="sz">7 · 2,1 ГБ</span></label>
+      </div>
+      <div class="dedup">
+        <label class="toggle"><input type="checkbox" checked><span class="track"></span></label>
+        <div class="info"><b>Не копировать дубликаты</b><span>Если файл с таким же именем уже есть в Trel — пропустить</span></div>
+      </div>
+      <button class="btn primary" style="width:100%;justify-content:center" onclick="switchPane('progress')">Начать импорт · ~4,2 ГБ</button>
+    </div>
+  </section>
+
+  <!-- ③ ПРОГРЕСС -->
+  <section class="pane" id="progress">
+    <div class="imp-progress" style="max-width:560px;margin:20px auto 0">
+      <div style="font-size:34px;animation:bob 1.6s ease-in-out infinite;display:inline-block">📦</div>
+      <h3 style="font-family:var(--display);font-weight:700;font-size:18px;color:var(--fg-bright);margin-top:10px">Импорт из TLauncher</h3>
+      <div class="imp-stage">Копирование миров… 214 из 380 файлов · 56%</div>
+      <div class="progress"><i style="width:56%"></i></div>
+      <div class="imp-files">
+        <div class="ifile done"><span class="sdot"></span>Аккаунты — 2 ника перенесено</div>
+        <div class="ifile done"><span class="sdot"></span>Моды — 12 файлов</div>
+        <div class="ifile done"><span class="sdot"></span>Шейдеры и ресурс-паки — 6 файлов</div>
+        <div class="ifile now"><span class="sdot ok"></span>Миры — копирование (214/380)…</div>
+        <div class="ifile"><span class="sdot off"></span>Версии — 7 профилей (локальные скопируются, Mojang-версии докачаются)</div>
+      </div>
+    </div>
+    <p class="note">* по окончании — отчёт: что скопировано, что пропущено как дубликаты, и первые 5 ошибок, если они были.</p>
+  </section>
+
+</div>
+<script src="trel-preview.js"></script>
+<script>
+  document.querySelectorAll('.cat input').forEach(i=>i.addEventListener('change',()=>{
+    i.closest('.cat').style.opacity=i.checked?'1':'.55';
+  }));
+</script>
+</body>
+</html>

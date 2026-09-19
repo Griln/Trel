@@ -148,6 +148,11 @@ export class MinecraftService {
   private launchingVersions = new Set<string>();
   /** Версии, которые уже запущены и ещё не завершились. */
   private runningVersions = new Set<string>();
+
+  /** Запущена ли сейчас хотя бы одна игра (для хоткея скриншотов и т.п.). */
+  get hasRunningGame(): boolean {
+    return this.runningVersions.size > 0 || this.launchingVersions.size > 0;
+  }
   /** Mutex для revertToVanilla — предотвращает race condition при параллельных IPC-вызовах. */
   private revertLock: Promise<unknown> = Promise.resolve();
   /** Учёт игрового времени по версиям. */
@@ -295,6 +300,9 @@ export class MinecraftService {
   }
 
   private adbCmd(adb: string, serial: string | undefined, args: string): string {
+    // Серийник едет в shell-строку: режем всё кроме легального алфавита.
+    // Злой серийник от чужого adb-девайса иначе даёт RCE (shell:true ниже).
+    if (serial && !/^[a-zA-Z0-9._:-]{1,64}$/.test(serial)) throw new Error(`Unsafe ADB serial: ${serial}`);
     return `"${adb}" ${this.adbServerArgsForSerial(serial)}${args}`;
   }
 
@@ -870,6 +878,28 @@ export class MinecraftService {
   }
 
   /**
+   * Аккуратная чистка: старые сборки создавали папки контента
+   * (mods/shaderpacks/resourcepacks/texturepacks) даже для ванильных версий.
+   * Удаляем их ТОЛЬКО если они пустые и версия без лоадера — пользовательские
+   * файлы никогда не трогаем. Лоадерные и Bedrock-версии не затрагиваем.
+   */
+  cleanupVanillaContentFolders(): void {
+    try {
+      for (const d of this.installedDetailed()) {
+        if (d.edition !== 'java' || d.loader) continue;
+        for (const sub of ['mods', 'shaderpacks', 'resourcepacks', 'texturepacks']) {
+          const p = path.join(this.gameDir, 'versions', d.id, sub);
+          try {
+            if (fs.existsSync(p) && fs.readdirSync(p).length === 0) {
+              fs.rmSync(p, { recursive: true, force: true });
+            }
+          } catch {}
+        }
+      }
+    } catch {}
+  }
+
+  /**
    * Проходится по установленным лоадер-профилям и для каждого вызывает
    * flatten — это убирает «двойные» папки (lоадер + родительская ваниль),
    * сохраняя содержимое (mods/saves/...) внутри лоадера.
@@ -1229,6 +1259,18 @@ export class MinecraftService {
     }
     const result = await this.installer.install(versionId, win);
     this.ensureContentFolders(versionId);
+    // Докачиваем нужную Java сразу при установке, чтобы версия была полностью
+    // готова к запуску (раньше Java качалась только в момент launch, из-за чего
+    // надпись «Java N скачается» оставалась после установки). Ошибку Java не
+    // пробрасываем: версия установлена, Java докачается при запуске.
+    const major = result?.javaVersion?.majorVersion;
+    if (typeof major === 'number' && major > 0) {
+      try {
+        await this.java.ensure(major, win);
+      } catch (e) {
+        console.warn('[install] Java ensure failed, will retry on launch:', (e as Error)?.message ?? e);
+      }
+    }
     return result;
   }
 
@@ -1278,6 +1320,25 @@ export class MinecraftService {
     // the delete in exit handler fires before our add below.
     this.runningVersions.add(opts.versionId);
     this.playtime.recordStart(opts.versionId);
+    // Автобэкап миров перед запуском (не чаще раза в сутки, тихо в фоне).
+    // Падение бэкапа запуск не блокирует — игра важнее страховки.
+    if (settings.autoBackup) {
+      try {
+        const marker = path.join(this.gameDir, '.trel_autobackup');
+        let last = 0;
+        try { last = Number(fs.readFileSync(marker, 'utf-8')) || 0; } catch { /* first run */ }
+        if (Date.now() - last > 24 * 3600 * 1000) {
+          const worlds = this.worlds.list();
+          for (const w of worlds.slice(0, 50)) {
+            try { this.worlds.backup(w.name); } catch (e) {
+              win.webContents.send('minecraft:log', `[launcher] Auto-backup failed for ${w.name}: ${(e as Error).message}\n`);
+            }
+          }
+          try { fs.writeFileSync(marker, String(Date.now()), 'utf-8'); } catch { /* ignore */ }
+          if (worlds.length > 0) win.webContents.send('minecraft:log', `[launcher] Auto-backup done: ${worlds.length} world(s)\n`);
+        }
+      } catch { /* backup must never break launch */ }
+    }
     try {
       const pid = await this.doLaunch(opts, win, settings);
       win.webContents.send('minecraft:launchStart', opts.versionId);
@@ -1358,18 +1419,10 @@ export class MinecraftService {
     if (fs.existsSync(clientJar) && fs.existsSync(jsonPath)) {
       try {
         versionJson = JSON.parse(fs.readFileSync(jsonPath, 'utf-8'));
-        requiredMajor = versionJson.javaVersion?.majorVersion;
-        if (!requiredMajor && versionJson.inheritsFrom) {
-          const parentJson = path.join(this.gameDir, 'versions', versionJson.inheritsFrom, versionJson.inheritsFrom + '.json');
-          if (fs.existsSync(parentJson)) {
-            const pj = JSON.parse(fs.readFileSync(parentJson, 'utf-8'));
-            requiredMajor = pj.javaVersion?.majorVersion;
-          }
-        }
-        requiredMajor = requiredMajor ?? 8;
-      } catch {
-        requiredMajor = 8;
-      }
+      } catch {}
+      // Локальный json + цепочка наследования + эвристика по id — без сети.
+      const { requiredJavaMajorForVersion } = await import('./loaders');
+      requiredMajor = requiredJavaMajorForVersion(this.gameDir, opts.versionId);
     } else {
       const ver = await this.install(opts.versionId, win);
       requiredMajor = ver.javaVersion?.majorVersion ?? 8;
@@ -1487,9 +1540,13 @@ export class MinecraftService {
     };
 
     if (settings.preCommand) {
-      try {
-        require('child_process').execSync(settings.preCommand, { cwd: this.gameDir, timeout: 30_000, stdio: 'ignore' });
-      } catch { /* ignore pre-command errors */ }
+      await new Promise<void>((resolve) => {
+        try {
+          const { exec } = require('node:child_process');
+          const cp = exec(settings.preCommand, { cwd: this.gameDir, timeout: 30_000, windowsHide: true }, () => resolve());
+          cp.on('error', () => resolve());
+        } catch { resolve(); }
+      });
     }
 
     const proc = await launch(launchOption);
@@ -1514,7 +1571,9 @@ export class MinecraftService {
       }
       if (settings.postCommand) {
         try {
-          require('child_process').execSync(settings.postCommand, { cwd: this.gameDir, timeout: 30_000, stdio: 'ignore' });
+          const { exec } = require('node:child_process');
+          const cp = exec(settings.postCommand, { cwd: this.gameDir, timeout: 30_000, windowsHide: true });
+          cp.on('error', () => {});
         } catch { /* ignore post-command errors */ }
       }
     });

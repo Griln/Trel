@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trel — Настройки · превью</title>
+<link rel="stylesheet" href="trel-design.css">
+<style>
+  .sets-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:stretch}
+  .sets-grid .span2{grid-column:1/-1}
+  .sets-grid.cols3{grid-template-columns:repeat(3,1fr)}
+  .sets-grid > .card{display:flex;flex-direction:column;min-width:0;height:100%}
+  .sets-grid > .card > .grow{flex:1}
+  .card-head + .grow > .set-row:first-child{padding-top:0}
+  @media(max-width:760px){
+    .sets-grid,.sets-grid.cols3{grid-template-columns:1fr}
+  }
+
+  .set-row{display:flex;align-items:center;gap:14px;padding:12px 0;border-bottom:1px solid var(--border)}
+  .set-row:last-child{border-bottom:none}
+  .card-head + .set-row{padding-top:0}
+  .set-row .info{flex:1;min-width:0}
+  .set-row .info b{font-size:14px;color:var(--fg);display:block;line-height:1.3}
+  .set-row .info span{font-size:12px;color:var(--fg-subtle);display:block;margin-top:2px}
+
+  /* темы */
+  .themes{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+  @media(max-width:760px){.themes{grid-template-columns:1fr}}
+  .theme-card{appearance:none;font:inherit;color:inherit;cursor:pointer;border:1px solid var(--border);border-radius:14px;padding:14px;background:var(--surface-3);
+    transition:.22s var(--ease);position:relative;text-align:left;width:100%}
+  .theme-card:hover{transform:translateY(-3px);border-color:var(--border-bright)}
+  .theme-card.on{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+  .theme-card.on::after{content:"✓";position:absolute;top:10px;right:12px;width:20px;height:20px;border-radius:50%;
+    background:var(--accent);color:var(--accent-fg);font-size:11px;font-weight:800;display:grid;place-items:center}
+  .swatches{display:flex;gap:5px;margin-bottom:10px}
+  .swatches i{width:22px;height:22px;border-radius:6px;border:1px solid rgba(127,127,127,.25)}
+  .theme-card b{font-family:var(--display);font-size:13px;color:var(--fg-bright);display:block}
+  .theme-card span{font-size:11.5px;color:var(--fg-subtle)}
+
+  /* языки — на всю ширину карточки */
+  .lang-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:4px}
+  .lang-grid .btn.ghost{background:rgba(127,127,127,.07);border-color:var(--border-strong);color:var(--fg);justify-content:center}
+  .lang-grid .btn.ghost.on{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent);color:var(--fg-bright)}
+
+  /* java list */
+  .java-row{display:flex;align-items:center;gap:12px;padding:11px 14px;border-radius:11px;background:var(--surface-3);
+    border:1px solid var(--border);margin-bottom:8px;transition:.18s;cursor:pointer}
+  .java-row:last-of-type{margin-bottom:0}
+  .java-row:hover{border-color:var(--border-bright)}
+  .java-row .jv{font-family:var(--mono);font-size:12.5px;font-weight:700;color:var(--fg-bright);min-width:74px}
+  .java-row .jp{font-family:var(--mono);font-size:11px;color:var(--fg-subtle);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .java-row.active{border-color:rgba(94,203,111,.4);background:rgba(94,203,111,.05)}
+
+  .mem-readout{font-family:var(--display);font-weight:900;font-size:26px;color:var(--fg-bright);letter-spacing:-.5px}
+  .mem-readout small{font-size:13px;color:var(--fg-subtle);font-weight:600;font-family:var(--body);letter-spacing:0}
+  .mem-scale{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--fg-subtle);margin-top:6px}
+
+  /* режимы окна — компактные строки, не жирные карточки */
+  .mode-list{display:flex;flex-direction:column;gap:8px}
+  .mode-card{appearance:none;font:inherit;color:inherit;display:flex;align-items:center;gap:12px;cursor:pointer;border:1px solid var(--border);border-radius:12px;
+    padding:11px 14px;background:var(--surface-3);transition:.18s;text-align:left;width:100%}
+  .mode-card:hover{border-color:var(--border-bright)}
+  .mode-card.on{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+  .mode-card .info{flex:1;min-width:0}
+  .mode-card b{font-size:13.5px;color:var(--fg-bright);display:block;line-height:1.3}
+  .mode-card span{font-size:12px;color:var(--fg-subtle)}
+  .radio{width:16px;height:16px;border-radius:50%;border:2px solid var(--border-strong);flex-shrink:0;position:relative}
+  .mode-card.on .radio{border-color:var(--accent)}
+  .mode-card.on .radio::after{content:"";position:absolute;inset:3px;border-radius:50%;background:var(--accent)}
+
+  .dim-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}
+  .dim-grid.hidden{display:none}
+  .input-sm{padding:9px 12px;font-size:13px}
+
+  .path-box{font-family:var(--mono);font-size:12.5px;font-weight:600;color:var(--fg-bright);
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:var(--surface-3);border:1px solid var(--border);
+    border-radius:10px;padding:10px 12px}
+
+  .disk-row{display:grid;grid-template-columns:110px 1fr auto;gap:10px;align-items:center;font-size:13px}
+  .disk-bar{height:8px;border-radius:5px;background:var(--surface-4);overflow:hidden}
+  .disk-bar > i{display:block;height:100%;border-radius:5px;background:var(--accent)}
+  .clean-list{display:flex;flex-direction:column;gap:8px;margin:4px 0 14px;font-size:13px;color:var(--fg-muted)}
+  .clean-list li{display:flex;gap:8px;align-items:flex-start;list-style:none}
+  .clean-list li::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--fg-subtle);margin-top:7px;flex-shrink:0}
+  .clean-list li.safe::before{background:var(--green)}
+  .clean-list li.keep::before{background:var(--amber)}
+
+  .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:auto;padding-top:14px}
+  .status-line{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:2px}
+
+  .danger-card{border-color:rgba(212,87,78,.25);
+    background:linear-gradient(140deg,rgba(212,87,78,.05),var(--surface-2) 50%)}
+  .danger-card h4{color:var(--red)}
+  .danger-card p{font-size:13px;color:var(--fg-muted);line-height:1.55;margin-bottom:0}
+</style>
+</head>
+<body>
+
+<div class="preview-bar">
+  <span class="tag-prev">ПРЕВЬЮ · НАСТРОЙКИ</span>
+  <button class="on" data-t="general">① общие</button>
+  <button data-t="game">② игра</button>
+  <button data-t="disk">③ диск</button>
+  <button data-t="danger">④ опасная зона</button>
+</div>
+
+<div class="page-frame">
+
+  <div class="page-head">
+    <span class="eyebrow">Лаунчер</span>
+    <h1 class="page-title">Настройки</h1>
+    <p class="page-sub">Всё, что влияет на запуск игры и сам лаунчер. Применяется сразу, без кнопки «Сохранить».</p>
+  </div>
+
+  <div class="tabs" data-tabs style="margin-bottom:24px">
+    <button class="tab on" data-target="general">Общие</button>
+    <button class="tab" data-target="game">Игра</button>
+    <button class="tab" data-target="disk">Диск</button>
+    <button class="tab" data-target="danger">Опасная зона</button>
+  </div>
+
+  <!-- ① ОБЩИЕ -->
+  <section class="pane show" id="general">
+    <div class="sets-grid stagger">
+      <div class="card span2">
+        <div class="card-head"><h4>Тема интерфейса</h4></div>
+        <div class="themes">
+          <button type="button" class="theme-card on" data-theme="">
+            <div class="swatches"><i style="background:#0a0a0a"></i><i style="background:#131313"></i><i style="background:#fff"></i></div>
+            <b>Mono</b><span>Чёрный с белым акцентом, без декора</span>
+          </button>
+          <button type="button" class="theme-card" data-theme="eclipse">
+            <div class="swatches"><i style="background:#f4f5f8"></i><i style="background:#fff"></i><i style="background:#1a1a1a"></i></div>
+            <b>Eclipse</b><span>Светлая дневная, графитовый акцент</span>
+          </button>
+          <button type="button" class="theme-card" data-theme="voxel">
+            <div class="swatches"><i style="background:#0d1612"></i><i style="background:#50c878"></i><i style="background:#ffd93d"></i></div>
+            <b>Voxel</b><span>Изумруд и золото, в духе Minecraft</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h4>Язык и интерфейс</h4></div>
+        <div class="lang-grid">
+          <button type="button" class="btn ghost sm on">Русский</button>
+          <button type="button" class="btn ghost sm">English</button>
+        </div>
+        <div class="set-row">
+          <div class="info"><b>Анимация при входе</b><span>Короткая заставка с логотипом</span></div>
+          <label class="toggle"><input type="checkbox" checked><span class="track"></span></label>
+        </div>
+        <div class="set-row">
+          <div class="info"><b>Скрывать левую панель</b><span>Через 5 секунд бездействия на вкладке</span></div>
+          <label class="toggle"><input type="checkbox" checked><span class="track"></span></label>
+        </div>
+        <div class="set-row">
+          <div class="info"><b>Обучение</b><span>Тур по разделам лаунчера</span></div>
+          <button type="button" class="btn ghost sm">Запустить тур</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h4>Система</h4></div>
+        <div class="set-row">
+          <div class="info"><b>Запускать с системой</b><span>Сейчас выключено — Trel не стартует вместе с ОС</span></div>
+          <label class="toggle"><input type="checkbox"><span class="track"></span></label>
+        </div>
+        <div class="set-row">
+          <div class="info"><b>Ярлык на рабочем столе</b><span>Сейчас не установлен</span></div>
+          <button type="button" class="btn ghost sm">Добавить</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h4>Обновление</h4>
+          <span class="chip mono">v0.4.0</span>
+        </div>
+        <div class="grow">
+          <div class="status-line">
+            <span class="sdot ok"></span>
+            <span class="hint" style="margin:0">Актуальная версия · проверено сегодня</span>
+          </div>
+          <div class="hint">Проверка и установка с GitHub Releases. Portable — вручную.</div>
+        </div>
+        <div class="actions">
+          <button type="button" class="btn ghost sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 12a9 9 0 1 1-2.6-6.4M21 3v6h-6"/></svg>Проверить</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h4>Папка игры</h4></div>
+        <div class="grow">
+          <div class="path-box" title="/home/user/.config/trel">/home/user/.config/trel</div>
+          <div class="hint">Версии, миры, Java и настройки. При переносе спросим: переместить файлы или только сменить путь.</div>
+        </div>
+        <div class="actions">
+          <button type="button" class="btn ghost sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.7-.9L9.6 3.9A2 2 0 0 0 7.9 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>Открыть</button>
+          <button type="button" class="btn ghost sm">Перенести</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ② ИГРА -->
+  <section class="pane" id="game">
+    <div class="sets-grid stagger">
+      <div class="card span2">
+        <div class="card-head"><h4>Память JVM</h4><span class="mem-readout" id="memVal">2,0 <small>ГБ</small></span></div>
+        <input type="range" class="slider" min="1" max="16" step="0.25" value="2" oninput="updMem(this)">
+        <div class="mem-scale"><span>1 ГБ</span><span>мало для модов</span><span>оптимально</span><span>16 ГБ</span></div>
+        <div class="hint">Для ванили хватает 2 ГБ. Тяжёлым модпакам обычно нужно 6–8 ГБ. Пресеты флагов ниже память не трогают.</div>
+      </div>
+
+      <div class="card span2">
+        <div class="card-head"><h4>Java</h4><button type="button" class="btn ghost sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 12a9 9 0 1 1-2.6-6.4M21 3v6h-6"/></svg>Обновить список</button></div>
+        <div class="hint" style="margin:0 0 8px">Обнаруженные установки — нажмите, чтобы выбрать</div>
+        <div class="java-row" data-java><span class="jv">Java 21</span><span class="jp">/usr/lib/jvm/java-21-openjdk/bin/java</span></div>
+        <div class="java-row active" data-java><span class="jv">Java 24</span><span class="jp">/opt/easyLauncher/bootstrap/bin/java</span><span class="chip green">выбрана</span></div>
+        <label class="field-label" style="margin-top:14px">Свой путь</label>
+        <div style="display:flex;gap:10px">
+          <input class="input mono" placeholder="Путь к java" style="flex:1">
+          <button type="button" class="btn ghost sm">Сбросить</button>
+        </div>
+        <div class="hint">Пусто — лаунчер подберёт Java сам</div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h4>Окно игры</h4></div>
+        <div class="mode-list">
+          <button type="button" class="mode-card on" data-mode="windowed">
+            <div class="info"><b>Оконный</b><span>Запускается в окне заданного размера</span></div>
+            <i class="radio"></i>
+          </button>
+          <button type="button" class="mode-card" data-mode="fullscreen">
+            <div class="info"><b>Полноэкранный</b><span>На весь экран, размер не нужен</span></div>
+            <i class="radio"></i>
+          </button>
+        </div>
+        <div class="dim-grid" id="winDims">
+          <div>
+            <label class="field-label">Ширина</label>
+            <input class="input input-sm" inputmode="numeric" placeholder="854">
+          </div>
+          <div>
+            <label class="field-label">Высота</label>
+            <input class="input input-sm" inputmode="numeric" placeholder="480">
+          </div>
+        </div>
+        <div class="hint">Работает для Minecraft 1.6 и новее</div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h4>Поведение</h4></div>
+        <div class="set-row">
+          <div class="info"><b>Скрывать лаунчер</b><span>Когда игра уже запустилась</span></div>
+          <label class="toggle"><input type="checkbox"><span class="track"></span></label>
+        </div>
+        <div class="set-row">
+          <div class="info"><b>Блокировать второй запуск</b><span>Пока игра не закрыта</span></div>
+          <label class="toggle"><input type="checkbox"><span class="track"></span></label>
+        </div>
+        <div class="set-row">
+          <div class="info"><b>Консоль логов</b><span>Отдельное окно при запуске</span></div>
+          <label class="toggle"><input type="checkbox"><span class="track"></span></label>
+        </div>
+        <div class="set-row">
+          <div class="info"><b>Автобэкап миров</b><span>Перед запуском, не чаще раза в сутки</span></div>
+          <label class="toggle"><input type="checkbox"><span class="track"></span></label>
+        </div>
+      </div>
+
+      <div class="card span2">
+        <div class="card-head"><h4>JVM аргументы</h4><span class="chip">для продвинутых</span></div>
+        <label class="field-label">Дополнительные флаги, например -XX:+UseG1GC</label>
+        <input class="input mono" id="jvmInput" value="-XX:+UseG1GC -XX:MaxGCPauseMillis=50 -Dfile.encoding=UTF-8" style="font-size:12.5px">
+        <div style="display:flex;gap:8px;margin-top:10px;align-items:center;flex-wrap:wrap">
+          <span class="hint" style="margin:0">Пресет:</span>
+          <button type="button" class="btn ghost sm" data-preset onclick="pickPreset(this,'potato')">🥔 Картошка</button>
+          <button type="button" class="btn ghost sm on" data-preset onclick="pickPreset(this,'balanced')">⚖ Баланс</button>
+          <button type="button" class="btn ghost sm" data-preset onclick="pickPreset(this,'ultra')">🚀 Ультра</button>
+          <button type="button" class="btn ghost sm" onclick="showPresetInfo()" style="margin-left:auto">Что это?</button>
+        </div>
+        <div class="hint" id="presetHint">Баланс: быстрый GC без компромиссов. Пауза сборщика ≤50 мс.</div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h4>Команды запуска</h4></div>
+        <div class="grow">
+          <label class="field-label">Перед запуском</label>
+          <input class="input mono" placeholder="Команда…" style="font-size:12.5px">
+          <label class="field-label" style="margin-top:12px">После завершения</label>
+          <input class="input mono" placeholder="Команда…" style="font-size:12.5px">
+        </div>
+        <div class="hint">Выполняются на этой машине до и после игры</div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h4>Прокси</h4></div>
+        <label class="field-label">Для скачиваний</label>
+        <div style="display:flex;gap:10px">
+          <input class="input mono" placeholder="http://127.0.0.1:7890" style="flex:1;font-size:12.5px">
+          <button type="button" class="btn ghost sm">Проверить</button>
+        </div>
+        <div class="hint">http(s)://host:port, можно с user:pass. Пусто — напрямую.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ③ ДИСК -->
+  <section class="pane" id="disk">
+    <div class="sets-grid stagger">
+      <div class="card">
+        <div class="card-head"><h4>Место на диске</h4><button type="button" class="btn ghost sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 12a9 9 0 1 1-2.6-6.4M21 3v6h-6"/></svg>Обновить</button></div>
+        <div class="hint" style="margin:0 0 12px">Папка игры: 2,4 ГБ · свободно 6,88 ГБ</div>
+        <div style="display:grid;gap:12px">
+          <div class="disk-row"><span class="mono">versions</span><div class="disk-bar"><i style="width:82%"></i></div><span class="hint" style="margin:0">1,9 ГБ</span></div>
+          <div class="disk-row"><span class="mono">libraries</span><div class="disk-bar"><i style="width:38%"></i></div><span class="hint" style="margin:0">620 МБ</span></div>
+          <div class="disk-row"><span class="mono">saves</span><div class="disk-bar"><i style="width:24%"></i></div><span class="hint" style="margin:0">402 МБ</span></div>
+          <div class="disk-row"><span class="mono">assets</span><div class="disk-bar"><i style="width:18%"></i></div><span class="hint" style="margin:0">280 МБ</span></div>
+          <div class="disk-row"><span class="mono">mods</span><div class="disk-bar"><i style="width:10%"></i></div><span class="hint" style="margin:0">96 МБ</span></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h4>Чистка</h4></div>
+        <div class="grow">
+          <ul class="clean-list">
+            <li class="safe">Логи и краш-репорты — можно удалить</li>
+            <li class="safe">Временные файлы и хвосты загрузок</li>
+            <li class="keep">Миры, моды и версии не трогаем</li>
+          </ul>
+        </div>
+        <div class="actions">
+          <button type="button" class="btn ghost sm">Почистить логи</button>
+          <button type="button" class="btn ghost sm">Почистить tmp</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ④ ОПАСНАЯ ЗОНА -->
+  <section class="pane" id="danger">
+    <div class="sets-grid cols3 stagger">
+      <div class="card danger-card">
+        <div class="card-head"><h4>Сбросить TrelEmu</h4><span class="chip red">Windows</span></div>
+        <p class="grow">Остановит эмулятор и удалит скачанную папку. Bedrock скачает TrelEmu заново. Сборочные ресурсы лаунчера не трогаем.</p>
+        <div class="actions">
+          <button type="button" class="btn danger sm" onclick="dlgEmu()">Сбросить эмулятор</button>
+        </div>
+      </div>
+
+      <div class="card danger-card">
+        <div class="card-head"><h4>Сбросить лаунчер</h4></div>
+        <p class="grow">Удалит установленные версии, моды и настройки. Можно сохранить аккаунты и миры.</p>
+        <div class="actions">
+          <button type="button" class="btn danger sm" onclick="dlgReset()">Сбросить лаунчер</button>
+        </div>
+      </div>
+
+      <div class="card danger-card">
+        <div class="card-head"><h4>Удалить лаунчер</h4></div>
+        <p class="grow">Полностью уберёт Trel с компьютера. Данные папки игры можно оставить.</p>
+        <div class="actions">
+          <button type="button" class="btn danger sm" onclick="dlgUninstall()">Удалить лаунчер</button>
+        </div>
+      </div>
+    </div>
+    <p class="note">Настройки хранятся локально в settings.json. Темы применяются сразу. Опасные действия всегда требуют подтверждения.</p>
+  </section>
+
+</div>
+<script src="trel-preview.js"></script>
+<script>
+  function applyTheme(id){
+    if (id) document.documentElement.dataset.theme = id;
+    else delete document.documentElement.dataset.theme;
+    document.querySelectorAll('.theme-card').forEach((c) => {
+      c.classList.toggle('on', (c.dataset.theme || '') === id);
+    });
+    document.querySelectorAll('.theme-dock .tdot').forEach((d) => {
+      const isMono = !id;
+      d.classList.toggle('on', isMono ? d.classList.contains('mono') : d.classList.contains(id));
+    });
+  }
+  document.querySelectorAll('.theme-card').forEach((c) => {
+    c.addEventListener('click', () => applyTheme(c.dataset.theme || ''));
+  });
+
+  document.querySelectorAll('.lang-grid .btn').forEach((b) => {
+    b.addEventListener('click', () => {
+      document.querySelectorAll('.lang-grid .btn').forEach((x) => x.classList.toggle('on', x === b));
+    });
+  });
+
+  document.querySelectorAll('.mode-card').forEach((c) => {
+    c.addEventListener('click', () => {
+      document.querySelectorAll('.mode-card').forEach((x) => x.classList.toggle('on', x === c));
+      document.getElementById('winDims').classList.toggle('hidden', c.dataset.mode === 'fullscreen');
+    });
+  });
+
+  document.querySelectorAll('[data-java]').forEach((row) => {
+    row.addEventListener('click', () => {
+      document.querySelectorAll('[data-java]').forEach((r) => {
+        r.classList.toggle('active', r === row);
+        const chip = r.querySelector('.chip');
+        if (chip) chip.remove();
+      });
+      if (!row.querySelector('.chip')) {
+        const chip = document.createElement('span');
+        chip.className = 'chip green';
+        chip.textContent = 'выбрана';
+        row.appendChild(chip);
+      }
+    });
+  });
+
+  function updMem(el){
+    const n = (+el.value).toFixed(1).replace('.', ',');
+    document.getElementById('memVal').innerHTML = n + ' <small>ГБ</small>';
+  }
+
+  const PRESETS = {
+    potato:   {flags:'-XX:+UseG1GC -XX:MaxGCPauseMillis=100 -XX:+DisableExplicitGC -Dfile.encoding=UTF-8', desc:'Картошка: мягкий GC для слабых ПК — редкие паузы до 100 мс.'},
+    balanced: {flags:'-XX:+UseG1GC -XX:MaxGCPauseMillis=50 -Dfile.encoding=UTF-8', desc:'Баланс: быстрый GC без компромиссов. Пауза сборщика ≤50 мс.'},
+    ultra:    {flags:'-XX:+UseG1GC -XX:MaxGCPauseMillis=25 -XX:+AlwaysPreTouch -Dfile.encoding=UTF-8', desc:'Ультра: пауза ≤25 мс + AlwaysPreTouch — резервирует всю память заранее.'},
+  };
+  function pickPreset(btn, id){
+    document.querySelectorAll('[data-preset]').forEach((x) => x.classList.remove('on'));
+    btn.classList.add('on');
+    document.getElementById('jvmInput').value = PRESETS[id].flags;
+    const h = document.getElementById('presetHint');
+    if (h) h.textContent = PRESETS[id].desc;
+  }
+  function showPresetInfo(){
+    dlgShow('Что такое пресеты флагов?', 'Готовые наборы аргументов JVM: настраивают сборщик мусора — как игра чистит память. «Картошка» — редкие длинные паузы, для слабых ПК. «Ультра» — частые короткие паузы и предварительное резервирование памяти. Пресет не меняет объём памяти — только слайдер выше.', [['Понятно','primary',null]]);
+  }
+
+  function dlgShow(title, bodyHtml, btns){
+    let ov = document.getElementById('dlgOv');
+    if (!ov) {
+      ov = document.createElement('div'); ov.id = 'dlgOv'; ov.className = 'overlay';
+      ov.innerHTML = `<div class="modal" style="max-width:480px"><button class="x" onclick="dlgClose()">✕</button><h3 id="dlgT"></h3><p id="dlgB" style="font-size:13.5px;color:var(--fg-muted);line-height:1.6"></p><div id="dlgBtns" style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px;flex-wrap:wrap"></div></div>`;
+      ov.addEventListener('click', (e) => { if (e.target === ov) dlgClose(); });
+      document.body.appendChild(ov);
+    }
+    document.getElementById('dlgT').textContent = title;
+    document.getElementById('dlgB').innerHTML = bodyHtml;
+    const box = document.getElementById('dlgBtns'); box.innerHTML = '';
+    btns.forEach(([label, variant, fn]) => {
+      const b = document.createElement('button');
+      b.className = 'btn ' + variant;
+      b.textContent = label;
+      b.onclick = () => { if (fn) fn(); else dlgClose(); };
+      box.appendChild(b);
+    });
+    ov.classList.add('show');
+  }
+  function dlgClose(){ const ov = document.getElementById('dlgOv'); if (ov) ov.classList.remove('show'); }
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') dlgClose(); });
+
+  function toast(msg){
+    let t = document.getElementById('toast');
+    if (!t) {
+      t = document.createElement('div'); t.id = 'toast';
+      t.style.cssText = 'position:fixed;left:50%;bottom:26px;transform:translateX(-50%);background:var(--surface-3);border:1px solid var(--border-bright);border-radius:12px;padding:11px 18px;font-size:13px;color:var(--fg-bright);z-index:300;box-shadow:0 12px 40px rgba(0,0,0,.5);transition:opacity .2s';
+      document.body.appendChild(t);
+    }
+    t.textContent = msg; t.style.opacity = '1';
+    clearTimeout(t._h); t._h = setTimeout(() => t.style.opacity = '0', 2600);
+  }
+
+  function dlgEmu(){
+    dlgShow('Сбросить TrelEmu / Bedrock?',
+      'Это остановит TrelEmu и удалит скачанную папку эмулятора. После этого Bedrock заново скачает или пересоздаст TrelEmu.',
+      [['Отмена','ghost',null], ['Сбросить эмулятор','danger',()=>{dlgClose();toast('TrelEmu сброшен — скачается заново при следующем запуске Bedrock');}]]);
+  }
+  function dlgReset(){
+    dlgShow('Сбросить лаунчер?',
+      'Все установленные версии, моды, шейдеры и настройки будут удалены.',
+      [['Отмена','ghost',null],
+       ['Сохранить аккаунты и миры','primary',()=>dlgResetConfirm(false)],
+       ['Удалить всё','danger',()=>dlgResetConfirm(true)]]);
+  }
+  function dlgResetConfirm(wipe){
+    dlgShow(wipe ? 'Подтвердите полный сброс' : 'Подтвердите сброс',
+      wipe ? 'ВСЕ данные будут удалены. Продолжить?' : 'Аккаунты и миры будут сохранены. Продолжить?',
+      [['Отмена','ghost',null],
+       [wipe ? 'Да, удалить всё' : 'Да, сбросить','danger',()=>{dlgClose();toast(wipe ? 'Лаунчер сброшен, все данные удалены (демо)' : 'Лаунчер сброшен, аккаунты и миры сохранены (демо)');}]]);
+  }
+  function dlgUninstall(){
+    dlgShow('Удалить лаунчер?',
+      'Лаунчер будет удалён с компьютера.',
+      [['Отмена','ghost',null],
+       ['Сохранить данные','primary',()=>dlgUninstallConfirm(false)],
+       ['Удалить с данными','danger',()=>dlgUninstallConfirm(true)]]);
+  }
+  (function syncHash(){
+    const orig = window.switchPane;
+    if (typeof orig === 'function') {
+      window.switchPane = function(id){
+        orig(id);
+        document.querySelectorAll('[data-tabs] .tab').forEach((t) => t.classList.toggle('on', t.dataset.target === id));
+      };
+    }
+    const apply = () => {
+      const id = (location.hash || '').replace('#', '');
+      if (id && window.switchPane) window.switchPane(id);
+    };
+    apply();
+    window.addEventListener('hashchange', apply);
+  })();
+
+  function dlgUninstallConfirm(wipe){
+    dlgShow('Подтвердите удаление',
+      wipe ? 'Лаунчер и все данные будут удалены. Продолжить?' : 'Лаунчер будет удалён, данные сохранятся. Продолжить?',
+      [['Отмена','ghost',null],
+       ['Да, удалить','danger',()=>{dlgClose();toast(wipe ? 'Лаунчер удалён вместе с данными (демо)' : 'Лаунчер удалён, данные сохранены (демо)');}]]);
+  }
+</script>
+</body>
+</html>
