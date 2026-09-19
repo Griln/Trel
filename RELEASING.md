@@ -7,7 +7,7 @@
 `.github/workflows/release.yml` на пуше в `main` и на PR только ставит зависимости и собирает проект:
 
 ```bash
-npm install
+npm ci
 npm run icon
 npm run build
 ```
