@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trel — бесплатный лаунчер Minecraft для Windows и Linux</title>
+<meta name="description" content="Trel — бесплатный лаунчер Minecraft: Java и Bedrock версии, моды, модпаки, шейдеры, скины, миры, серверы. Без рекламы и регистрации. Windows и Linux.">
+<style>
+  :root { color-scheme: dark; --bg: #0b0d12; --panel: #12151c; --line: #232833; --fg: #e8ecf5; --muted: #9aa3b5; --green: #5ecb6f; --accent: #fff; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--fg); font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; line-height: 1.6; }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 0 20px; }
+  header.hero { text-align: center; padding: 72px 0 40px; }
+  .logo { font-size: 15px; letter-spacing: 4px; color: var(--muted); text-transform: uppercase; }
+  h1 { font-size: clamp(34px, 6vw, 56px); line-height: 1.1; margin: 14px 0 12px; letter-spacing: -0.5px; }
+  h1 .g { color: var(--green); }
+  .sub { color: var(--muted); font-size: 17px; max-width: 640px; margin: 0 auto; }
+  .dl { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin: 30px 0 10px; }
+  .btn { display: inline-block; padding: 13px 26px; border-radius: 12px; font-weight: 700; font-size: 15px; text-decoration: none; border: 1px solid var(--line); color: var(--fg); background: var(--panel); }
+  .btn.primary { background: var(--green); border-color: var(--green); color: #06130b; }
+  .btn:hover { filter: brightness(1.1); }
+  .os { color: var(--muted); font-size: 13px; margin-top: 10px; }
+  .shots img { width: 100%; border-radius: 16px; border: 1px solid var(--line); margin: 26px 0 0; display: block; }
+  h2 { font-size: 24px; margin: 56px 0 18px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 18px; }
+  .card b { display: block; margin-bottom: 6px; font-size: 15px; }
+  .card span { color: var(--muted); font-size: 13.5px; }
+  .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+  code { background: #000; padding: 2px 8px; border-radius: 6px; font-size: 13px; border: 1px solid var(--line); }
+  footer { color: var(--muted); font-size: 12.5px; text-align: center; padding: 48px 0 32px; }
+  footer a { color: var(--green); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hero">
+    <div class="logo">✦ Trel</div>
+    <h1>Лаунчер Minecraft<br>без рекламы <span class="g">и регистрации</span></h1>
+    <p class="sub">Каталог Java- и Bedrock-версий, модлоадеры, моды, миры, серверы, скины и импорт из других лаунчеров. Играй гостем или войди через Microsoft.</p>
+    <div class="dl">
+      <a class="btn primary" href="https://github.com/Griln/Trel/releases/latest">Скачать для Windows</a>
+      <a class="btn" href="https://github.com/Griln/Trel/releases/latest">Версии для Linux</a>
+    </div>
+    <p class="os">Windows 10/11 · AppImage, deb, rpm · бесплатно и с открытым кодом</p>
+  </header>
+
+  <div class="shots">
+    <img src="screenshots/app-shell.png" alt="Trel — установленные версии">
+    <img src="screenshots/app-browse.png" alt="Trel — каталог версий Minecraft">
+  </div>
+
+  <h2>Что умеет</h2>
+  <div class="grid">
+    <div class="card"><b>📦 Любая версия в один клик</b><span>От rd-132211 до свежих снапшотов: релизы, снапшоты, бета, альфа. Список обновляется сам.</span></div>
+    <div class="card"><b>🧩 Моды без боли</b><span>Fabric, Quilt, Forge и NeoForge ставятся поверх версии автоматически. У каждой сборки свои моды.</span></div>
+    <div class="card"><b>📱 Bedrock + TrelEmu</b><span>Мобильные версии Minecraft на ПК через собственный эмулятор (Windows).</span></div>
+    <div class="card"><b>🎨 Скины</b><span>45 готовых скинов или свой PNG. 3D-превью, модели Classic и Slim.</span></div>
+    <div class="card"><b>🌍 Миры и серверы</b><span>Сохранения всех версий с бэкапами в один клик. Свой сервер: версия, память, запуск.</span></div>
+    <div class="card"><b>📥 Импорт</b><span>Перенос версий, миров, модов и аккаунтов из TLauncher, Prism, ATLauncher и других.</span></div>
+  </div>
+
+  <h2>Первый запуск</h2>
+  <div class="cols">
+    <div class="card"><b>1 · Профиль</b><span>Введи никнейм для гостевой игры или войди через Microsoft для официальных серверов.</span></div>
+    <div class="card"><b>2 · Каталог</b><span>Открой «Каталог», выбери версию Minecraft и нажми «Играть».</span></div>
+    <div class="card"><b>3 · Игра</b><span>Лаунчер сам скачает игру, библиотеки и нужную Java.</span></div>
+  </div>
+
+  <h2>Где что лежит</h2>
+  <div class="cols">
+    <div class="card"><b>Windows</b><span><code>%APPDATA%\Trel\</code> — настройки, аккаунты, Java, версии, миры.</span></div>
+    <div class="card"><b>Linux</b><span>Обычно <code>~/.config/Trel</code>. Путь к игровой папке меняется в настройках.</span></div>
+  </div>
+
+  <footer>
+    <p><a href="https://github.com/Griln/Trel">GitHub</a> · <a href="https://github.com/Griln/Trel/releases/latest">Скачать</a> · MIT</p>
+    <p style="margin-top:8px">Minecraft — собственность Mojang/Microsoft. Trel качает клиент только с официальных серверов Mojang и не обходит лицензию.</p>
+  </footer>
+
+</div>
+</body>
+</html>
