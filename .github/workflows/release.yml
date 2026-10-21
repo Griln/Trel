@@ -53,7 +53,7 @@ jobs:
           Get-ChildItem dist-artifacts | Select-Object Name, Length
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: windows
           retention-days: 7
@@ -99,7 +99,7 @@ jobs:
           ls -la dist-artifacts/
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: linux
           retention-days: 7
