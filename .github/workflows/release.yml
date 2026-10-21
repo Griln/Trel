@@ -23,10 +23,10 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -47,13 +47,15 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path dist-artifacts | Out-Null
-          Get-ChildItem -Path 'release\*' -Recurse -File |
-            Where-Object { $_.Extension -in '.exe', '.blockmap', '.yml' } |
+          # Только верхний уровень release/: в win-unpacked лежат adb.exe/elevate.exe
+          # из resources/platform-tools — они уже внутри инсталлятора, в релиз не нужны.
+          Get-ChildItem -Path 'release\*' -File |
+            Where-Object { $_.Extension -in '.exe', '.blockmap', '.yml' -and $_.Name -notin 'adb.exe', 'elevate.exe' } |
             Copy-Item -Destination dist-artifacts -Force
           Get-ChildItem dist-artifacts | Select-Object Name, Length
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: windows
           retention-days: 7
@@ -64,10 +66,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -99,7 +101,7 @@ jobs:
           ls -la dist-artifacts/
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: linux
           retention-days: 7
@@ -111,10 +113,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
 
@@ -144,13 +146,13 @@ jobs:
           cat release-notes.md
 
       - name: Download artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: artifacts
           merge-multiple: true
 
       - name: Create release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.tag.outputs.tag }}
           name: Trel ${{ steps.tag.outputs.tag }}
