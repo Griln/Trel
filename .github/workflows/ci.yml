@@ -1,37 +1,120 @@
 name: CI
 
+# Проверяем, что проект собирается, типы в порядке и тесты проходят.
+# Релизы публикуются отдельным workflow — см. release.yml.
+
 on:
   push:
-    branches: [main, master]
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - '.gitignore'
   pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
-  build:
+  check:
+    name: Проверки (Node ${{ matrix.node }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [20, 22]
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: ${{ matrix.node }}
+          cache: npm
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Tests
+        run: npx vitest run
 
       - name: Build renderer
         run: npm run build:renderer
 
-  test:
-    runs-on: ubuntu-latest
+  build:
+    name: Сборка (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
+          cache: npm
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Run tests
-        run: npx vitest run
+      - name: Generate icon
+        run: npm run icon
+
+      - name: Build renderer + electron
+        run: npm run build
+
+      - name: Upload build output
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-${{ matrix.os }}
+          retention-days: 7
+          path: |
+            dist/
+            dist-electron/
+
+  audit:
+    name: Аудит зависимостей
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: npm audit
+        run: npm audit --audit-level=high || true
+
+      - name: Upload audit result
+        if: always()
+        run: npm audit --json > audit-report.json || true
+
+      - name: Store audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-audit
+          retention-days: 14
+          path: audit-report.json

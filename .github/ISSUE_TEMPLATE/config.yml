@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Вопрос по использованию
+    url: https://github.com/Griln/Trel/discussions
+    about: Задай вопрос о лаунчере — быстрее, чем issue
+  - name: Баг-репорт
+    url: https://github.com/Griln/Trel/issues/new/choose
+    about: Сломалось? Используй шаблон «Bug report»

@@ -39,3 +39,31 @@ resources/trel-emu/
 
 # Extracted application filesystem (generated)
 squashfs-root/
+
+# --- TrelEmu build cache: 2 ГБ исходников QEMU/ISO, собирается локально ---
+build-trel-emu-cache/
+# Готовый пак эмулятора (~1.1 ГБ) — заливается в Releases вручную
+dist-trel-emu/
+
+# Собранный общий файл превью (генерируется скриптом, не исходник)
+previews/all.html
+
+# --- Локальный мусор: чужие инструменты, бэкапы, одноразовые скрипты ---
+.freebuff/
+.ohmyagent/
+.monkeycode/
+.postman/
+postman/
+backups/
+2026-06-19_cleanup/
+.idea/
+.tasks/
+.kombai/
+main.js
+_add_css.js
+_check_css.js
+_extract_css.js
+a-mono-square.png
+preview-home.html
+*.pdf
+Снимок экрана от *.png

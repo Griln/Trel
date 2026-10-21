@@ -101,4 +101,27 @@ npm run dist:linux   # Linux: AppImage + deb + rpm
 
 ## Важно
 
-Minecraft — собственность Mojang/Microsoft. Trel не предоставляет игру и не обходит лицензию: клиент скачивается с официальных серверов Mojang. Запускать без купленного аккаунта можно только в одиночной игре и на серверах, где отключена проверка лицензии (`online-mode=false`). Для игры на официальных серверах нужен Microsoft-аккаунт, которого Trel не поддерживает.
+Minecraft — собственность Mojang/Microsoft. Trel не предоставляет игру и не обходит лицензию: клиент скачивается с официальных серверов Mojang. Запускать без купленного аккаунта можно только в одиночной игре и на серверах, где отключена проверка лицензии (`online-mode=false`). Для игры на официальных серверах нужен Microsoft-аккаунт — вход через него поддерживается.
+
+## Помочь проекту
+
+- 🐛 [Нашёл баг](https://github.com/Griln/Trel/issues/new/choose) — приложи лог из «Настройки → Диагностика»
+- 💡 [Есть идея](https://github.com/Griln/Trel/issues/new/choose)
+- 💬 [Вопросы и обсуждения](https://github.com/Griln/Trel/discussions)
+- 🧑‍💻 [Хочу контрибьютить](CONTRIBUTING.md) — как собрать и запустить тесты
+- 🔒 [Уязвимость](SECURITY.md) — не в issue, а по инструкции оттуда
+- 📜 [Правила поведения](CODE_OF_CONDUCT.md)
+
+## Релизы
+
+Релизы собираются и публикуются автоматически: пушишь тег — CI собирает
+Windows (NSIS + portable) и Linux (AppImage, deb, rpm) и прикрепляет файлы
+к релизу.
+
+```bash
+git tag v0.6.0
+git push origin v0.6.0
+```
+
+Зеркало релизов и эмулятора TrelEmu: [archive.org](https://archive.org/details/trel-emu-pack-v0-5-0).
+

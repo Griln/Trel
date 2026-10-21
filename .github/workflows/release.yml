@@ -1,27 +1,25 @@
-name: ci
+name: Release
 
-# Простой CI-чек: проверяем что проект собирается. Релизы публикуются
-# вручную через scripts/publish.ps1 — ничего автоматически на GitHub не
-# заливается, чтобы не ломать существующие release-артефакты.
+# Публикует релиз автоматически при пуше тега вида v0.6.0.
+# Собирает Windows (nsis + portable) и Linux (AppImage, deb, rpm),
+# прикрепляет всё к релизу на GitHub.
+
 on:
   push:
-    branches: [main]
-    paths-ignore:
-      - '**.md'
-      - '.gitignore'
-  pull_request:
-    branches: [main]
+    tags:
+      - 'v*'
   workflow_dispatch:
-
-concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+    inputs:
+      tag:
+        description: Тег релиза (например v0.6.0)
+        required: true
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  build:
+  build-windows:
+    name: Windows
     runs-on: windows-latest
     steps:
       - name: Checkout
@@ -30,7 +28,8 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: 22
+          cache: npm
 
       - name: Install dependencies
         run: npm ci
@@ -38,5 +37,132 @@ jobs:
       - name: Generate icon
         run: npm run icon
 
-      - name: Build renderer + main
+      - name: Build renderer + electron
         run: npm run build
+
+      - name: Package (nsis + portable)
+        run: npx electron-builder --win --publish never
+
+      - name: Collect artifacts
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist-artifacts | Out-Null
+          Get-ChildItem -Path 'release\*' -Recurse -File |
+            Where-Object { $_.Extension -in '.exe', '.blockmap', '.yml' } |
+            Copy-Item -Destination dist-artifacts -Force
+          Get-ChildItem dist-artifacts | Select-Object Name, Length
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          retention-days: 7
+          path: dist-artifacts/
+
+  build-linux:
+    name: Linux
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install packaging tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends rpm fakeroot
+
+      - name: Generate icon
+        run: npm run icon
+
+      - name: Build renderer + electron
+        run: npm run build
+
+      - name: Package (AppImage + deb)
+        run: npx electron-builder --linux --publish never
+
+      - name: Package rpm
+        run: bash scripts/build-rpm-manual.sh
+
+      - name: Collect artifacts
+        run: |
+          mkdir -p dist-artifacts
+          cp release/*.AppImage release/*.deb release/*.rpm release/latest-linux.yml dist-artifacts/ 2>/dev/null || true
+          ls -la dist-artifacts/
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          retention-days: 7
+          path: dist-artifacts/
+
+  publish:
+    name: Publish release
+    needs: [build-windows, build-linux]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Resolve tag
+        id: tag
+        run: |
+          TAG="${{ inputs.tag }}"
+          if [ -z "$TAG" ]; then TAG="${GITHUB_REF#refs/tags/}"; fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Using tag: $TAG"
+
+      - name: Extract release notes
+        id: notes
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          VERSION="${TAG#v}"
+          python3 - "$VERSION" <<'PY' > release-notes.md
+          import re, sys
+          version = sys.argv[1]
+          try:
+              text = open('RELEASE_NOTES.md', encoding='utf-8').read()
+          except FileNotFoundError:
+              text = ''
+          m = re.search(r'^#\s*Trel\s+v' + re.escape(version) + r'\b[\s\S]*?(?=^#\s|\Z)', text, re.M)
+          print(m.group(0).strip() if m else f'## Trel v{version}\n\nСмотрите changelog в репозитории.')
+          PY
+          cat release-notes.md
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: Trel ${{ steps.tag.outputs.tag }}
+          body_path: release-notes.md
+          draft: false
+          prerelease: ${{ contains(steps.tag.outputs.tag, '-') }}
+          files: |
+            artifacts/*.exe
+            artifacts/*.blockmap
+            artifacts/*.AppImage
+            artifacts/*.deb
+            artifacts/*.rpm
+            artifacts/latest.yml
+            artifacts/latest-linux.yml
+          fail_on_unmatched_files: false
