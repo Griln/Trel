@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import type { ContentItem, ContentKind, InstalledVersionDetail, LoaderType } from '../../preload/preload';
 import {
-  IconCube, IconFolder, IconTrash, IconCheck, IconAlert, IconRefresh, IconArchive, IconSpark,
+  IconCube, IconFolder, IconTrash, IconRefresh, IconArchive, IconSpark,
 } from '../components/icons';
 import { useDialog } from '../components/Dialog';
 import { useT } from '../i18n';
@@ -36,22 +36,12 @@ const KindIcon: Record<ContentKind, React.FC<any>> = {
   texturepack: IconArchive,
 };
 
-const IconInfoLocal: React.FC<any> = (p) => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" {...p}>
-    <circle cx="12" cy="12" r="10" />
-    <line x1="12" y1="16" x2="12" y2="12" />
-    <line x1="12" y1="8" x2="12.01" y2="8" />
-  </svg>
-);
-
 const HINT_KEY: Record<ContentKind, string> = {
   mod: 'content.hintMod',
   shader: 'content.hintShader',
   resourcepack: 'content.hintResourcepack',
   texturepack: 'content.hintTexturepack',
 };
-
-const BEDROCK_TAB_IDS: ContentKind[] = ['mod', 'resourcepack', 'texturepack'];
 
 const BEDROCK_LABEL_KEY: Record<ContentKind, string> = {
   mod: 'content.bedrockAddons',
@@ -200,11 +190,9 @@ export const ContentPage: React.FC<Props> = ({ lastVersionId, onPickVersion }) =
 
   const currentDetail = details.find((d) => d.id === versionId) ?? null;
   const isBedrock = currentDetail?.edition === 'bedrock';
-  const visibleTabs = isBedrock ? BEDROCK_TAB_IDS : TAB_IDS;
   const effectiveTab = isBedrock && tab === 'shader' ? 'mod' : tab;
   const Icon = KindIcon[effectiveTab];
   const noVersionPicked = !versionId || !currentDetail;
-  const isModdable = currentDetail?.edition === 'java' && !!currentDetail?.loader;
   const tabLabel = t(isBedrock ? BEDROCK_LABEL_KEY[effectiveTab] : TAB_LABEL_KEY[effectiveTab]);
   const placeholderHint = t(isBedrock ? BEDROCK_HINT_KEY[effectiveTab] : HINT_KEY[effectiveTab]);
   const totalSize = items.reduce((acc, it) => acc + it.size, 0);
