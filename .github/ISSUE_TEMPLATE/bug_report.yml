@@ -1,4 +1,4 @@
-name: Bug report
+name: Баг-репорт
 description: Что-то сломалось
 labels: ["bug", "needs-triage"]
 body:
