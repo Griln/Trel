@@ -59,6 +59,13 @@ img{display:block}
 /* ===== служебная панель превью ===== */
 .preview-bar{position:sticky;top:0;z-index:99;display:flex;align-items:center;gap:12px;flex-wrap:wrap;
   padding:10px 20px;background:#111;border-bottom:1px dashed #333;font-family:var(--mono);font-size:12px;color:#bbb}
+/* Режим чистого кадра (?clean): прячет отладочную панель — скриншот
+   выглядит как настоящее приложение. */
+html.no-chrome .preview-bar{display:none!important}
+html.no-chrome body{padding-top:0!important}
+html.no-chrome{scrollbar-width:none}
+html.no-chrome::-webkit-scrollbar{display:none}
+
 .preview-bar .tag-prev{background:var(--amber);color:#111;font-weight:700;padding:3px 10px;border-radius:4px;letter-spacing:1px}
 .preview-bar button{font-family:var(--mono);font-size:12px;padding:7px 14px;border-radius:6px;cursor:pointer;
   background:#1c1c1c;color:#bbb;border:1px solid #333;transition:.15s}

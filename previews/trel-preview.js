@@ -1,5 +1,12 @@
 // Общий переключатель состояний превью (кнопки в .preview-bar + data-t)
 (function () {
+  // Режим «чистого» кадра: ?clean — прячет отладочную панель сверху, чтобы
+  // скриншот выглядел как настоящее приложение, а не как макет.
+  if (/[?&]clean\b/.test(location.search)) {
+    document.documentElement.classList.add('no-chrome');
+    return;
+  }
+
   const bar = document.querySelector('.preview-bar');
   if (!bar) return;
 

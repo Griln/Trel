@@ -1,87 +1,92 @@
-# TrelEmu Asset Distribution
+# Распространение эмулятора TrelEmu
 
-## Что это
+## Что это такое
 
-TrelEmu — это bundled QEMU + Android-x86 эмулятор для Bedrock. Сам лаунчер
-(Trel) маленький (~84 МБ инсталлятор), но QEMU + Android-x86 ISO весят
-~1 ГБ. Чтобы не превращать инсталлятор в 1 ГБ дистрибутив, эмулятор-пак
-скачивается **отдельно** при первом запуске Trel.
+TrelEmu — встроенный эмулятор на базе QEMU и Android-x86, он нужен для запуска
+Bedrock. Сам лаунчер (Trel) небольшой — инсталлятор около 84 МБ, — но образ QEMU
+вместе с ISO Android-x86 весит около 1 ГБ. Чтобы не превращать инсталлятор
+в гигабайтный дистрибутив, пак эмулятора скачивается **отдельно** при первом
+запуске Trel.
 
-## Что улучшено в v0.3.0
+## Что улучшено в версии 0.3.0
 
 | Улучшение | Где | Эффект |
 |-----------|-----|--------|
-| Audio (AC97 + intel-hda) | `trelEmu.ts:qemuArgs` | Звук в Minecraft |
-| `-cpu max` вместо `host` | `trelEmu.ts:qemuArgs` | TCG транслирует быстрее |
+| Звук (AC97 и intel-hda) | `trelEmu.ts:qemuArgs` | Звук в Minecraft |
+| `-cpu max` вместо `host` | `trelEmu.ts:qemuArgs` | Ускоренная трансляция TCG |
 | `-accel tcg,thread=multi` | `trelEmu.ts:qemuArgs` | Параллельная трансляция |
-| Memory default 4096 MB | `config.json` | Больше памяти для JIT-кэша TCG |
-| **Direct kernel boot** | `isoReader.ts` + `qemuArgs` | Пропуск GRUB = **-30-60 сек** на каждой загрузке |
-| Auto-install Bedrock APK | `tryAutoInstallBedrock` | Положи `image/bedrock.apk` → установится сам |
-| Polling 1500ms → 800ms | `POLL_INTERVAL_MS` | Быстрее детектит поднятие ADB |
-| Timeout 90s → 120s | `STARTUP_TIMEOUT_MS` | Меньше ложных ошибок на медленных CPU |
-| Pack через GitHub Releases | `trelEmuDownloader.ts` | Инсталлятор = 84 МБ вместо 1 ГБ |
+| Память по умолчанию 4096 МБ | `config.json` | Больше памяти под JIT-кэш TCG |
+| **Прямая загрузка ядра** | `isoReader.ts` и `qemuArgs` | Пропуск GRUB — **минус 30–60 секунд** при каждом старте |
+| Автоустановка APK Bedrock | `tryAutoInstallBedrock` | Положи `image/bedrock.apk` — установится само |
+| Опрос состояния 1500 → 800 мс | `POLL_INTERVAL_MS` | Быстрее замечаем поднятие ADB |
+| Таймаут 90 → 120 секунд | `STARTUP_TIMEOUT_MS` | Меньше ложных ошибок на медленном процессоре |
+| Пак на Codeberg Releases | `trelEmuDownloader.ts` | Инсталлятор 84 МБ вместо 1 ГБ |
 
-## Оставшиеся ограничения (TODO)
+## Оставшиеся ограничения
 
-1. **TCG = медленно** (5-15 мин загрузка Android). С Hyper-V было бы 30 сек
-   и 30-60 FPS. Юзер отказался от Hyper-V — не решаемо.
-2. **ISO не сохраняет состояние между сессиями** — каждый запуск холодный.
-   Решается pre-installed qcow2 template, но их нет в открытом доступе
-   для Android-x86 9.0. Авто-установка через QEMU monitor — сложно и хрупко.
-3. **Сетевой ADB иногда не поднимается** в android-x86 userdebug. Ручной
-   `adb connect 127.0.0.1:5555` решает.
+1. **TCG работает медленно** — загрузка Android занимает 5–15 минут. С Hyper-V
+   было бы 30 секунд и 30–60 кадров в секунду. Пользователь отказался от Hyper-V,
+   поэтому вопрос пока не решён.
+2. **Образ не сохраняет состояние между запусками** — каждый старт холодный.
+   Решается готовым образом qcow2, но таких образов для Android-x86 9.0 нет в
+   открытом доступе. Автоустановка через монитор QEMU — сложно и хрупко.
+3. **Сетевой ADB иногда не поднимается** в сборке android-x86 userdebug.
+   Помогает ручной `adb connect 127.0.0.1:5555`.
 
 ## Архитектура
 
 ```
 ┌─────────────────────┐
-│  Trel-0.3.0-x64.exe │ 84 МБ NSIS installer (без TrelEmu assets)
-│  Trel.exe           │ 84 МБ portable (без TrelEmu assets)
+│  Trel-0.5.0-x64.exe │ 84 МБ, инсталлятор NSIS (без ресурсов TrelEmu)
+│  Trel.exe           │ 84 МБ, портативная сборка (без ресурсов TrelEmu)
 └─────────┬───────────┘
           │ запускается
           ▼
 ┌─────────────────────┐
 │  Trel Launcher      │
 │                     │
-│  BrowsePage →       │
+│  Каталог →          │
 │   "TrelEmu не       │  ← первое посещение
 │    установлен"      │
 │                     │
-│   [Скачать]         │  ← юзер жмёт
+│   [Скачать]         │  ← пользователь нажимает
 │   [Отмена]          │
 │   0% → 100%         │
 │                     │
 │  после:             │
-│   "TrelEmu (bundled)│  ← готово
+│   "TrelEmu (встроен)│  ← готово
 │    ADB: 127.0.0.1"  │
 └─────────┬───────────┘
           │ качает с
           ▼
 ┌─────────────────────────────────────┐
-│  GitHub Releases:                   │
-│  mkrlord1000-sketch/Trel            │
-│  Tag: trel-emu-v0.3.0               │
-│  Files:                             │
-│   - trel-emu-pack.zip   (947 МБ)    │
-│   - trel-emu-pack.zip.sha1 (40 байт)│
-└─────────────────────────────────────┘
+│  Хостинг паков:                     │
+│  codeberg.org/derwerwer/Trel        │
+│  Тег: trel-emu-v0.5.0               │
+│  Файлы:                             │
+│   - trel-emu-pack.zip   (1.1 ГБ)    │
+│   - trel-emu-pack.zip.sha1 (60 байт)│
+│                                     │
+│  Зеркало: archive.org               │
+│  trel-emu-pack-v0-5-0               │
+└─────────┬───────────────────────────┘
           │ скачали
           ▼
 ┌─────────────────────────────────────┐
 │  Куда сохраняется:                  │
 │                                     │
-│  Installed:                         │
+│  Установленная версия:              │
 │   %APPDATA%\Trel\trel-emu\          │
 │   ├─ qemu/                          │
 │   ├─ image/                         │
 │   │   ├─ android-x86.iso            │
-│   │   └─ android-9.0.overlay.qcow2  │  ← сюда QEMU пишет runtime state
-│   ├─ boot/                          │  ← извлечённые kernel+initrd
+│   │   └─ android-9.0.overlay.qcow2  │  ← сюда QEMU пишет состояние
+│   ├─ boot/                          │  ← извлечённые ядро и initrd
 │   │   ├─ kernel (7 МБ)              │
 │   │   └─ initrd.img (1.3 МБ)        │
 │   └─ config.json                    │
 │                                     │
-│  Portable:                          │
+│  Портативная версия:                │
 │   <папка Trel.exe>\trel-emu\        │
 │   ├─ qemu/                          │
 │   ├─ image/                         │
@@ -90,23 +95,23 @@ TrelEmu — это bundled QEMU + Android-x86 эмулятор для Bedrock. �
 └─────────────────────────────────────┘
 ```
 
-## Как опубликовать новую версию пака
+## Как выпустить новую версию пака
 
 ### 1) Подготовка кэша
 
-В `D:\lauin\build-trel-emu-cache\` должны лежать:
+В `build-trel-emu-cache/` должны лежать:
 
 ```
 qemu\                              (распакованный QEMU 2026-05-01)
 ├── qemu-system-x86_64.exe         (≈27 МБ)
 ├── qemu-img.exe                   (≈2 МБ)
-└── (остальные файлы QEMU не нужны для пака)
+└── (остальные файлы QEMU не нужны для пакета)
 
 android-x86_64-9.0-r2.iso          (≈921 МБ; скачать с
-                                   https://archive.org/download/sjarb_android_9.0r2/android-x86_64-9.0-r2.iso)
+                                    https://archive.org/download/sjarb_android_9.0r2/android-x86_64-9.0-r2.iso)
 ```
 
-В `D:\lauin\resources\trel-emu\config.json` — дефолтный конфиг:
+Файл `resources/trel-emu/config.json` — конфигурация по умолчанию:
 
 ```json
 {
@@ -121,78 +126,89 @@ android-x86_64-9.0-r2.iso          (≈921 МБ; скачать с
 }
 ```
 
-### 2) Сборка пака
+### 2) Сборка пакета
 
 ```bash
 npm run build:trel-emu-pack
 ```
 
-Скрипт `scripts/build-trel-emu-pack.js` собирает STORE-zip
-(без сжатия, ISO уже сжат) в `dist-trel-emu/trel-emu-pack.zip`
-и пишет рядом `trel-emu-pack.zip.sha1`.
+Скрипт `scripts/build-trel-emu-pack.js` собирает zip-архив без сжатия
+(образ ISO уже сжат) в `dist-trel-emu/trel-emu-pack.zip`
+и записывает рядом `trel-emu-pack.zip.sha1`.
 
-⚠️ **ВАЖНО:** не пиши в `dist/`! `dist/**/*` в `package.json` подхватывается
-electron-builder'ом в asar. Получишь инсталлятор 1 ГБ.
+⚠️ **ВАЖНО:** не пиши в `dist/`! Шаблон `dist/**/*` в `package.json` подхватывает
+electron-builder и упаковывает его внутрь asar. В итоге получишь инсталлятор на 1 ГБ.
 
-### 3) Загрузка на GitHub
+### 3) Загрузка на хостинг
 
-Создай релиз в репозитории `mkrlord1000-sketch/Trel`:
+Создай релиз в репозитории `derwerwer/Trel` на Codeberg:
 
 ```
-Tag: trel-emu-v0.3.0
-Title: TrelEmu Pack v0.3.0
+Тег: trel-emu-v0.5.0
+Название: TrelEmu, пак версии 0.5.0
 
-Files (drag-and-drop):
+Файлы (перетащить мышью):
   - dist-trel-emu/trel-emu-pack.zip
   - dist-trel-emu/trel-emu-pack.zip.sha1
 ```
 
-URL после публикации:
+Ссылки после публикации:
+
 ```
-https://github.com/mkrlord1000-sketch/Trel/releases/download/trel-emu-v0.3.0/trel-emu-pack.zip
-https://github.com/mkrlord1000-sketch/Trel/releases/download/trel-emu-v0.3.0/trel-emu-pack.zip.sha1
+https://codeberg.org/derwerwer/Trel/releases/download/trel-emu-v0.5.0/trel-emu-pack.zip
+https://codeberg.org/derwerwer/Trel/releases/download/trel-emu-v0.5.0/trel-emu-pack.zip.sha1
 ```
 
-### 4) Проверка URL в коде
+Зеркало на archive.org:
 
-В `src/main/trelEmuDownloader.ts` константа `DEFAULT_URL`:
+```
+https://archive.org/download/trel-emu-pack-v0-5-0/trel-emu-pack.zip
+```
+
+### 4) Проверка ссылки в коде
+
+В `src/main/trelEmuDownloader.ts` константа `defaultPackUrl`:
+
 ```typescript
-const DEFAULT_URL = 'https://github.com/mkrlord1000-sketch/Trel/releases/download/trel-emu-v0.3.0/trel-emu-pack.zip';
+function defaultPackUrl(p: NodeJS.Platform = process.platform): string {
+  return `https://archive.org/download/trel-emu-pack-v0-5-0/${packAssetName(p)}`;
+}
 ```
 
-Тег в URL **должен совпадать** с тегом релиза. Иначе 404.
+Тег в ссылке **должен совпадать** с тегом релиза, иначе будет 404.
 
-### 5) Опционально — переопределение URL
+### 5) Переопределение ссылки (необязательно)
 
-Можно переопределить URL без пересборки Trel, через env-переменные:
-- `TRELEMU_PACK_URL` — URL пака
-- `TRELEMU_PACK_SHA1` — ожидаемый SHA1 (если не хочешь публиковать .sha1)
+Ссылку можно поменять без пересборки Trel, через переменные окружения:
 
-Это удобно для тестов с локального сервера или зеркала.
+- `TRELEMU_PACK_URL` — адрес пакета
+- `TRELEMU_PACK_SHA1` — ожидаемый SHA1 (если не хочешь публиковать файл `.sha1`)
 
-## Как установить Bedrock APK автоматически
+Это удобно для проверок через локальный сервер или зеркало.
 
-1. Скачай Minecraft APK с mcpehub (любой рабочий билд)
+## Как установить APK Bedrock автоматически
+
+1. Скачай APK Minecraft (подойдёт любой рабочий билд)
 2. Положи его в:
-   - Installed: `%APPDATA%\Trel\trel-emu\image\bedrock.apk`
-   - Portable: `<папка Trel.exe>\trel-emu\image\bedrock.apk`
-3. Запусти TrelEmu → APK поставится автоматически при первом подключении ADB
-4. **Snapshot overlay** запомнит установку — больше ставить не нужно
+   - Установленная версия: `%APPDATA%\Trel\trel-emu\image\bedrock.apk`
+   - Портативная версия: `<папка Trel.exe>\trel-emu\image\bedrock.apk`
+3. Запусти TrelEmu — APK поставится сам при первом подключении ADB
+4. **Снимок образа** запомнит установку, ставить больше не нужно
    (пока не удалишь `android-9.0.overlay.qcow2`)
 
-## Что умеет downloader
+## Что умеет загрузчик
 
-- **Стрим-скачивание** — файл не буферизуется в RAM, читается по чанкам
-- **Прогресс** — отдаётся через IPC каждые 200 мс
-- **Отмена** — AbortController, можно прервать в любой момент
-- **Верификация SHA1** — если .sha1 лежит рядом с .zip на сервере
-- **ZIP-экстрактор** — собственный, поддерживает STORE (0) и DEFLATE (8)
-- **Защита от zip-slip** — валидирует пути файлов (нет `..`, нет абсолютных)
-- **Поиск в нескольких местах** — find() обходит portable dir → appdata → resources
+- **Потоковое скачивание** — файл не буферизуется в памяти, читается частями
+- **Прогресс** — передаётся через IPC каждые 200 мс
+- **Отмена** — через AbortController, можно прервать в любой момент
+- **Проверка SHA1** — если рядом с архивом лежит файл `.sha1`
+- **Свой распаковщик zip** — поддерживает методы STORE (0) и DEFLATE (8)
+- **Защита от обхода каталогов** — проверяет пути файлов (нет `..`, нет абсолютных)
+- **Поиск в нескольких местах** — обход папки портативной сборки, затем AppData, затем ресурсов приложения
 
-## Лимиты
+## Ограничения
 
-- ZIP64 не поддерживается (файлы < 4 ГБ, pack = 947 МБ — OK)
-- Encrypted ZIP не поддерживается
-- Размер pack лимитирован 2 ГБ (GitHub Releases лимит)
-- Скорость скачивания зависит от CDN GitHub (50-200 МБ/с)
+- Формат ZIP64 не поддерживается (файлы меньше 4 ГБ, пак около 1.1 ГБ — норма)
+- Зашифрованные zip не поддерживаются
+- Размер пака ограничен 2 ГБ (предел хостинга)
+- Скорость скачивания зависит от сети и хостинга
