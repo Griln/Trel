@@ -26,28 +26,28 @@ jobs:
       matrix:
         node: [20, 22]
     steps:
-      - name: Checkout
+      - name: Получение исходников
         uses: actions/checkout@v7
 
-      - name: Setup Node.js
+      - name: Установка Node.js
         uses: actions/setup-node@v7
         with:
           node-version: ${{ matrix.node }}
           cache: npm
 
-      - name: Pin npm
+      - name: Фиксация версии npm
         run: npm install -g npm@10
 
-      - name: Install dependencies
+      - name: Установка зависимостей
         run: npm ci
 
-      - name: Typecheck
+      - name: Проверка типов
         run: npx tsc --noEmit
 
-      - name: Tests
+      - name: Тесты
         run: npx vitest run
 
-      - name: Build renderer
+      - name: Сборка интерфейса
         run: npm run build:renderer
 
   build:
@@ -58,28 +58,28 @@ jobs:
       matrix:
         os: [windows-latest, ubuntu-latest]
     steps:
-      - name: Checkout
+      - name: Получение исходников
         uses: actions/checkout@v7
 
-      - name: Setup Node.js
+      - name: Установка Node.js
         uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
 
-      - name: Pin npm
+      - name: Фиксация версии npm
         run: npm install -g npm@10
 
-      - name: Install dependencies
+      - name: Установка зависимостей
         run: npm ci
 
-      - name: Generate icon
+      - name: Сборка иконки
         run: npm run icon
 
-      - name: Build renderer + electron
+      - name: Сборка интерфейса и основного процесса
         run: npm run build
 
-      - name: Upload build output
+      - name: Выгрузка результатов сборки
         uses: actions/upload-artifact@v7
         with:
           name: build-${{ matrix.os }}
@@ -95,29 +95,29 @@ jobs:
       contents: read
       security-events: write
     steps:
-      - name: Checkout
+      - name: Получение исходников
         uses: actions/checkout@v7
 
-      - name: Setup Node.js
+      - name: Установка Node.js
         uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
 
-      - name: Pin npm
+      - name: Фиксация версии npm
         run: npm install -g npm@10
 
-      - name: Install dependencies
+      - name: Установка зависимостей
         run: npm ci
 
-      - name: npm audit
+      - name: Аудит зависимостей (npm)
         run: npm audit --audit-level=high || true
 
-      - name: Upload audit result
+      - name: Выгрузка отчёта аудита
         if: always()
         run: npm audit --json > audit-report.json || true
 
-      - name: Store audit report
+      - name: Сохранение отчёта аудита
         if: always()
         uses: actions/upload-artifact@v7
         with:
