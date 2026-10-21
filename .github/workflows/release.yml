@@ -1,7 +1,7 @@
 name: Release
 
-# Публикует релиз автоматически при пуше тега вида v0.6.0.
-# Собирает Windows (nsis + portable) и Linux (AppImage, deb, rpm),
+# Публикует релиз автоматически при пуше тега вида vX.Y.Z.
+# Собирает Windows (инсталлятор NSIS и портативная сборка) и Linux (AppImage, deb, rpm),
 # прикрепляет всё к релизу на GitHub.
 
 on:
@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Тег релиза (например v0.6.0)
+        description: Тег релиза (например vX.Y.Z)
         required: true
 
 permissions:
@@ -50,8 +50,9 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path dist-artifacts | Out-Null
-          # Только верхний уровень release/: в win-unpacked лежат adb.exe/elevate.exe
-          # из resources/platform-tools — они уже внутри инсталлятора, в релиз не нужны.
+          # Только верхний уровень папки release/: в подпапке win-unpacked лежат
+          # adb.exe и elevate.exe из resources/platform-tools — они уже внутри
+          # инсталлятора, в релиз не нужны.
           Get-ChildItem -Path 'release\*' -File |
             Where-Object { $_.Extension -in '.exe', '.blockmap', '.yml' -and $_.Name -notin 'adb.exe', 'elevate.exe' } |
             Copy-Item -Destination dist-artifacts -Force
@@ -147,7 +148,7 @@ jobs:
           except FileNotFoundError:
               text = ''
           m = re.search(r'^#\s*Trel\s+v' + re.escape(version) + r'\b[\s\S]*?(?=^#\s|\Z)', text, re.M)
-          print(m.group(0).strip() if m else f'## Trel v{version}\n\nСмотрите changelog в репозитории.')
+          print(m.group(0).strip() if m else f'## Trel v{version}\n\nСписок изменений — в файле RELEASE_NOTES.md.')
           PY
           cat release-notes.md
 
