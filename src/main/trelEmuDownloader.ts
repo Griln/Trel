@@ -83,9 +83,9 @@ const MAX_RESUME_AGE_MS = 7 * 24 * 60 * 60_000; // неделю — после �
 const HEAD_TIMEOUT_MS = 15_000;
 const CHUNK_TIMEOUT_MS = 30_000;
 
-const DEFAULT_URL = 'https://github.com/Griln/Trel/releases/download/trel-emu-v0.3.0/trel-emu-pack.zip';
+const DEFAULT_URL = 'https://archive.org/download/trel-emu-pack-v0-5-0/trel-emu-pack.zip';
 /** SHA1 эталон. Считается автоматически при упаковке и пишется в .sha1 файл рядом. */
-const DEFAULT_SHA1 = '0000000000000000000000000000000000000000';
+const DEFAULT_SHA1 = 'e81d46563a57a0d5d7ff12d361c00a129ddbeade';
 
 interface ManifestFile {
   name: string;

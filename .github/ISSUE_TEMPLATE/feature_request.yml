@@ -1,0 +1,43 @@
+name: Feature request
+description: Хочу, чтобы лаунчер умел новое
+labels: ["feature", "needs-triage"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Какую проблему это решает
+      description: Опиши ситуацию, в которой тебе не хватает возможности
+      placeholder: Сейчас нельзя держать две сборки с разной памятью одновременно
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Что предлагаешь
+      description: Как ты представляешь решение
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Альтернативы
+      description: Что пробовал делать вместо этого
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Раздел лаунчера
+      options:
+        - Каталог версий
+        - Моды и модпаки
+        - Скины
+        - Миры и серверы
+        - Импорт
+        - Bedrock / TrelEmu
+        - Настройки
+        - Интерфейс
+        - Другое
+    validations:
+      required: false

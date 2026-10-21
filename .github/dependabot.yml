@@ -1,0 +1,40 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "10:00"
+      timezone: Europe/Moscow
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "good first issue"
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      # Минорные и патч-обновления — одной кучей, их не надо ревьюить поштучно
+      minor-patch:
+        update-types:
+          - minor
+          - patch
+      # Мажорные — отдельными PR, их надо читать
+      major:
+        update-types:
+          - major
+    ignore:
+      # electron-builder тянет много транзитивных пакетов — их апдейты создают шум
+      - dependency-name: "@xmcl/*"
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "10:00"
+      timezone: Europe/Moscow
+    labels:
+      - "dependencies"
+    commit-message:
+      prefix: "chore(ci)"
