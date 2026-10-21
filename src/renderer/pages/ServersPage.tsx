@@ -5,7 +5,7 @@ import type {
 import type { VersionInfo } from '../../shared/types';
 import {
   IconPlay, IconStop, IconTrash, IconFolder,
-  IconTerminal, IconPlus, IconServer, IconAlert, IconCopy, IconRefresh, IconClose,
+  IconPlus, IconServer, IconAlert, IconCopy, IconRefresh, IconClose,
 } from '../components/icons';
 import { useDialog } from '../components/Dialog';
 import { VersionPicker } from '../components/VersionPicker';
@@ -192,7 +192,7 @@ export const ServersPage: React.FC = () => {
 
       <div className="srv-layout">
         <aside className="srv-list">
-          {list.map((s, i) => {
+          {list.map((s) => {
             const st = statuses[s.id] ?? 'stopped';
             return (
               <div
@@ -211,8 +211,8 @@ export const ServersPage: React.FC = () => {
                   <b>{s.name}</b>
                   <span>{s.versionId} · :{s.properties.serverPort}</span>
                 </div>
-                {st === 'running' && <span className="sdot ok" />}
-                {st === 'stopped' && <span className="sdot off" />}
+                {st === 'running' && <span className="sdot ok" title={statusLabel[st]} />}
+                {st === 'stopped' && <span className="sdot off" title={statusLabel[st]} />}
               </div>
             );
           })}
@@ -316,7 +316,7 @@ const ActiveServer: React.FC<{
   onUpdate: (patch: Partial<ServerProperties>) => Promise<void>;
   onRename: (name: string) => Promise<void>;
   onSetMemory: (mb: number) => Promise<void>;
-}> = ({ server, status, busy, logs, logRef, onStart, onStop, onDelete, onUpdate, onRename, onSetMemory }) => {
+}> = ({ server, status, busy, logs, logRef, onStart, onStop, onDelete, onRename }) => {
   const t = useT();
   const [cmd, setCmd] = useState('');
   const [editName, setEditName] = useState(false);
@@ -385,7 +385,10 @@ const ActiveServer: React.FC<{
           ) : (
             <span className="nm" onClick={() => setEditName(true)} title={t('servers.renameTitle')} style={{ cursor: 'pointer' }}>{server.name}</span>
           )}
-          <span className="chip green"><span className="sdot ok" />{t('servers.serverRunning')}</span>
+          <span className={'chip ' + statusTone[status]}>
+            <span className={'sdot ' + (isRunning ? 'ok' : 'off')} />
+            {statusLabel[status]}
+          </span>
           <div className="right">
             {!isRunning && (
               <button className="btn primary sm" onClick={onStart} disabled={busy}>
@@ -446,16 +449,6 @@ const Field: React.FC<{ label: string; children: React.ReactNode }> = ({ label, 
   <label className="server-field">
     <span className="server-field-label">{label}</span>
     {children}
-  </label>
-);
-
-const Toggle: React.FC<{ label: string; value: boolean; onChange: (v: boolean) => void }> = ({ label, value, onChange }) => (
-  <label className="server-toggle">
-    <span>{label}</span>
-    <span className="toggle">
-      <input type="checkbox" checked={value} onChange={(e) => onChange(e.target.checked)} />
-      <span className="track" />
-    </span>
   </label>
 );
 

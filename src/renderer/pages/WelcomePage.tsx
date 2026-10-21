@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { IconArrow, IconSpark } from '../components/icons';
+import { IconArrow } from '../components/icons';
 import { useT } from '../i18n';
 
 interface Props {

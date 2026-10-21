@@ -1592,6 +1592,11 @@ input[type="range"]::-webkit-slider-thumb:hover {
     background: var(--info-soft);
     border-color: transparent;
 }
+.chip.neutral {
+    color: var(--fg-muted);
+    background: var(--surface-2);
+    border-color: var(--border);
+}
 /* Типы версий в каталоге: релиз/снапшот/бета/альфа/bedrock.
    Цвета соответствуют чипам из styles-pages.css (green/amber/purple/blue/cyan) */
 .chip.release {

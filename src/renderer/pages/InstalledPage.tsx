@@ -1,10 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import type { LauncherSettings, MinecraftAccount, VersionInfo } from '../../shared/types';
 import type { InstalledVersionDetail, LoaderType } from '../../preload/preload';
-import { IconPlay, IconTrash, IconFolder, IconCube, IconArrow, IconRefresh, IconSkinOff } from '../components/icons';
+import { IconTrash, IconArrow } from '../components/icons';
 import { useDialog } from '../components/Dialog';
 import { LoaderInstallDialog } from '../components/LoaderInstallDialog';
-import { supportsCustomSkin } from '../../shared/skin-support';
 import { useT } from '../i18n';
 
 interface Props {
@@ -256,6 +255,8 @@ export const InstalledPage: React.FC<Props> = ({ settings, account, onSettingsCh
         <p className="page-sub">{t('installed.subtitle')}</p>
       </div>
 
+      {status && <div className="hint" style={{ marginBottom: 12 }}>{status}</div>}
+
       {items.length === 0 ? (
         <div className="card" style={{ padding: 40, textAlign: 'center' }}>
           <h2 style={{ fontSize: 16, marginBottom: 8 }}>{t('installed.emptyTitle')}</h2>
@@ -272,6 +273,11 @@ export const InstalledPage: React.FC<Props> = ({ settings, account, onSettingsCh
             <div className="sum-pill"><span className="num">{details.filter((d) => d.edition === 'java').length}</span><span className="lbl">Java</span></div>
             <div className="sum-pill"><span className="num">{details.filter((d) => d.edition === 'bedrock').length}</span><span className="lbl">Bedrock</span></div>
             <div className="sum-pill"><span className="num">{details.filter((d) => d.loader).length}</span><span className="lbl">{t('installed.withLoader')}</span></div>
+            <div className="sum-pill" style={{ display: 'flex', alignItems: 'center' }}>
+              <button className="btn ghost sm" onClick={onUninstallAll} disabled={busyId !== null}>
+                <IconTrash /> {t('installed.deleteAll')}
+              </button>
+            </div>
           </div>
 
           <div className="ilist">
@@ -290,7 +296,7 @@ export const InstalledPage: React.FC<Props> = ({ settings, account, onSettingsCh
                       <span className="chip green">{t('installed.releaseChip')}</span>
                     </div>
                     <div className="i-sub">
-                      <span>{it.loader ? t('installed.withLoader') : t('installed.typeRelease')}</span>
+                      <span>{it.loader ? t('installed.withLoader') : typeLabel[it.type] ?? t('installed.typeRelease')}</span>
                       <span className="sep">·</span>
                       <span>{it.edition === 'bedrock' ? 'Bedrock' : 'Java'}</span>
                     </div>

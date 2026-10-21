@@ -329,7 +329,7 @@ export const BrowsePage: React.FC<Props> = ({
     setStatusType(isTechnicalTimeoutMessage(message) ? "neutral" : "error");
   };
   const [busy, setBusy] = useState(false);
-  const [javaPlan, setJavaPlan] = useState<JavaPlan | null>(null);
+  const [, setJavaPlan] = useState<JavaPlan | null>(null);
   const [loaderDialogOpen, setLoaderDialogOpen] = useState(false);
 
   const refreshInstalled = async () => {
@@ -631,9 +631,6 @@ export const BrowsePage: React.FC<Props> = ({
   const selectedVersion = (edition === 'bedrock'
     ? bedrockVersions.find((v) => v.id === selected)
     : versions.find((v) => v.id === selected)) as VersionInfo | BedrockVersionInfo | undefined;
-  const selectedBedrock = edition === 'bedrock'
-    ? bedrockVersions.find((v) => v.id === selected)
-    : undefined;
   // Лоадеры, установленные для выбранной MC версии
   const loadersForSel = selected && edition === 'java' ? (loadersByBase.get(selected) ?? []) : [];
   const primaryLoader = loadersForSel[0] ?? null;
@@ -788,14 +785,6 @@ export const BrowsePage: React.FC<Props> = ({
     { id: "old_alpha", label: t('browse.filterAlpha'), accent: "alpha", c: counts.old_alpha },
     { id: "all", label: t('browse.filterAll'), accent: "all", c: counts.all },
   ];
-
-  const playLabel = busy
-    ? isInstalled
-      ? t('browse.btnLaunching')
-      : t('browse.btnDownloading')
-    : isInstalled
-      ? t('browse.btnPlay')
-      : t('browse.btnDownloadPlay');
 
   const isLoaderVersion = edition === 'java' && !!selected && /^1\.\d+(\.\d+)?$/.test(selected);
 
