@@ -47,8 +47,10 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path dist-artifacts | Out-Null
-          Get-ChildItem -Path 'release\*' -Recurse -File |
-            Where-Object { $_.Extension -in '.exe', '.blockmap', '.yml' } |
+          # Только верхний уровень release/: в win-unpacked лежат adb.exe/elevate.exe
+          # из resources/platform-tools — они уже внутри инсталлятора, в релиз не нужны.
+          Get-ChildItem -Path 'release\*' -File |
+            Where-Object { $_.Extension -in '.exe', '.blockmap', '.yml' -and $_.Name -notin 'adb.exe', 'elevate.exe' } |
             Copy-Item -Destination dist-artifacts -Force
           Get-ChildItem dist-artifacts | Select-Object Name, Length
 
