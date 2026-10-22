@@ -1,4 +1,4 @@
-/* Скриншоты состояний через CDP: usage: node scripts/shot-cdp.cjs <name> */
+/* State screenshots via CDP: usage: node scripts/shot-cdp.cjs <name> */
 const { chromium } = require('playwright');
 (async () => {
   const name = process.argv[2] || 'shot';

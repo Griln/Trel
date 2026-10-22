@@ -4,27 +4,27 @@ import * as path from 'node:path';
 import * as os from 'node:os';
 
 /**
- * Автозапуск лаунчера вместе с входом в систему.
+ * Launching the launcher together with the system login.
  *
- * Linux:    XDG-совместимый .desktop в ~/.config/autostart/trel.desktop
- * macOS:    app.setLoginItemSettings (нативный LoginItems)
- * Windows:  .lnk-ярлык в %APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup
+ * Linux:    XDG-compatible .desktop in ~/.config/autostart/trel.desktop
+ * macOS:    app.setLoginItemSettings (native LoginItems)
+ * Windows:  .lnk shortcut in %APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup
  *
- * Portable-сборка Trel (один .exe без распаковки) на Windows не стартует
- * автоматически: PORTABLE_EXECUTABLE_FILE — это временный распакованный
- * путь, удаляемый при выходе. Реальный .exe лежит там, где пользователь
- * его сохранил, и путь к нему из Electron не известен. В этом случае
- * автоматически включить нельзя — UI должен сообщить об этом пользователю.
+ * The portable build of Trel (a single .exe without unpacking) does not
+ * start automatically on Windows: PORTABLE_EXECUTABLE_FILE is a temporary
+ * unpacked path that is deleted on exit. The real .exe lives wherever the
+ * user saved it, and its path is not known to Electron. In this case
+ * autostart cannot be enabled — the UI must report that to the user.
  *
- * Detect-для-существования проверяет не только наличие файла, но и валидность
- * цели (на Windows — что `.lnk` указывает на существующий .exe; на Linux —
- * что `Exec=` указывает на существующий бинарь). Это защищает от случая,
- * когда Trel перенесли/удалили, а .desktop/.lnk остался.
+ * The existence detection checks not only the presence of the file, but also the
+ * validity of the target (on Windows — that the `.lnk` points to an existing
+ * .exe; on Linux — that `Exec=` points to an existing binary). This protects
+ * against the case where Trel was moved/deleted while the .desktop/.lnk stayed.
  */
 
 const LINUX_DESKTOP_FILE = 'trel.desktop';
 
-/** Содержимое .desktop для автозапуска Trel на Linux. */
+/** Contents of the .desktop file for autostart of Trel on Linux. */
 function linuxAutostartDesktopContent(exePath: string, iconPath: string): string {
   return [
     '[Desktop Entry]',
@@ -38,14 +38,14 @@ function linuxAutostartDesktopContent(exePath: string, iconPath: string): string
     'Categories=Game;',
     'StartupWMClass=Trel',
     'X-GNOME-Autostart-enabled=true',
-    // Tray задержан на 2с, чтобы DE успел полностью подняться
-    // (на некоторых сессиях GNOME/Wayland панели появляются позже).
+    // The tray is delayed by 2s so that the DE has time to fully come up
+    // (on some GNOME/Wayland sessions the panels appear later).
     'X-GNOME-Autostart-Delay=2',
     '',
   ].join('\n');
 }
 
-/** Находит каталог автозапуска XDG: ~/.config/autostart. */
+/** Finds the XDG autostart directory: ~/.config/autostart. */
 function linuxAutostartDir(): string {
   const xdgConfig = process.env.XDG_CONFIG_HOME;
   const config = xdgConfig && xdgConfig.length > 0
@@ -54,12 +54,12 @@ function linuxAutostartDir(): string {
   return path.join(config, 'autostart');
 }
 
-/** На macOS используем нативный LoginItems API. */
+/** On macOS we use the native LoginItems API. */
 function isDarwin(): boolean { return process.platform === 'darwin'; }
 function isLinux(): boolean { return process.platform === 'linux'; }
 function isWin(): boolean { return process.platform === 'win32'; }
 
-/** Путь к иконке на Linux (общая логика с desktop-ярлыком в ipc.ts). */
+/** Path to the icon on Linux (shared logic with the desktop shortcut in ipc.ts). */
 function linuxIconPath(): string {
   const exeDir = path.dirname(process.execPath);
   const candidates = [
@@ -72,9 +72,9 @@ function linuxIconPath(): string {
   return '/usr/share/pixmaps/trel.png';
 }
 
-/** Путь к Startup-папке на Windows. */
+/** Path to the Startup folder on Windows. */
 function windowsStartupDir(): string {
-  // Классический Startup лежит в %APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup
+  // The classic Startup folder lives in %APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup
   const appData = process.env.APPDATA;
   return path.join(appData || path.join(os.homedir(), 'AppData', 'Roaming'),
     'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup');
@@ -84,32 +84,32 @@ function windowsStartupLink(): string {
   return path.join(windowsStartupDir(), 'Trel.lnk');
 }
 
-/** На Windows portable-сборка не поддерживает автоапдейт/автозапуск. */
+/** On Windows the portable build does not support auto-update/autostart. */
 function isWindowsPortable(): boolean {
   return isWin() && !!process.env.PORTABLE_EXECUTABLE_FILE;
 }
 
-/** Реальный путь к бинарю для автозапуска (portable не подходит). */
+/** Real path to the binary for autostart (portable does not fit). */
 function windowsStartupTarget(): string | null {
-  // Portable: process.execPath — временный распакованный файл, который
-  // исчезнет при выходе. Автозапуск по нему будет битым.
+  // Portable: process.execPath is a temporary unpacked file that
+  // disappears on exit. Autostart via it would be broken.
   if (isWindowsPortable()) return null;
   return process.execPath;
 }
 
-/** Получить текущее состояние автозапуска. */
+/** Get the current autostart state. */
 export function getAutoLaunch(): { enabled: boolean; unavailable?: boolean; reason?: string } {
-  // Linux — самое сложное из-за pluggable DE. Проверяем только файл.
+  // Linux is the hardest one because of pluggable DEs. We only check the file.
   if (isLinux()) {
     const file = path.join(linuxAutostartDir(), LINUX_DESKTOP_FILE);
     if (!fs.existsSync(file)) return { enabled: false };
     try {
       const content = fs.readFileSync(file, 'utf-8');
       const execMatch = /^Exec="?([^"\n]+)"?/m.exec(content);
-      // Если Exec-пропал/битый — считаем автозапуск выключенным.
+      // If the Exec line is missing/broken — we consider autostart disabled.
       if (!execMatch || !execMatch[1] || !fs.existsSync(execMatch[1].trim())) return { enabled: false };
-      // Ярлык на старый путь после переезда лаунчера — тоже «выключен»,
-      // иначе UI врёт что автозапуск наш.
+      // A shortcut pointing to the old path after the launcher moved counts
+      // as "disabled" too, otherwise the UI lies about autostart being ours.
       try {
         if (fs.realpathSync(execMatch[1].trim()) !== fs.realpathSync(process.execPath)) return { enabled: false };
       } catch { return { enabled: false }; }
@@ -128,10 +128,10 @@ export function getAutoLaunch(): { enabled: boolean; unavailable?: boolean; reas
 
   // Windows
   if (isWindowsPortable()) {
-    // Реальный .exe portable хранит в PORTABLE_EXECUTABLE_FILE, но Startup
-    // ярлык должен вести на путь, который существует после выхода из Trel —
-    // это работает. Но он зависит от того, где пользователь сохранит .exe.
-    // На некоторых сборках это рабочий Portable-путь, проверяем что он жив.
+    // The real portable .exe is stored in PORTABLE_EXECUTABLE_FILE, but the
+    // Startup shortcut must lead to a path that still exists after Trel
+    // exits — that works. But it depends on where the user saves the .exe.
+    // On some builds this is a working Portable path, we check that it is alive.
     const portableExe = process.env.PORTABLE_EXECUTABLE_FILE;
     if (!portableExe || !fs.existsSync(portableExe)) {
       return { enabled: false, unavailable: true, reason: 'Portable .exe path not known' };
@@ -152,7 +152,7 @@ export function getAutoLaunch(): { enabled: boolean; unavailable?: boolean; reas
   } catch { return { enabled: false }; }
 }
 
-/** Включить/выключить автозапуск. */
+/** Enable/disable autostart. */
 export function setAutoLaunch(enabled: boolean): { ok: boolean; unavailable?: boolean; reason?: string } {
   // Linux
   if (isLinux()) {
@@ -190,14 +190,14 @@ export function setAutoLaunch(enabled: boolean): { ok: boolean; unavailable?: bo
     if (!portable || !fs.existsSync(portable)) {
       return { ok: false, unavailable: true, reason: 'Portable .exe path not known — autostart cannot be enabled' };
     }
-    // Для portable Startup-ярлык ведёт на реальный .exe. Это валидно.
+    // For portable the Startup shortcut leads to the real .exe. That is valid.
     const link = windowsStartupLink();
     try {
       fs.mkdirSync(windowsStartupDir(), { recursive: true });
       shell.writeShortcutLink(link, 'create', {
         target: portable,
         cwd: path.dirname(portable),
-        // icon — рядом с .exe если положили, иначе сам .exe.
+        // icon — next to the .exe if there is one, otherwise the .exe itself.
         icon: portable,
         iconIndex: 0,
       });
@@ -218,15 +218,15 @@ export function setAutoLaunch(enabled: boolean): { ok: boolean; unavailable?: bo
   if (!target) return { ok: false, reason: 'Cannot resolve executable for autostart' };
   try {
     fs.mkdirSync(windowsStartupDir(), { recursive: true });
-    // Если уже есть — корректно обновляем, чтобы не создавать дублирующий ярлык.
+    // If it already exists — update it correctly so we do not create a duplicate shortcut.
     if (fs.existsSync(link)) {
       try {
         const meta = shell.readShortcutLink(link);
         if (meta.target && fs.existsSync(meta.target)) {
-          // Уже валиден — не трогаем.
+          // Already valid — leave it alone.
           return { ok: true };
         }
-        // Битый — создаём заново.
+        // Broken — create it from scratch.
         fs.unlinkSync(link);
       } catch {
         try { fs.unlinkSync(link); } catch {}

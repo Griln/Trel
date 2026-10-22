@@ -17,9 +17,9 @@ export default defineConfig({
     chunkSizeWarningLimit: 1000, // Increased because manualChunks splits vendor libs; individual chunks can exceed default 500KB
     rollupOptions: {
       output: {
-        // Разносим тяжёлые сторонние библиотеки в отдельные chunk'и,
-        // чтобы three (~600 КБ) грузилось только когда пользователь
-        // открыл вкладку «Скин», и кешировалось отдельно от прикладного кода.
+        // Split the heavy third-party libraries into separate chunks so that
+        // three (~600 KB) is only loaded when the user opens the "Skin" tab,
+        // and is cached separately from the application code.
         manualChunks: {
           'vendor-three': ['three'],
           'vendor-react': ['react', 'react-dom'],

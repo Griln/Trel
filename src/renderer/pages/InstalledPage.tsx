@@ -55,8 +55,8 @@ export const InstalledPage: React.FC<Props> = ({ settings, account, onSettingsCh
     return () => { cancelled = true; };
   }, []);
 
-  // Скрываем стандалон-ваниль, если для этой же базы установлен хотя бы
-  // один лоадер — он "впитывает" её под именем базовой MC версии.
+  // We hide the standalone vanilla version if at least one
+  // loader is installed for the same base — it "absorbs" it under the name of the base MC version.
   const items = useMemo(() => {
     const moddedBases = new Set(details.filter((d) => d.edition === 'java' && d.loader).map((d) => d.baseMc));
     return details
@@ -101,7 +101,7 @@ export const InstalledPage: React.FC<Props> = ({ settings, account, onSettingsCh
     } catch (e) {
       setStatus(t('installed.errorStatus', { message: (e as Error).message }));
     } finally {
-      // Снимаем busy сразу: launch отдаёт PID при старте, не при завершении игры.
+      // We clear busy right away: launch returns the PID on start, not when the game exits.
       setBusyId(null);
     }
   };
@@ -128,9 +128,9 @@ export const InstalledPage: React.FC<Props> = ({ settings, account, onSettingsCh
     } else {
       await window.api.minecraft.uninstall(id);
     }
-    // Если удалили текущую «активную» версию — главная не должна показывать
-    // её как выбранную. Бэкенд уже сбросил это в settings.json, но рендерер
-    // держит копию в памяти — синхронизируем явно.
+    // If the currently “active” version was deleted — the home page must not show
+    // it as the selected one. The backend has already reset it in settings.json, but the renderer
+    // keeps a copy in memory — so we sync it explicitly.
     if (settings.lastVersionId === id) {
       onSettingsChange({ ...settings, lastVersionId: '', lastVersionEdition: undefined });
     }
@@ -155,8 +155,8 @@ export const InstalledPage: React.FC<Props> = ({ settings, account, onSettingsCh
     setStatus(result.removed.length > 0
       ? t('installed.revertedLoaders', { list: result.removed.join(', ') })
       : t('installed.revertedNone'));
-    // Backend сам обновил lastVersionId — берём из возвращённых settings,
-    // чтобы UI и settings.json не разъезжались.
+    // The backend updated lastVersionId on its own — we take it from the returned settings,
+    // so that the UI and settings.json do not drift apart.
     if (result.settings) {
       onSettingsChange(result.settings);
     } else if (settings.lastVersionId && result.removed.includes(settings.lastVersionId)) {
@@ -196,7 +196,7 @@ export const InstalledPage: React.FC<Props> = ({ settings, account, onSettingsCh
     refresh();
   };
 
-  // Снапшоты версии: разворачиваемая панель под строкой.
+  // Version snapshots: a collapsible panel under the row.
   type Snap = { file: string; versionId: string; label: string; at: number; size: number };
   const [snapFor, setSnapFor] = useState<string | null>(null);
   const [snaps, setSnaps] = useState<Snap[]>([]);

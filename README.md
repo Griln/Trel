@@ -5,124 +5,124 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux-blue.svg)](https://github.com/Griln/Trel/releases/latest)
 
-Лаунчер Minecraft для Windows и Linux. Каталог Java- и Bedrock-версий, модлоадеры, моды, миры, серверы, скины и импорт из других лаунчеров. Без рекламы и регистрации: можно играть гостем или войти через Microsoft.
+A Minecraft launcher for Windows and Linux. Browse Java and Bedrock versions, mod loaders, mods, modpacks, worlds, servers, skins, and import from other launchers. No ads, no registration: play as a guest or sign in with Microsoft.
 
-> **English:** Trel is a free Minecraft launcher for Windows and Linux: Java & Bedrock versions, mod loaders, mods, worlds, servers, skins and one-click import from other launchers. No ads, guest or Microsoft login.
+> **Русский:** [README.ru.md](README.ru.md) — лаунчер Minecraft для Windows и Linux.
 
-## Скриншоты
+## Screenshots
 
-![Установленные версии](docs/screenshots/app-shell.png)
-![Каталог версий](docs/screenshots/app-browse.png)
+![Installed versions](docs/screenshots/app-shell.png)
+![Version catalog](docs/screenshots/app-browse.png)
 
-## Что умеет
+## Features
 
-### Любая версия Minecraft в один клик
-От самой первой rd-132211 до новейшего снапшота. Релизы, снапшоты, бета, альфа — всё в одном каталоге, ставится в один клик. Список обновляется сам — новые версии появляются без перезапуска.
+### Every Minecraft version in one click
+From the very first rd-132211 to the latest snapshot. Releases, snapshots, betas and alphas all live in one catalog and install with a single click. The list updates itself — new versions show up without a restart.
 
-### Моды без головной боли
-Поддерживаются **Fabric**, **Quilt**, **Forge** и **NeoForge** — основные мод-загрузчики. Установка автоматическая, в каталоге выбираешь нужную версию Minecraft и ставишь поверх неё лоадер.
+### Mods without the headache
+**Fabric**, **Quilt**, **Forge** and **NeoForge** are supported — the mod loaders that matter. Installation is automatic: pick the Minecraft version in the catalog and the loader is applied on top of it.
 
-### Каждая версия — со своими модами
-Поставил Fabric на 1.20.1 со своим набором модов, потом Forge на 1.18.2 с другими — они не пересекаются. У каждой установленной версии своя папка с модами, шейдерами, ресурс- и текстур-паками. Можно держать сколько угодно сборок параллельно и переключаться между ними.
+### Every version keeps its own mods
+Install Fabric on 1.20.1 with one set of mods, then Forge on 1.18.2 with another — they never mix. Each installed version has its own folder for mods, shaders, resource packs and texture packs. Keep as many builds side by side as you like and switch between them at any time.
 
-Если передумал и хочешь сыграть в чистую ваниль — кнопка «Вернуть к ванили» уберёт лоадер и вернёт всё в исходное состояние, моды никуда не денутся.
+Changed your mind and want plain vanilla? The "Revert to vanilla" button removes the loader and restores the original state, and your mods are kept on disk.
 
-### Шейдеры и ресурс-паки
-Кидаешь `.zip` в раздел «Контент» — лаунчер сам кладёт куда надо. Можно включать/отключать моды по одному без удаления.
+### Shaders and resource packs
+Drop a `.zip` into the Content section and the launcher puts it where it belongs. Mods can be toggled one by one without deleting anything.
 
-### Java сама поставится
-Не нужно искать и качать нужную версию Java вручную. Лаунчер посмотрит, что уже установлено в системе, и если ничего подходящего не найдёт — скачает Eclipse Temurin под нужный Minecraft. Java 8 для старых, 17 для новых, 21 для свежих — всё разруливается само.
+### Java installs itself
+There is no need to hunt for the right Java version by hand. The launcher checks what is already installed on your system and, if nothing suitable is found, downloads Eclipse Temurin for the version you need. Java 8 for older Minecraft, 17 for recent, 21 for the latest — it all works out on its own.
 
-### Старые сейвы не теряются
-Корректно работает с мирами от Pre-Classic до современных. Поддерживает миры в нестандартных местах (включая старый формат, когда мир хранился одним файлом `level.dat` без папки).
+### Old saves are never lost
+Worlds from Pre-Classic through the present day work correctly. Worlds stored in unusual places are supported too, including the old format where a save was a single `level.dat` file with no folder around it.
 
-### Авто-обновления
-Когда выходит новая версия лаунчера — он скачает её сам в фоне и предложит установить. Качается только то, что изменилось, а не весь файл заново.
+### Automatic updates
+When a new launcher version is out, it downloads it in the background and offers to install it. Only the changed parts are fetched, not the whole file again.
 
-### Никакой обязательной регистрации
-Создаёшь гостевой профиль на лету: вводишь никнейм — играешь. Можно держать несколько профилей и переключаться. Также поддерживается вход через Microsoft: гость подходит для одиночной игры и серверов без проверки лицензии, Microsoft — для официальных серверов.
+### No forced registration
+Create a guest profile on the fly: type a nickname and play. You can keep several profiles and switch between them. Signing in with Microsoft is supported as well — a guest profile is enough for singleplayer and for servers with license checks disabled, while Microsoft is needed for the official servers.
 
-## Установка
+## Installation
 
-Скачай [последний релиз](../../releases/latest).
+Grab the [latest release](../../releases/latest).
 
 Windows:
-- **`Trel-x.y.z-x64.exe`** — обычный установщик. Поставится в `Program Files`, появится ярлык в Пуске, обновляется автоматически.
-- **`Trel.exe`** — портативная версия. Ничего не устанавливает — запускается напрямую, данные хранит рядом, можно носить на флешке.
+- **`Trel-x.y.z-x64.exe`** — the regular installer. It installs into `Program Files`, adds a Start Menu shortcut and updates itself.
+- **`Trel.exe`** — the portable build. Nothing gets installed: it runs straight away, keeps its data next to the executable, and fits on a USB stick.
 
-Системные требования Windows: **Windows 10 или 11**.
+Windows system requirements: **Windows 10 or 11**.
 
 Linux:
-- **`Trel-x.y.z-x86_64.AppImage`** — портативный запуск без установки.
+- **`Trel-x.y.z-x86_64.AppImage`** — run it without installing anything.
 - **`Trel-x.y.z-amd64.deb`** — Debian/Ubuntu.
-- **`Trel-x.y.z-x86_64.rpm`** — Fedora/RHEL-подобные.
+- **`Trel-x.y.z-x86_64.rpm`** — Fedora and RHEL-likes.
 
-## Первый запуск
+## First run
 
-1. Запустить лаунчер.
-2. Создать гостевой профиль или войти через Microsoft.
-3. Открыть «Каталог», выбрать версию Minecraft, нажать «Играть».
+1. Start the launcher.
+2. Create a guest profile or sign in with Microsoft.
+3. Open the Catalog, pick a Minecraft version and hit Play.
 
-Всё. Лаунчер сам скачает игру, нужные библиотеки и Java.
+That is all. The launcher downloads the game, the required libraries and Java on its own.
 
-## Где хранятся данные
+## Where the data lives
 
-Windows: `%APPDATA%\Trel\` — настройки, аккаунты, скачанная Java, версии Minecraft, миры.
+Windows: `%APPDATA%\Trel\` — settings, accounts, the downloaded Java, Minecraft versions and worlds.
 
-Linux: каталог данных Electron — обычно `~/.config/Trel`; в портативной сборке и в особых случаях может использоваться соседний каталог.
+Linux: the Electron user data directory, usually `~/.config/Trel`; portable builds and a few special cases may use a neighbouring directory.
 
-Путь к игровой папке можно поменять в настройках, если хочешь хранить версии и миры на другом диске.
+The game folder path can be changed in the settings if you would rather keep versions and worlds on another drive.
 
-## Разработка
+## Development
 
-Для разработчиков, которые хотят собрать лаунчер из исходников или поучаствовать.
+For developers who want to build the launcher from source or contribute to it.
 
 ```bash
 npm install
-npm run dev          # в одной консоли — Vite на localhost:5173
-npm start            # в другой — запустит Electron
+npm run dev          # in one console — Vite on localhost:5173
+npm start            # in another — starts Electron
 ```
 
-Сборка релизных бинарников:
+Building the release binaries:
 
 ```bash
-npm run build        # проверка сборки без упаковки
-npm run dist         # Windows: инсталлятор NSIS + портативная сборка
+npm run build        # checks that everything compiles, without packaging
+npm run dist         # Windows: NSIS installer + portable build
 npm run dist:linux   # Linux: AppImage + deb + rpm
 ```
 
-В `release/` появятся установщики/пакеты и файлы для автообновлений.
+The installers, packages and auto-update files end up in `release/`.
 
-Стек: Electron 33, React 18, TypeScript, Vite, electron-builder, [@xmcl/core](https://github.com/Voxelum/minecraft-launcher-core-node) для работы с Minecraft.
+Stack: Electron 33, React 18, TypeScript, Vite, electron-builder and [@xmcl/core](https://github.com/Voxelum/minecraft-launcher-core-node) for talking to Minecraft.
 
-## Лицензия
+## License
 
 [MIT](LICENSE).
 
-## Важно
+## Important
 
-Minecraft — собственность Mojang/Microsoft. Trel не предоставляет игру и не обходит лицензию: клиент скачивается с официальных серверов Mojang. Запускать без купленного аккаунта можно только в одиночной игре и на серверах, где отключена проверка лицензии (`online-mode=false`). Для игры на официальных серверах нужен Microsoft-аккаунт — вход через него поддерживается.
+Minecraft is a trademark of Mojang/Microsoft. Trel does not provide the game and does not bypass its license: the client is downloaded only from the official Mojang servers. Running without a purchased account is limited to singleplayer and to servers that have license verification turned off (`online-mode=false`). Official servers require a Microsoft account, and signing in with one is supported.
 
-## Помочь проекту
+## Contributing
 
-- 🐛 [Нашёл баг](https://github.com/Griln/Trel/issues/new/choose) — приложи лог из «Настройки → Диагностика»
-- 💡 [Есть идея](https://github.com/Griln/Trel/issues/new/choose)
-- 💬 [Вопросы и обсуждения](https://github.com/Griln/Trel/discussions)
-- 🧑‍💻 [Хочу контрибьютить](CONTRIBUTING.md) — как собрать и запустить тесты
-- 🔒 [Уязвимость](SECURITY.md) — не в issue, а по инструкции оттуда
-- 📜 [Правила поведения](CODE_OF_CONDUCT.md)
+- 🐛 [Found a bug](https://github.com/Griln/Trel/issues/new/choose) — attach the log from Settings → Diagnostics
+- 💡 [Have an idea](https://github.com/Griln/Trel/issues/new/choose)
+- 💬 [Questions and discussions](https://github.com/Griln/Trel/discussions)
+- 🧑‍💻 [Want to contribute](CONTRIBUTING.md) — how to build and run the tests
+- 🔒 [Security issue](SECURITY.md) — do not open a public issue, follow the instructions there
+- 📜 [Code of conduct](CODE_OF_CONDUCT.md)
 
-## Релизы
+## Releases
 
-Релизы собираются и публикуются автоматически: пушишь тег — CI собирает
-Windows (инсталлятор NSIS и портативная сборка) и Linux (AppImage, deb, rpm) и прикрепляет файлы
-к релизу.
+Releases are built and published automatically: push a tag and CI produces the
+Windows (NSIS installer and portable build) and Linux (AppImage, deb, rpm)
+files and attaches them to the release.
 
 ```bash
-# номер версии в теге должен совпадать с полем version в package.json
+# the version in the tag must match the version field in package.json
 git tag vX.Y.Z
 git push origin vX.Y.Z
 ```
 
-Зеркало релизов и эмулятора TrelEmu: [archive.org](https://archive.org/details/trel-emu-pack-v0-5-0).
-
+Mirror of the releases and of the TrelEmu emulator:
+[archive.org](https://archive.org/details/trel-emu-pack-v0-5-0).

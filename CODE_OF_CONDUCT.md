@@ -1,51 +1,52 @@
-# Правила поведения
+# Code of Conduct
 
-## Наш стандарт
+## Our Standard
 
-Цель Trel — открытый проект, в котором комфортно всем. Поэтому мы ожидаем
-уважительного общения, независимо от возраста, тела, расы, религии, пола,
-сексуальной ориентации, гендера, внешности, уровня опыта, образования,
-социально-экономического статуса или национальности.
+The goal of Trel is an open project where everyone feels comfortable. So we
+expect respectful interaction regardless of age, body size, race, religion,
+gender, sexual orientation, gender identity, appearance, experience level,
+education, socio-economic status, or nationality.
 
-## Приемлемое поведение
+## Acceptable Behavior
 
-- Уважительный и доброжелательный тон
-- Спокойный поиск компромисса, когда интересы не совпадают
-- Принятие конструктивной критики
-- Фокус на том, что полезно проекту и пользователям
-- Эмпатия к новичкам
+- Respectful and friendly tone
+- Calmly seeking compromise when interests do not align
+- Accepting constructive criticism
+- Focusing on what is useful for the project and its users
+- Empathy towards newcomers
 
-## Неприемлемое поведение
+## Unacceptable Behavior
 
-- Оскорбления, угрозы, преследование
-- Сексуализированный язык или imagery
-- Публичная травля
-- Личная информация без разрешения
-- Спам и навязчивая реклама
-- Другие действия, неуместные в профессиональном сообществе
+- Insults, threats, or harassment
+- Sexually explicit language or imagery
+- Public bullying
+- Personal information without permission
+- Spam and pushy advertising
+- Other conduct that is inappropriate for a professional community
 
-## Обязанности
+## Responsibilities
 
-Разработчики и мейнтейнеры несут ответственность за создание благоприятной среды
-и обязаны принимать разумные меры по исправлению неприемлемого поведения.
+Developers and maintainers are responsible for creating a welcoming
+environment and are expected to take reasonable steps to address unacceptable
+behavior.
 
-## Область применения
+## Scope
 
-Правила действуют во всех пространствах проекта: issues, pull requests,
-discussions, releases, комментариях в коде.
+These rules apply everywhere in the project: issues, pull requests,
+discussions, releases, and comments in code.
 
-## Как сообщить
+## Reporting
 
-Напиши лично мейнтейнеру или открой issue с меткой `conduct`, если это не
-связано с конкретным человеком. Все сообщения будут рассмотрены и
-законфиденциальны.
+Reach out to a maintainer privately or open an issue labeled `conduct` if the
+report is not about a specific person. All reports will be reviewed and kept
+confidential.
 
-## Последствия
+## Consequences
 
-Мейнтейнер может удалить комментарии, заблокировать участника или запретить
-доступ к репозиторию — в зависимости от тяжести нарушения.
+A maintainer may remove comments, block a participant, or restrict access to
+the repository, depending on the severity of the violation.
 
-## Источник
+## Source
 
-Адаптировано из [Contributor Covenant](https://www.contributor-covenant.org),
-версия 2.1.
+Adapted from the [Contributor Covenant](https://www.contributor-covenant.org),
+version 2.1.

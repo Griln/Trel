@@ -4,12 +4,12 @@ import * as crypto from 'node:crypto';
 import axios from 'axios';
 
 /**
- * authlib-injector — стандартный Java-агент, который перехватывает обращения
- * Minecraft-клиента к Mojang API и перенаправляет их на наш локальный URL.
- * Без него offline-Minecraft рисует случайный default-Alex по UUID.
+ * authlib-injector — a standard Java agent that intercepts the Minecraft
+ * client's calls to the Mojang API and redirects them to our local URL.
+ * Without it offline Minecraft renders a random default-Alex based on the UUID.
  *
- * Источник: https://authlib-injector.yushi.moe/ (open source, GPL-3).
- * Скачиваем один раз, кэшируем в <launcherDir>/cache/authlib-injector.jar.
+ * Source: https://authlib-injector.yushi.moe/ (open source, GPL-3).
+ * Downloaded once, cached in <launcherDir>/cache/authlib-injector.jar.
  */
 
 const ALLOWED_HOSTS = new Set([
@@ -37,11 +37,11 @@ export class AuthlibInjector {
     return path.join(this.launcherDir, 'cache', 'authlib-injector.jar');
   }
 
-  /** Скачивает агент если его ещё нет. Возвращает абсолютный путь. */
+  /** Downloads the agent if it is missing. Returns the absolute path. */
   async ensure(): Promise<string> {
     const out = this.jarPath();
 
-    // Проверяем существующий jar: он должен быть >50KB и НЕ битый.
+    // Check an existing jar: it must be >50KB and NOT corrupt.
     if (fs.existsSync(out)) {
       try {
         const buf = fs.readFileSync(out);
@@ -90,7 +90,7 @@ export class AuthlibInjector {
 
     const data = Buffer.from(resp.data);
 
-    // Проверка SHA-256 если известен
+    // SHA-256 verification if known
     if (expectedSha) {
       const actual = crypto.createHash('sha256').update(data).digest('hex');
       if (actual.toLowerCase() !== expectedSha.toLowerCase()) {
@@ -98,12 +98,12 @@ export class AuthlibInjector {
       }
     }
 
-    // Базовая проверка: это должен быть jar (начинается с PK)
+    // Basic sanity check: this must be a jar (starts with PK)
     if (data.length < 50_000 || data[0] !== 0x50 || data[1] !== 0x4b) {
       throw new Error('Downloaded authlib-injector does not look like a valid JAR');
     }
 
-    // Атомарная запись: temp + rename
+    // Atomic write: temp + rename
     const tmp = out + '.trel_tmp';
     fs.writeFileSync(tmp, data);
     try { fs.renameSync(tmp, out); }

@@ -1,4 +1,4 @@
-/* Аудит: скриншоты всех страниц для поиска неровностей */
+/* Audit: screenshots of all pages to spot irregularities */
 const { chromium } = require('playwright');
 (async () => {
   const browser = await chromium.connectOverCDP('http://127.0.0.1:9333');

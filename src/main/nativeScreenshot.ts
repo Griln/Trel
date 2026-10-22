@@ -130,10 +130,11 @@ export class NativeScreenshotService {
 
   /** Resolve the Minecraft window client rect (physical px) via Win32 helper. */
   private resolveGameRect(): { x: number; y: number; w: number; h: number; title: string } | null {
-    // Win32-only: точные границы клиентской области окна Minecraft через
-    // PowerShell + Win32 API. На Linux/macOS вернуть их надёжно нельзя
-    // (Wayland, нет xdotool/wmctrl), поэтому возвращаем null — capture()
-    // в этом случае снимает весь экран под курсором вместо кропа по окну.
+    // Win32-only: the exact bounds of the Minecraft window client area via
+    // PowerShell + the Win32 API. On Linux/macOS they cannot be resolved
+    // reliably (Wayland, no xdotool/wmctrl), so we return null — capture()
+    // then grabs the whole screen under the cursor instead of cropping to
+    // the window.
     if (process.platform !== 'win32') return null;
     try {
       if (!this.psFile) {
@@ -157,22 +158,24 @@ export class NativeScreenshotService {
 
   /** Capture ONLY the Minecraft window's client area and save it as PNG. */
   async capture(): Promise<string | null> {
-    // Если игра не запущена через Trel — снимать нечего: не дёргаем захват
-    // экрана (на Linux это дорогой запрос к порталу скриншотов/доступу).
+    // If the game is not running through Trel there is nothing to capture:
+    // we do not trigger a screen capture (on Linux that is an expensive
+    // request to the screenshot/portal access API).
     if (this.isGameRunning && !this.isGameRunning()) return null;
     if (this.busy) return null;
     this.busy = true;
     try {
       const rect = this.resolveGameRect();
 
-      // Windows без окна Minecraft — молча выходим (снимать нечего).
-      // На Linux/macOS rect всегда null — это нормально: снимаем весь экран,
-      // где сейчас курсор (как правило там и игра, раз пользователь играет).
+      // Windows without a Minecraft window — exit silently (nothing to capture).
+      // On Linux/macOS rect is always null — that is normal: we capture the
+      // whole screen under the cursor (which is where the game usually is,
+      // since the user is playing).
       if (process.platform === 'win32' && !rect) return null;
 
       let display: Electron.Display;
       if (rect) {
-        // Windows: дисплей, содержащий окно игры (rect в физических px).
+        // Windows: the display containing the game window (rect in physical px).
         const scaleGuessPoint = { x: rect.x + 2, y: rect.y + 2 };
         display =
           screen.getAllDisplays().find((d) => {
@@ -181,7 +184,7 @@ export class NativeScreenshotService {
             return scaleGuessPoint.x >= left && scaleGuessPoint.x < right && scaleGuessPoint.y >= top && scaleGuessPoint.y < bottom;
           }) || screen.getPrimaryDisplay();
       } else {
-        // Linux/macOS: дисплей под курсором (DIP-координаты).
+        // Linux/macOS: the display under the cursor (DIP coordinates).
         const cur = screen.getCursorScreenPoint();
         display =
           screen.getAllDisplays().find((d) => {
@@ -198,7 +201,7 @@ export class NativeScreenshotService {
       if (!src) { this.busy = false; return null; }
       const img = src.thumbnail;
 
-      // Windows: кроп до клиентской области окна игры. Linux/macOS: весь экран.
+      // Windows: crop to the client area of the game window. Linux/macOS: the whole screen.
       let out = img;
       if (rect) {
         const tsize = img.getSize();
@@ -243,7 +246,7 @@ export class NativeScreenshotService {
   private notify(name: string, file: string) {
     try {
       if (!Notification.isSupported()) return;
-      // Превью скриншота как иконка уведомления — выглядит аккуратнее.
+      // Use the screenshot preview as the notification icon — looks neater.
       let icon: Electron.NativeImage | undefined;
       try {
         const thumb = nativeImage.createFromPath(file);
@@ -255,7 +258,7 @@ export class NativeScreenshotService {
         silent: false,
         icon,
       });
-      // Клик по уведомлению — открыть окно лаунчера.
+      // Click on the notification — open the launcher window.
       n.on('click', () => {
         try {
           const win = this.getWin();

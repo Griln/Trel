@@ -4,8 +4,8 @@ import { useT } from '../i18n';
 const MAX_LINES = 500;
 
 /**
- * Консоль игры: живой лог запуска. Фильтр ошибок, поиск, автоскролл,
- * копирование. Видна только при включённой настройке showConsole.
+ * Game console: a live launch log. Error filter, search, auto-scroll,
+ * copying. Visible only when the showConsole setting is enabled.
  */
 export const GameConsole: React.FC = () => {
   const t = useT();

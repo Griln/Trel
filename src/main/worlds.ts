@@ -29,7 +29,7 @@ function longToNumber(val: bigint | [number, number]): number {
  */
 function parseLevelDat(file: string): { name?: string; lastPlayed?: number; gameMode?: number; hardcore?: boolean; version?: string } {
   try {
-    // level.dat — килобайты; мегабайты = чужой/битый файл, в RAM не тянем.
+    // level.dat — kilobytes; megabytes = a foreign/corrupted file, we don't pull it into RAM.
     try {
       if (fs.statSync(file).size > 8 * 1024 * 1024) return {};
     } catch { return {}; }
@@ -70,21 +70,21 @@ export class WorldService {
   savesDir(): string { return path.join(this.gameDir, 'saves'); }
 
   /**
-   * Старые версии (rd-*, c0.*, alpha-classic) пишут миры в зависимости от ОС:
+   * Old versions (rd-*, c0.*, alpha-classic) write worlds depending on the OS:
    * Windows -> %APPDATA%\.minecraft (System.getenv("APPDATA"))
    * Mac     -> ~/Library/Application Support/minecraft
    * Linux   -> ~/.minecraft (user.home)
    *
-   * Возвращаем все возможные расположения сохранений ВНУТРИ нашего gameDir
+   * We return all possible save locations INSIDE our gameDir
    * (gameDir/saves, gameDir/.minecraft/saves, gameDir/.minecraft).
    *
-   * Системные пути (%APPDATA%\.minecraft) НЕ включаются: иначе миры
-   * официального лаунчера Mojang всплывали бы в UI Trel — это и зрелищно
-   * сбивает с толку, и опасно (можно случайно удалить чужой мир).
+   * System paths (%APPDATA%\.minecraft) are NOT included: otherwise worlds of the
+   * official Mojang launcher would pop up in the Trel UI — that is both visually
+   * confusing and dangerous (you could accidentally delete someone else's world).
    *
-   * Pre-Classic версии при наличии нашей подмены `APPDATA=gameDir` пишут
-   * `level.dat` прямо в gameDir, а не в системный `.minecraft` — для них
-   * хватает ветки `looseLevelDatRoots()` ниже.
+   * Pre-Classic versions, with our `APPDATA=gameDir` substitution in place, write
+   * `level.dat` right into gameDir, and not into the system `.minecraft` — for them
+   * the `looseLevelDatRoots()` branch below is enough.
    */
   legacyRoots(): string[] {
     const out = [
@@ -96,15 +96,16 @@ export class WorldService {
   }
 
   /**
-   * Где Pre-Classic версии физически пишут одиночный `level.dat`.
-   * Шире, чем `legacyRoots()`, потому что rd-* запускается с cwd=gameDir
-   * и `-Duser.dir=gameDir`, а потом пишет `level.dat` прямо туда —
-   * не в `gameDir/saves` и не в `gameDir/.minecraft`. Если этот корень
-   * не учесть, файл не находится и не удаляется при «полностью удалить».
+   * Where Pre-Classic versions physically write the single `level.dat`.
+   * Wider than `legacyRoots()`, because rd-* is launched with cwd=gameDir
+   * and `-Duser.dir=gameDir`, and then writes `level.dat` right there —
+   * neither in `gameDir/saves` nor in `gameDir/.minecraft`. If this root
+   * is not taken into account, the file is not found and not deleted on
+   * "delete completely".
    */
   private looseLevelDatRoots(): string[] {
     const out: string[] = [
-      this.gameDir,                     // rd-* пишет сюда из-за cwd=gameDir
+      this.gameDir,                     // rd-* writes here because of cwd=gameDir
       ...this.legacyRoots(),
     ];
     // dedupe
@@ -159,13 +160,13 @@ export class WorldService {
 
     for (const root of this.legacyRoots()) scanRoot(root, root !== this.savesDir());
 
-    // Pre-Classic / Classic / rd-* версии сохраняют мир как ОДИНОЧНЫЙ файл
-    // <root>/level.dat (а не как папку). Без этой ветки такие миры были
-    // не видны в UI — пользователь не мог их удалить, и они "воскресали"
-    // при следующем запуске старой версии.
+    // Pre-Classic / Classic / rd-* versions save the world as a SINGLE file
+    // <root>/level.dat (and not as a folder). Without this branch such worlds were
+    // invisible in the UI — the user could not delete them, and they "resurrected"
+    // on the next launch of an old version.
     //
-    // Indev/Infdev (in-*, inf-*) дополнительно используют формат `mclevel.dat`
-    // в gameDir и `saves/<name>.mclevel` (одиночные файлы, не папки).
+    // Indev/Infdev (in-*, inf-*) additionally use the `mclevel.dat` format
+    // in gameDir and `saves/<name>.mclevel` (single files, not folders).
     const gameDirResolved = path.resolve(this.gameDir).toLowerCase();
     const looseFiles = ['level.dat', 'mclevel.dat'];
     for (const root of this.looseLevelDatRoots()) {
@@ -196,9 +197,9 @@ export class WorldService {
       }
     }
 
-    // Infdev: миры могут лежать как `saves/<имя>.mclevel` (одиночные файлы).
-    // Ищем такие файлы во всех savesDir-ах. Их формат отличается от
-    // современного — мы их просто показываем чтобы можно было удалить.
+    // Infdev: worlds may live as `saves/<name>.mclevel` (single files).
+    // We look for such files in all savesDirs. Their format differs from the
+    // modern one — we just show them so that they can be deleted.
     for (const root of this.legacyRoots()) {
       if (!fs.existsSync(root)) continue;
       let entries: string[];
@@ -232,9 +233,9 @@ export class WorldService {
 
   /**
    * Synthetic name for a loose level/mclevel file (Pre-Classic / Indev / Infdev).
-   * Encodes parent dir path + filename, чтобы один root мог содержать
-   * несколько разных world-файлов (например `level.dat` от Pre-Classic
-   * и `mclevel.dat` от Indev одновременно).
+   * Encodes the parent dir path + filename, so that one root can contain
+   * several different world files (for example `level.dat` from Pre-Classic
+   * and `mclevel.dat` from Indev at the same time).
    */
   private syntheticLooseName(root: string, fileName: string = 'level.dat'): string {
     const rootKey = path.resolve(root).replace(/[\\/:]/g, '_');
@@ -245,17 +246,17 @@ export class WorldService {
   /** Resolve a world name (folder OR synthetic loose) to its filesystem location. */
   private resolveWorld(worldName: string): { kind: 'folder' | 'loose'; dir: string; levelDat: string } | null {
     if (worldName.startsWith('~legacy:')) {
-      // Новый формат: `~legacy:<rootKey>:<fileName>`. Старый формат
-      // `~legacy:<rootKey>` всё ещё поддерживаем для обратной совместимости —
-      // тогда подразумеваем `level.dat`.
+      // New format: `~legacy:<rootKey>:<fileName>`. The old format
+      // `~legacy:<rootKey>` is still supported for backward compatibility —
+      // in that case `level.dat` is implied.
       const rest = worldName.slice('~legacy:'.length);
-      // Имя файла идёт после последнего ':' (rootKey не содержит ':' благодаря
-      // замене разделителей в syntheticLooseName).
+      // The file name comes after the last ':' (rootKey contains no ':' thanks to
+      // the separator replacement in syntheticLooseName).
       const lastColon = rest.lastIndexOf(':');
       let fileName = 'level.dat';
       if (lastColon >= 0) {
         const tail = rest.slice(lastColon + 1);
-        // Эвристика: легитимные world-файлы — level.dat[.suffix] или *.mclevel
+        // Heuristic: legitimate world files are level.dat[.suffix] or *.mclevel
         if (/^level\.dat([._-].*)?$/i.test(tail) || /^mclevel\.dat$/i.test(tail) || /\.mclevel$/i.test(tail)) {
           fileName = tail;
         }
@@ -270,7 +271,7 @@ export class WorldService {
           }
         } catch {}
       }
-      // Fallback для legacyRoots (могут быть Infdev-файлы в saves/)
+      // Fallback for legacyRoots (there may be Infdev files in saves/)
       for (const root of this.legacyRoots()) {
         if (this.syntheticLooseName(root, fileName) !== worldName) continue;
         const file = path.join(root, fileName);
@@ -282,8 +283,8 @@ export class WorldService {
       }
       return null;
     }
-    // Обычное имя мира — папка saves/<имя>. Защита от `../`: убеждаемся,
-    // что реальный resolved-путь действительно лежит ВНУТРИ root.
+    // Regular world name — a saves/<name> folder. Protection against `../`: we make sure
+    // that the real resolved path indeed lies INSIDE root.
     for (const root of this.legacyRoots()) {
       const dir = path.join(root, worldName);
       const resolvedRoot = path.resolve(root);
@@ -292,13 +293,13 @@ export class WorldService {
         resolvedDir !== resolvedRoot &&
         !resolvedDir.startsWith(resolvedRoot + path.sep)
       ) {
-        // worldName содержал `..` или абсолютный путь — пропускаем root.
+        // worldName contained `..` or an absolute path — skip this root.
         continue;
       }
       const levelDat = path.join(dir, 'level.dat');
       if (fs.existsSync(levelDat)) {
-        // Симлинк-папка внутри saves/ обошла бы resolve-проверку выше:
-        // сверяем РЕАЛЬНЫЙ путь (symlink на /etc не пройдёт).
+        // A symlink folder inside saves/ would bypass the resolve check above:
+        // we compare the REAL path (a symlink to /etc will not pass).
         try {
           const realDir = fs.realpathSync(dir);
           const realRoot = fs.realpathSync(root);
@@ -322,7 +323,7 @@ export class WorldService {
     const p = path.join(r.dir, 'icon.png');
     if (!fs.existsSync(p)) return null;
     try {
-      // Иконка мира — десятки КБ; мегабайты через IPC душат рендер.
+      // World icon — tens of KB; megabytes over IPC choke the renderer.
       const st = fs.statSync(p);
       if (!st.isFile() || st.size > 2 * 1024 * 1024) return null;
       const buf = fs.readFileSync(p);
@@ -339,16 +340,16 @@ export class WorldService {
       fs.rmSync(r.dir, { recursive: true, force: true });
       return true;
     }
-    // Loose-формат: удаляем сам файл и его сиблинги-бэкапы.
+    // Loose format: we delete the file itself and its sibling backups.
     // Pre-Classic: `level.dat`, `level.dat_old`, `level.dat.bak`
     // Indev:       `mclevel.dat`, `mclevel.dat_old`
-    // Infdev:      `<имя>.mclevel` — только сам файл, бэкапов обычно нет
+    // Infdev:      `<name>.mclevel` — only the file itself, there are usually no backups
     try { fs.rmSync(r.levelDat, { force: true }); } catch {}
     const baseName = path.basename(r.levelDat).toLowerCase();
     try {
       for (const entry of fs.readdirSync(r.dir)) {
 
-        // Удаляем бэкапы только для level.dat / mclevel.dat
+        // We delete backups only for level.dat / mclevel.dat
         if (baseName === 'level.dat' && /^level\.dat([._-].*)?$/i.test(entry)) {
           try { fs.rmSync(path.join(r.dir, entry), { force: true }); } catch {}
         } else if (baseName === 'mclevel.dat' && /^mclevel\.dat([._-].*)?$/i.test(entry)) {
@@ -380,18 +381,18 @@ export class WorldService {
   }
 
   /**
-   * Удаляет ВСЕ loose-файлы миров (level.dat*, mclevel.dat*, *.mclevel)
-   * из всех корней, куда могли записать мир Pre-Classic / Classic / Indev /
-   * Infdev / ранний Alpha. Шире чем `legacyRoots()` — включает сам gameDir,
-   * потому что rd-* и Indev запускаются с cwd=gameDir и пишут эти файлы
-   * прямо туда.
+   * Deletes ALL loose world files (level.dat*, mclevel.dat*, *.mclevel)
+   * from every root where Pre-Classic / Classic / Indev /
+   * Infdev / early Alpha could have written a world. Wider than `legacyRoots()` —
+   * it includes gameDir itself, because rd-* and Indev are launched with
+   * cwd=gameDir and write these files right there.
    *
-   * Используется при «полностью удалить» pre-classic версии и при полном
-   * сбросе лаунчера. Без этого после удаления старой версии мир сохранялся
-   * и «воскресал» при следующем запуске любой совместимой старой версии.
+   * Used on "delete completely" of a pre-classic version and on a full
+   * launcher reset. Without this, after removing an old version the world survived
+   * and "resurrected" on the next launch of any compatible old version.
    *
-   * Удаляются только сами world-файлы — папки и прочие файлы рядом не
-   * трогаются, чтобы не задеть данные официального лаунчера.
+   * Only the world files themselves are deleted — folders and other files next to them
+   * are not touched, so that data of the official launcher is not affected.
    */
   wipeAllLooseLevelDat(): string[] {
     const removed: string[] = [];
@@ -404,8 +405,8 @@ export class WorldService {
         if (!looseRe.test(entry)) continue;
         const full = path.join(root, entry);
         try {
-          // Только файл; если по какой-то причине это директория с таким
-          // именем — пропускаем, чтобы не снести случайно полноценный мир.
+          // Only a file; if for some reason it is a directory with such
+          // a name — we skip it, so as not to accidentally wipe a whole world.
           if (fs.statSync(full).isFile()) {
             fs.rmSync(full, { force: true });
             removed.push(full);
@@ -413,7 +414,7 @@ export class WorldService {
         } catch {}
       }
     }
-    // Дополнительно: Infdev-миры в saves-папках (`saves/<name>.mclevel`).
+    // Additionally: Infdev worlds in saves folders (`saves/<name>.mclevel`).
     for (const root of this.legacyRoots()) {
       if (!fs.existsSync(root)) continue;
       let entries: string[];
@@ -443,8 +444,8 @@ export class WorldService {
     const out = path.join(backupsDir, `${safeName}-${stamp}.zip`);
     const zip = new AdmZip();
     if (r.kind === 'folder') {
-      // Вручную, а не addLocalFolder: симлинк внутри мира (хоть на ~/.ssh)
-      // иначе уехал бы в бэкап и утёк при шаринге. Симлинки пропускаем.
+      // Manually, and not with addLocalFolder: a symlink inside the world (even to ~/.ssh)
+      // would otherwise end up in the backup and leak when sharing. Symlinks are skipped.
       const base = path.basename(r.dir);
       let count = 0;
       const walk = (dir: string, rel: string) => {
@@ -465,13 +466,13 @@ export class WorldService {
       zip.addLocalFile(r.levelDat);
     }
     zip.writeZip(out);
-    // Ротация: держим последние N бэкапов этого мира, старые — в утиль.
-    // Иначе папка backups пухнет гигабайтами и никто её не чистит.
+    // Rotation: we keep the last N backups of this world, the old ones go to the bin.
+    // Otherwise the backups folder swells to gigabytes and nobody cleans it.
     this.pruneBackups(worldName, 10);
     return out;
   }
 
-  /** Удаляет бэкапы мира старше keep последних. Возвращает число удалённых. */
+  /** Deletes the world's backups older than the last `keep` ones. Returns the number of deleted ones. */
   pruneBackups(worldName: string, keep = 10): number {
     if (keep < 0) keep = 0;
     const dir = this.backupsDir();
@@ -530,8 +531,8 @@ export class WorldService {
     const zip = new AdmZip(resolved);
     const entries = zip.getEntries();
     if (entries.length === 0) throw new Error('Backup is empty');
-    // Zip-slip: чужой zip с ../../ перезаписал бы mods/.desktop и дал бы RCE.
-    // Проверяем ВСЕ записи до распаковки, а не только первую.
+    // Zip-slip: a foreign zip with ../../ would overwrite mods/.desktop and give RCE.
+    // We check ALL entries before extraction, not only the first one.
     for (const e of entries) {
       const name = e.entryName.replace(/\\/g, '/');
       const norm = path.posix.normalize(name);

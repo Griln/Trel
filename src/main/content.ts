@@ -61,7 +61,7 @@ function safeExtractZip(zipPath: string, targetDir: string): void {
     if (entry.isDirectory) { fs.mkdirSync(dest, { recursive: true }); continue; }
     if (((entry.header.attr >>> 16) & 0o170000) === 0o120000) continue; // symlink
     total += entry.header.size;
-    // Bedrock-пак в сотни МБ распакованного — ок; гигабайты = бомба.
+    // A Bedrock pack of a few hundred MB unpacked is fine; gigabytes = a bomb.
     if (total > 1024 * 1024 * 1024) throw new Error('Zip bomb guard: pack too large');
     fs.mkdirSync(path.dirname(dest), { recursive: true });
     fs.writeFileSync(dest, entry.getData());
@@ -114,8 +114,8 @@ function parseModToml(text: string): Record<string, string> {
   return out;
 }
 
-// Метаданные читаем только из вменяемых по размеру jar: 2ГБ «мод»
- // иначе роняет main-процесс (AdmZip грузит всё в RAM).
+// Metadata is read only from jars of a sane size: a 2GB "mod"
+// would otherwise take down the main process (AdmZip loads everything into RAM).
 const MOD_META_MAX_BYTES = 512 * 1024 * 1024;
 function parseJavaModMeta(file: string): ContentItem['meta'] | undefined {
   try {
@@ -190,7 +190,7 @@ export class ContentService {
     return path.join(this.gameDir, sub);
   }
 
-  /** Создать все стандартные папки контента для версии (idempotent). */
+  /** Create all standard content folders for a version (idempotent). */
   ensureFolders(versionId?: string, edition: ContentEdition = 'java'): void {
     for (const kind of Object.keys(FOLDER_BY_KIND) as ContentKind[]) {
       try { fs.mkdirSync(this.dirFor(kind, versionId, edition), { recursive: true }); } catch {}
@@ -222,7 +222,7 @@ export class ContentService {
 
       const baseLow = isDisabled ? lowName.slice(0, -'.disabled'.length) : lowName;
       if (edition === 'java') {
-        // Для Java-модов фильтруем: оставляем только .jar (с/без .disabled).
+        // For Java mods we filter: keep only .jar files (with or without .disabled).
         if (kind === 'mod' && !baseLow.endsWith('.jar')) continue;
       } else if (!isFolder) {
         // Bedrock packs are usually import archives or extracted folders.
@@ -266,7 +266,7 @@ export class ContentService {
     }
   }
 
-  /** Включить/выключить элемент: добавляет/убирает .disabled расширение. */
+  /** Enable/disable an item: adds/removes the .disabled extension. */
   toggle(kind: ContentKind, name: string, versionId?: string, edition: ContentEdition = 'java'): boolean {
     const dir = this.dirFor(kind, versionId, edition);
     const full = path.join(dir, name);
@@ -283,7 +283,7 @@ export class ContentService {
     }
   }
 
-  /** Скопировать файлы в папку контента. Не перезаписывает — добавляет (1), (2)... */
+  /** Copy files into the content folder. Does not overwrite — appends (1), (2)... */
   add(kind: ContentKind, sourcePaths: string[], versionId?: string, edition: ContentEdition = 'java'): { copied: number; errors: string[] } {
     const dir = this.dirFor(kind, versionId, edition);
     fs.mkdirSync(dir, { recursive: true });
@@ -302,8 +302,8 @@ export class ContentService {
         }
         const stat = fs.statSync(src);
         const lower = baseName.toLowerCase();
-        // Троянский .jar исполняется игрой при следующем запуске: файлы >512МБ
-        // не принимаем молча — пользователь пусть положит руками и осознанно.
+        // A trojanized .jar is executed by the game on the next launch: files >512MB
+        // are not accepted silently — the user should place it by hand, consciously.
         if (!stat.isDirectory() && stat.size > 512 * 1024 * 1024) {
           throw new Error('File too large (>512MB), add it manually if you trust it: ' + baseName);
         }
@@ -332,10 +332,10 @@ export class ContentService {
   }
 
   /**
-   * Проверка обновлений модов через Modrinth API. Для каждого jar читаем
-   * modid, ищем проект по slug=modid и сравниваем последнюю версию под эту
-   * игру/лоадер с установленной. Совпадение slug≠modid отбраковываем по
-   * файлам: ищем только если проект вообще отвечает.
+   * Mod update check via the Modrinth API. For every jar we read the
+   * modid, look up the project by slug=modid and compare the latest version
+   * for this game/loader with the installed one. A slug≠modid mismatch is
+   * filtered out by files: we only search if the project responds at all.
    */
   async checkModUpdates(versionId: string, gameVersion: string, loaders: string[]): Promise<Array<{
     file: string; name: string; current?: string; latest?: string; url?: string; filename?: string;
@@ -346,7 +346,7 @@ export class ContentService {
     const jars = entries.filter((e) => e.isFile() && e.name.toLowerCase().endsWith('.jar')).slice(0, 100);
     const out: Array<{ file: string; name: string; current?: string; latest?: string; url?: string; filename?: string }> = [];
     const UA = 'TrelLauncher/1.0 (mod-update-check)';
-    // Пачками по 4: сотня модов иначе висит минуту.
+    // In batches of 4: a hundred mods would otherwise hang for a minute.
     for (let i = 0; i < jars.length; i += 4) {
       const batch = await Promise.all(jars.slice(i, i + 4).map(async (e) => {
         try {
@@ -360,11 +360,11 @@ export class ContentService {
           const { data } = await axios.get(q, { timeout: 10000, headers: { 'User-Agent': UA } });
           const latest = Array.isArray(data) && data.length > 0 ? data[0] : null;
           if (!latest?.version_number) return null;
-          if (version && latest.version_number === version) return null; // уже свежий
+          if (version && latest.version_number === version) return null; // already up to date
           const file = (latest.files ?? []).find((f: { primary?: boolean }) => f.primary) ?? (latest.files ?? [])[0];
           return { file: e.name, name: id, current: version, latest: latest.version_number as string,
             url: file?.url as string | undefined, filename: file?.filename as string | undefined };
-        } catch { return null; } // нет на Modrinth / сеть легла — молча пропускаем
+        } catch { return null; } // not on Modrinth / network down — skip silently
       }));
       for (const r of batch) if (r) out.push(r);
     }
@@ -391,12 +391,12 @@ export class ContentService {
     return {};
   }
 
-  /** Все профили версии: имя → список включённых jar. */
+  /** All profiles of a version: name → list of enabled jars. */
   listModProfiles(versionId: string): Record<string, string[]> {
     return this.readProfiles(versionId);
   }
 
-  /** Сохраняет профиль из ТЕКУЩЕГО состояния папки (включённые jar). */
+  /** Saves the profile from the CURRENT state of the folder (enabled jars). */
   saveModProfile(versionId: string, name: string): string[] {
     if (!/^[a-zA-Z0-9а-яА-Я_][a-zA-Z0-9а-яА-Я_. \-]{0,63}$/.test(name)) throw new Error('Bad profile name');
     const dir = this.dirFor('mod', versionId, 'java');
@@ -415,7 +415,7 @@ export class ContentService {
     return names;
   }
 
-  /** Удаляет профиль (файлы не трогает). */
+  /** Deletes the profile (does not touch the files). */
   deleteModProfile(versionId: string, name: string): boolean {
     const all = this.readProfiles(versionId);
     if (!(name in all)) return false;
@@ -425,8 +425,8 @@ export class ContentService {
   }
 
   /**
-   * Применяет профиль: всё выключаем (.disabled), из списка — включаем.
-   * Файлы не удаляются, только переименовываются туда-сюда.
+   * Applies a profile: everything is disabled (.disabled), the ones from the
+   * list are enabled. Files are not deleted, only renamed back and forth.
    */
   applyModProfile(versionId: string, name: string): { enabled: number; disabled: number } {
     const all = this.readProfiles(versionId);
@@ -459,7 +459,7 @@ export class ContentService {
     return { enabled, disabled };
   }
 
-  /** Ставит обновление мода: качает jar, старый — в .bak, новый — на место. */
+  /** Installs a mod update: downloads the jar, the old one goes to .bak, the new one takes its place. */
   async updateMod(versionId: string, fileName: string, url: string): Promise<{ file: string; backup: string }> {
     if (fileName.includes('/') || fileName.includes('\\') || fileName.includes('..')) throw new Error('Bad file name');
     if (!isUrlAllowed(url)) throw new Error('URL blocked by download policy');

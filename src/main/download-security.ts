@@ -47,8 +47,8 @@ export function verifyDownloadSource(url: string): DownloadSourceTrust {
   try {
     const u = new URL(url);
     const host = u.hostname.toLowerCase();
-    // Loopback без TLS: удалённо не перехватить, а для локальных прокси,
-    // дев-стендов и тестов — необходимость. Внешний http по-прежнему banned.
+    // Loopback without TLS: it cannot be intercepted remotely, and for local
+    // proxies, dev environments and tests it is a necessity. External http is still banned.
     if ((u.protocol === 'http:' || u.protocol === 'https:') &&
         (host === 'localhost' || host === '127.0.0.1' || host === '::1' || host.endsWith('.localhost'))) {
       return { allowed: true, host, reason: `Источник автоматически подтверждён: ${host}` };

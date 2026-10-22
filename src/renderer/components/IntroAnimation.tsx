@@ -44,7 +44,7 @@ export const IntroAnimation: React.FC<Props> = ({ theme, onDone }) => {
   );
 };
 
-/** Mono — чистый кинетический текст: буквы выезжают слева с нарастающей скоростью. */
+/** Mono — pure kinetic text: letters slide in from the left with growing speed. */
 const MonoIntro: React.FC = () => (
   <div className="intro-mono-inner">
     <div className="mono-track">
@@ -53,7 +53,7 @@ const MonoIntro: React.FC = () => (
   </div>
 );
 
-/** Eclipse — кольцо расходится, текст проявляется внутри с масштабированием. */
+/** Eclipse — the ring expands, the text appears inside it with a scale-up. */
 const EclipseIntro: React.FC = () => (
   <div className="intro-eclipse-inner">
     <div className="eclipse-ring" />
@@ -62,7 +62,7 @@ const EclipseIntro: React.FC = () => (
   </div>
 );
 
-/** Voxel — буквы выпрыгивают с баунсом, зелёные искры. */
+/** Voxel — letters jump out with a bounce, green sparks. */
 const VoxelIntro: React.FC = () => {
   const letters = 'Trel'.split('');
   const particles = Array.from({ length: 14 }).map(() => ({

@@ -90,7 +90,7 @@ export class PlaytimeService {
     try {
       const raw = JSON.parse(fs.readFileSync(this.file, 'utf-8'));
       if (!Array.isArray(raw?.sessions)) return [];
-      // Схема: битые записи дропаем по одной, а не весь файл целиком.
+      // Schema: broken records are dropped one by one, not the whole file at once.
       return raw.sessions.filter((x: unknown): x is PlaySession =>
         !!x && typeof x === 'object'
         && Number.isFinite((x as PlaySession).start) && Number.isFinite((x as PlaySession).end)
@@ -104,7 +104,7 @@ export class PlaytimeService {
     try {
       const trimmed = sessions.slice(-PlaytimeService.MAX);
       fs.mkdirSync(path.dirname(this.file), { recursive: true });
-      // Атомарно: краш посреди записи больше не оставляет пустой json.
+      // Atomic: a crash in the middle of a write no longer leaves an empty json.
       const tmp = this.file + '.trel_tmp';
       fs.writeFileSync(tmp, JSON.stringify({ sessions: trimmed }));
       try { fs.renameSync(tmp, this.file); }
@@ -117,8 +117,8 @@ export class PlaytimeService {
   /** Record the moment a version starts running. */
   recordStart(versionId: string) {
     if (!versionId) return;
-    // Счётчик инстансов: два окна одной версии дают одну общую сессию
-    // от первого старта до последнего выхода, а не две рваные.
+    // Instance counter: two windows of the same version give one shared session
+    // from the first start to the last exit, not two fragmented ones.
     this.refs.set(versionId, (this.refs.get(versionId) ?? 0) + 1);
     if (!this.open.has(versionId)) this.open.set(versionId, Date.now());
   }
@@ -130,7 +130,7 @@ export class PlaytimeService {
     const left = (this.refs.get(versionId) ?? 1) - 1;
     if (left > 0) {
       this.refs.set(versionId, left);
-      return; // ещё есть живые окна — сессия продолжается
+      return; // there are still live windows — the session continues
     }
     this.refs.delete(versionId);
     this.open.delete(versionId);

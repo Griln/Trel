@@ -25,9 +25,9 @@ describe('переводы интерфейса', () => {
   });
 
   it('в русском словаре нет битой кодировки', () => {
-    // 'вЂ”' — это '→', 'В·' — это '·', 'Г—' — это '×': UTF-8, прочитанный как CP1251
-    // UTF-8, прочитанный как CP1251/CP1252: '→' -> 'вЂ”' или 'в†’',
-    // '·' -> 'В·', '×' -> 'Г—', '~' -> 'в‰€'
+    // Mojibake: UTF-8 decoded as CP1251/CP1252 turns '→', '·', '×' and '~'
+    // into sequences of Cyrillic/Latin-1 glyphs. The exact set of glyphs
+    // that counts as broken is spelled out in the regex below.
     const mojibake = /[вВ][Ђ†€‰][”‘™°·—–]/;
     const bad = Object.entries(DICT_RU)
       .filter(([, v]) => mojibake.test(v))
@@ -36,8 +36,7 @@ describe('переводы интерфейса', () => {
   });
 
   it('в английском словаре нет битой кодировки', () => {
-    // UTF-8, прочитанный как CP1251/CP1252: '→' -> 'вЂ”' или 'в†’',
-    // '·' -> 'В·', '×' -> 'Г—', '~' -> 'в‰€'
+    // Same mojibake pattern as in the Russian dictionary check above.
     const mojibake = /[вВ][Ђ†€‰][”‘™°·—–]/;
     const bad = Object.entries(DICT_EN)
       .filter(([, v]) => mojibake.test(v))

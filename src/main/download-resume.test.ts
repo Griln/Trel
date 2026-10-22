@@ -1,4 +1,4 @@
-/** Докачка и пауза через локальный HTTP — внешней сети не надо. */
+/** Resume and pause over a local HTTP server — no external network needed. */
 import * as fs from 'node:fs';
 import * as http from 'node:http';
 import * as os from 'node:os';
@@ -18,7 +18,7 @@ function tmpDir(prefix: string): string {
   return d;
 }
 
-/** Локальный HTTP с Range и дросселем (для паузы/докачки без внешней сети). */
+/** Local HTTP server with Range support and a throttle (for pause/resume without external network). */
 async function startFileServer(data: Buffer, chunkDelayMs: number): Promise<{ url: string; close: () => void; log: string[] }> {
   const log: string[] = [];
   const srv = http.createServer((req, res) => {
@@ -37,7 +37,7 @@ async function startFileServer(data: Buffer, chunkDelayMs: number): Promise<{ ur
     } else {
       res.writeHead(200, headers);
     }
-    // Кусками с задержкой, чтобы пауза успела сработать посередине.
+    // In chunks with a delay, so that the pause triggers in the middle.
     let off = 0;
     const step = 256 * 1024;
     const tick = () => {
@@ -62,9 +62,9 @@ describe('e2e-live: download resume + pause', () => {
     try {
       const dir = tmpDir('trel-e2e-dl-');
       const dest = path.join(dir, 'file.bin');
-      // Кладём огрызок .part (первые 2МБ) — дальше обязана быть докачка.
+      // Drop a .part chunk (the first 2MB) — a resume must follow.
       fs.writeFileSync(dest + '.part', data.subarray(0, 2 * 1024 * 1024));
-      // Пауза посередине: в hold, потом снятие — файл обязан сойтись.
+      // Pause in the middle: hold, then resume — the file must come out identical.
       setTimeout(() => setDownloadsPaused(true), 400);
       setTimeout(() => setDownloadsPaused(false), 1400);
       await downloadWithRetry(srv.url, dest, undefined, 3, data.length);

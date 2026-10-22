@@ -55,7 +55,7 @@ export const WorldsPage: React.FC = () => {
   const worldBackups = (name: string) => allBackups.filter((b) => b.world.toLowerCase() === name.toLowerCase());
   const current = useMemo(() => list.find((w) => w.name === selected) ?? null, [list, selected]);
 
-  // Общий флаг операций: даблклик бэкапа/рестора поверх себя = потеря мира.
+  // A shared operation flag: a double click on backup/restore over itself = losing the world.
   const [opBusy, setOpBusy] = React.useState<string | null>(null);
   const [pubVersion, setPubVersion] = React.useState('');
   const publishWorld = async (w: WorldEntry) => {
@@ -102,7 +102,7 @@ export const WorldsPage: React.FC = () => {
         buttons: [{ label: t('settings.ok'), value: 'ok', variant: 'default' }], defaultIndex: 0, cancelValue: 'ok' });
     } finally { setOpBusy(null); }
   };
-  // WebDAV-синк сейвов: конфиг + последний статус.
+  // WebDAV sync of the saves: the config + the last status.
   const [syncInfo, setSyncInfo] = React.useState<{ configured: boolean; url?: string; login?: string; lastSyncAt?: number; lastDirection?: string } | null>(null);
   const [syncBusy, setSyncBusy] = React.useState(false);
   const [davUrl, setDavUrl] = React.useState('');
@@ -203,7 +203,7 @@ export const WorldsPage: React.FC = () => {
       await window.api.worlds.backup(w.name);
       try { setAllBackups(await window.api.worlds.listBackups()); } catch { /* list refresh is best-effort */ }
     } catch (e) {
-      // Тихий несозданный бэкап хуже ошибки: юзер удалит мир в ложном спокойствии.
+      // A silently not created backup is worse than an error: the user would delete the world in false peace.
       await dialog.show({ title: t('worlds.backupFailedTitle'), tone: 'warn',
         message: (e as Error).message, buttons: [{ label: t('settings.ok'), value: 'ok', variant: 'default' }],
         defaultIndex: 0, cancelValue: 'ok' });

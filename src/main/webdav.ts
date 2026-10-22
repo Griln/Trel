@@ -1,7 +1,7 @@
 /**
- * Синхронизация сейвов через WebDAV (Nextcloud/ownCloud/Yandex.Disk WebDAV).
- * Только saves/ — секреты и токены не ездят никуда.
- * Пароль — в keychain ОС (safeStorage), в файлах только шифртекст.
+ * Save sync over WebDAV (Nextcloud/ownCloud/Yandex.Disk WebDAV).
+ * Only saves/ — secrets and tokens never leave the machine.
+ * The password lives in the OS keychain (safeStorage); files hold ciphertext only.
  */
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -40,7 +40,7 @@ export class WebdavSync {
     return { configured: true, url: m.url, login: m.login, lastSyncAt: m.lastSyncAt, lastDirection: m.lastDirection };
   }
 
-  /** Сохраняет конфиг; пароль шифруется keychain. Пустой пароль = удалить конфиг. */
+  /** Saves the config; the password is encrypted by the keychain. An empty password deletes the config. */
   async configure(url: string, login: string, password: string): Promise<void> {
     if (!url || !login || !password) {
       try { fs.unlinkSync(this.metaFile()); } catch { /* ignore */ }
@@ -75,7 +75,7 @@ export class WebdavSync {
     });
   }
 
-  /** Список наших архивов на сервере (новее — раньше). */
+  /** List of our archives on the server (newest first). */
   async remoteList(): Promise<Array<{ href: string; name: string; mtime: number; size: number }>> {
     const { url, login, password } = await this.creds();
     const res = await this.request('PROPFIND', url, login, password,
@@ -93,7 +93,7 @@ export class WebdavSync {
     return out.sort((a, b) => b.mtime - a.mtime);
   }
 
-  /** Push: упаковать saves/ и залить. Старые архивы сервера не трогаем. */
+  /** Push: pack saves/ and upload it. Old server archives are left untouched. */
   async push(onProgress?: (stage: string) => void): Promise<{ file: string; size: number }> {
     const { url, login, password } = await this.creds();
     const savesDir = path.join(this.gameDir, 'saves');
@@ -134,7 +134,7 @@ export class WebdavSync {
     return { file: name, size: buf.length };
   }
 
-  /** Pull: скачать свежий архив и распаковать в saves/ (zip-slip проверен). */
+  /** Pull: download the freshest archive and unpack it into saves/ (zip-slip checked). */
   async pull(onProgress?: (stage: string) => void): Promise<{ file: string; worlds: number }> {
     const { url, login, password } = await this.creds();
     const list = await this.remoteList();
@@ -162,14 +162,14 @@ export class WebdavSync {
       if (e.isDirectory) continue;
       const dest = path.join(savesDir, ...norm.split('/'));
       fs.mkdirSync(path.dirname(dest), { recursive: true });
-      // Не затираем мир, который новее облачного: сначала в .bak.
+      // We do not overwrite a world that is newer than the cloud copy: it goes to .bak first.
       try {
         const dstSt = fs.statSync(dest);
         if (dstSt.isFile()) {
           const bak = dest + '.cloud-bak';
           fs.renameSync(dest, bak);
         }
-      } catch { /* нет файла — пишем прямо */ }
+      } catch { /* no file — write directly */ }
       fs.writeFileSync(dest, e.getData());
       if (norm.endsWith('level.dat')) worlds++;
     }

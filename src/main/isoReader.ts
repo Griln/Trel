@@ -4,19 +4,19 @@ import * as path from 'node:path';
 import * as zlib from 'node:zlib';
 
 /**
- * Минимальный ISO 9660 reader — ищем файлы в образе Android-x86 для прямой
- * загрузки ядра в QEMU (минуя GRUB, что экономит 30-60 сек на каждой загрузке).
+ * Minimal ISO 9660 reader — we look for files in the Android-x86 image to boot
+ * the kernel directly in QEMU (bypassing GRUB saves 30-60 sec per boot).
  *
- * Поддерживает только то, что нужно для Android-x86 9.0:
- *   - Rock Ridge (для длинных имён типа "isolinux/kernel" с правильным регистром)
- *   - Joliet (не поддерживаем — Android-x86 ISO его не использует)
- *   - Многосекторные файлы (kernel обычно 7+ МБ)
+ * Supports only what Android-x86 9.0 needs:
+ *   - Rock Ridge (for long names like "isolinux/kernel" with the correct case)
+ *   - Joliet (not supported — the Android-x86 ISO does not use it)
+ *   - Multi-sector files (the kernel is usually 7+ MB)
  *
- * ISO 9660 sector size = 2048 байт. Volume Descriptor Set начинается с сектора 16.
- * Primary Volume Descriptor (PVD) содержит:
+ * ISO 9660 sector size = 2048 bytes. The Volume Descriptor Set starts at sector 16.
+ * The Primary Volume Descriptor (PVD) contains:
  *   - byte 0: type (1 = PVD)
  *   - byte 1: "CD001"
- *   - byte 156-189: root directory record (34 байта)
+ *   - byte 156-189: root directory record (34 bytes)
  *   - byte 190-...: path table
  *
  * Directory record:
@@ -26,7 +26,7 @@ import * as zlib from 'node:zlib';
  *   - byte 10-17: data length
  *   - byte 25: flags (bit 1 = directory)
  *   - byte 32-33: name length
- *   - byte 33+: name (if byte 32 == 1, name is ".", ".." not stored)
+ *   - byte 33+: name (if byte 32 == 1, the names ".", ".." are not stored)
  *
  * Rock Ridge extensions:
  *   - "NM" entry: alternative name (posix-style, with case)
@@ -39,7 +39,7 @@ interface DirRecord {
   isDir: boolean;
   location: number;     // sector
   length: number;       // bytes
-  /** Rock Ridge: реальное имя с регистром (если есть) */
+  /** Rock Ridge: the real name with case (if present) */
   realName?: string;
 }
 
@@ -69,7 +69,7 @@ export class IsoReader {
     this.rootDirLen = rootRec.readUInt32BE(10);
   }
 
-  /** Ищет файл по пути вроде '/isolinux/kernel' или 'kernel' (от корня). */
+  /** Looks up a file by a path like '/isolinux/kernel' or 'kernel' (from the root). */
   async findFile(pathStr: string): Promise<Buffer | null> {
     const parts = pathStr.split('/').filter(Boolean);
     let dirSector = this.rootDirSector;
@@ -155,10 +155,10 @@ export class IsoReader {
   }
 
   /**
-   * Парсит Rock Ridge System Use Area: ищем запись 'NM' (alternative name).
-   * 'NM' signature = 0x4E4D, version 1, len >= 5.
-   * Flags: bit 0 = current, bit 1 = parent, bit 2 = root. Если есть — пропускаем.
-   * Полное имя собираем последовательно из 'NM' (с 'CE' для продолжения).
+   * Parses the Rock Ridge System Use Area: we look for the 'NM' record
+   * (alternative name). 'NM' signature = 0x4E4D, version 1, len >= 5.
+   * Flags: bit 0 = current, bit 1 = parent, bit 2 = root. If present — skip it.
+   * The full name is assembled sequentially from 'NM' (with 'CE' for continuation).
    */
   private parseRockRidgeName(sua: Buffer): string | undefined {
     if (sua.length < 4) return undefined;
@@ -420,12 +420,12 @@ const ADB_TCP_SNIPPET = Buffer.from([
 ].join('\n'));
 
 /**
- * Патчит initrd (gzip-cpio initramfs), добавляя в скрипт `init`
- * shell-код, который перед switch_root дописывает в `init.usb.rc`
- * (извлечённый из ramdisk.img) триггер включения ADB по TCP.
+ * Patches the initrd (gzip-cpio initramfs), adding to the `init` script
+ * shell code that appends to `init.usb.rc` (extracted from ramdisk.img)
+ * a trigger to enable ADB over TCP before switch_root.
  */
 export function patchInitrdForAdbTcp(initrdBuf: Buffer, socatBuf?: Buffer, adbdBuf?: Buffer, houdiniBuf?: Buffer): Buffer {
-  // initrd — десятки МБ; сотни = бомба, gunzipSync раздует в RAM.
+  // initrd — tens of MB; hundreds = a bomb, gunzipSync would blow it up in RAM.
   if (initrdBuf.length > 256 * 1024 * 1024) throw new Error('initrd too large');
   const raw = zlib.gunzipSync(initrdBuf);
   if (raw.length > 512 * 1024 * 1024) throw new Error('initrd decompresses too large');
@@ -514,28 +514,28 @@ export function patchInitrdForAdbTcp(initrdBuf: Buffer, socatBuf?: Buffer, adbdB
 }
 
 /**
- * Извлекает из ISO файлы для direct kernel boot.
- * Android-x86 9.0 имеет типичную структуру:
- *   /isolinux/kernel       — сжатый Linux kernel (bzImage)
- *   /isolinux/initrd.img   — initrd с Android-хелперами
- *   /isolinux/isolinux.cfg — GRUB-конфиг (нам не нужен, мы передаём -append)
+ * Extracts the files for a direct kernel boot from the ISO.
+ * Android-x86 9.0 has a typical layout:
+ *   /isolinux/kernel       — compressed Linux kernel (bzImage)
+ *   /isolinux/initrd.img   — initrd with the Android helpers
+ *   /isolinux/isolinux.cfg — GRUB config (we do not need it, we pass -append)
  *
- * Если kernel/initrd.img не найдены, fallback на /boot/ (UEFI-путь) и /android-X.X/.
+ * If kernel/initrd.img are not found, we fall back to /boot/ (the UEFI path) and /android-X.X/.
  */
 export async function extractBootFiles(isoPath: string, outDir: string): Promise<{ kernel: string; initrd: string }> {
   await fsp.mkdir(outDir, { recursive: true });
-  // ISO Android-x86 — сотни МБ; гигабайты = чужой/битый файл, в RAM не тянем.
+  // The Android-x86 ISO is hundreds of MB; gigabytes = a foreign/corrupt file, we do not pull it into RAM.
   const st = await fsp.stat(isoPath).catch(() => null);
   if (!st?.isFile() || st.size > 2 * 1024 * 1024 * 1024) throw new Error('ISO too large or missing');
   const data = await fsp.readFile(isoPath);
   const iso = new IsoReader(data);
 
-  // Поиск kernel по типичным путям Android-x86.
+  // Look for the kernel in the typical Android-x86 paths.
   const KERNEL_CANDIDATES = [
     'isolinux/kernel',       // Live CD kernel
     'boot/vmlinuz',          // Generic UEFI
     'kernel',                // Short
-    'android-9.0-r2/kernel', // Версионный путь
+    'android-9.0-r2/kernel', // versioned path
   ];
   const INITRD_CANDIDATES = [
     'isolinux/initrd.img',
@@ -566,7 +566,7 @@ export async function extractBootFiles(isoPath: string, outDir: string): Promise
     changed = true;
   }
   // Patch initrd: add ADB TCP relay so `androidboot.adb.tcp.port=5555` actually works.
-  // Всегда перезаписываем — размер патча меняется между версиями Trel.
+  // Always overwrite — the patch size changes between Trel versions.
   const readBundledBin = async (name: string): Promise<Buffer> => {
     const localPath = path.join(outDir, '..', 'bin', name);
     try {

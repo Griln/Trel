@@ -1,7 +1,7 @@
 name: CI
 
-# Проверяем, что проект собирается, типы в порядке и тесты проходят.
-# Релизы публикуются отдельным workflow — см. release.yml.
+# Makes sure the project builds, the types are fine and the tests pass.
+# Releases are published by a separate workflow — see release.yml.
 
 on:
   push:

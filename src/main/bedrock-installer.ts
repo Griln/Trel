@@ -12,7 +12,7 @@ import { scanDownloadedFileAsync, verifyDownloadSource } from './download-securi
 const MOBILE_UA = 'Mozilla/5.0 (Linux; Android 13; SM-S908B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36';
 
 const BEDROCK_EXPECTED_SIZE_MAX = 2 * 1024 * 1024 * 1024;
-const BEDROCK_MIN_REASONABLE = 10 * 1024 * 1024; // 10 МБ — абсолютный минимум для APK
+const BEDROCK_MIN_REASONABLE = 10 * 1024 * 1024; // 10 MB — the absolute minimum for an APK
 const BEDROCK_HUB_BASE = `https://${BEDROCK_SOURCE_HOST}`;
 
 interface ResolvedBedrockDownload {
@@ -215,7 +215,7 @@ export class BedrockInstaller {
   }
 
   private async resolveDownloadUrl(slug: string, postId: number): Promise<ResolvedBedrockDownload> {
-    // Article page on mcpehub shows a "Скачать" button that links to
+    // The mcpehub article page shows a download button that links to
     // /engine/dlfile.php?id=<file-id> (a countdown/ad page). The actual
     // APK URL is right there in the same page: /engine/getfile.php?id=<file-id>.
     const pageUrl = `${BEDROCK_HUB_BASE}/download-mcpe/${postId}-${slug}.html`;
@@ -559,7 +559,7 @@ export class BedrockInstaller {
   }
 
   uninstall(versionId: string): boolean {
-    // Без проверки id строка `../../` снесла бы всё рядом с bedrock/.
+    // Without the id check the string `../../` would wipe everything next to bedrock/.
     if (!isSafeVersionId(versionId)) throw new Error(`Invalid versionId: ${versionId}`);
     const dir = this.versionDir(versionId);
     if (!fs.existsSync(dir)) return false;

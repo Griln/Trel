@@ -1,4 +1,4 @@
-/* Аудит v2: все страницы + крупный снимок новой панели навигации */
+/* Audit v2: all pages + a large snapshot of the new navigation panel */
 const { chromium } = require('playwright');
 (async () => {
   const browser = await chromium.connectOverCDP('http://127.0.0.1:9333');
@@ -8,7 +8,7 @@ const { chromium } = require('playwright');
   const pages = ['Главная', 'Каталог', 'Установленные', 'Серверы', 'Миры', 'Контент', 'Модпаки', 'Скриншоты', 'Статистика', 'Импорт', 'Диагностика', 'Аккаунты', 'Скин', 'Настройки'];
   for (const name of pages) {
     const ok = await page.evaluate((n) => {
-      // «Главная» теперь hero-карточка, остальные — обычные nav-item
+      // "Home" is now a hero card, the rest are regular nav-item
       const hero = document.querySelector('.nav-hero');
       if (n === 'Главная' && hero) { hero.click(); return true; }
       const el = [...document.querySelectorAll('.nav-item')].find(x => x.textContent.trim().startsWith(n));
@@ -20,7 +20,7 @@ const { chromium } = require('playwright');
     await page.screenshot({ path: `/tmp/audit8-${slug}.png` });
     console.log(slug, ok ? 'ok' : 'NAV NOT FOUND');
   }
-  // крупный снимок панели: активная «Главная», потом активный «Каталог»
+  // large panel snapshot: active "Home", then active "Browse"
   const shotSidebar = async (tag) => {
     const el = await page.evaluateHandle(() => document.querySelector('.sidebar'));
     await el.asElement().screenshot({ path: `/tmp/audit8-sidebar-${tag}.png` });

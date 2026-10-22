@@ -4,9 +4,9 @@ import * as path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 
 /**
- * Управляемый сбой fsp.link(): позволяет проверить откат hardlink → копия
- * (EXDEV — «другой том»), не требуя второй файловой системы в тесте.
- * vi.hoisted нужен потому, что фабрика vi.mock поднимается выше объявлений.
+ * Controlled fsp.link() failure: lets us test the hardlink → copy fallback
+ * (EXDEV — "another volume") without requiring a second file system in the test.
+ * vi.hoisted is needed because the vi.mock factory is hoisted above declarations.
  */
 const linkState = vi.hoisted(() => ({ error: null as NodeJS.ErrnoException | null }));
 vi.mock('node:fs/promises', async (importOriginal) => {
@@ -175,7 +175,7 @@ describe('launcher import', () => {
     expect(source).not.toBeNull();
     expect(source!.available).toContain('accounts');
 
-    // Пустой profiles-файл без аккаунтов — источник не предлагается.
+    // An empty profiles file without accounts — the source is not offered.
     const empty = tmpDir('trel-import-empty-');
     fs.writeFileSync(path.join(empty, 'launcher_profiles.json'), JSON.stringify({ profiles: {} }));
     expect(detectFromDir(empty)).toBeNull();
@@ -276,7 +276,7 @@ describe('launcher import', () => {
     const world = path.join(src, 'versions', '1.20.1-tl', 'saves', 'IsolatedWorld');
     fs.mkdirSync(world, { recursive: true });
     fs.writeFileSync(path.join(world, 'level.dat'), 'nbt-bytes');
-    // Корневой saves отсутствует — это признак изоляции версий, а не мусора.
+    // The root saves folder is missing — that is a sign of version isolation, not of junk.
     const source = detectFromDir(src)!;
     expect(source.available).toContain('version-content');
 
@@ -295,8 +295,8 @@ describe('launcher import', () => {
     fs.mkdirSync(path.join(dst, 'mods'), { recursive: true });
     fs.writeFileSync(path.join(src, 'mods', 'A.jar'), 'A'.repeat(100));
     fs.writeFileSync(path.join(src, 'mods', 'B.jar'), 'B'.repeat(100));
-    fs.writeFileSync(path.join(dst, 'mods', 'A.jar'), 'A'.repeat(100)); // идентичен — должен быть пропущен
-    fs.writeFileSync(path.join(dst, 'mods', 'C.jar'), 'C'.repeat(100)); // тот же размер, но только в назначении
+    fs.writeFileSync(path.join(dst, 'mods', 'A.jar'), 'A'.repeat(100)); // identical — must be skipped
+    fs.writeFileSync(path.join(dst, 'mods', 'C.jar'), 'C'.repeat(100)); // same size, but only in the destination
 
     const source = { id: 'dedup-test', label: 'Dedup', rootDir: src, available: ['mods'] as any, approxSize: 0, kind: 'java' as const };
     const report = await performImport(
@@ -314,8 +314,8 @@ describe('launcher import', () => {
     const src = tmpDir('trel-import-src-');
     const dst = tmpDir('trel-import-dst-');
     fs.mkdirSync(path.join(src, 'config'), { recursive: true });
-    // Реалистичная папка конфигов: куча пустых файлов и одинаковых дефолтов.
-    // Их имена значимы для мод-лоадера, содержимое совпадает.
+    // A realistic config folder: a bunch of empty files and identical defaults.
+    // Their names matter for the mod loader, the content is the same.
     const empties = Array.from({ length: 30 }, (_, i) => `empty${i}.cfg`);
     const defaults = Array.from({ length: 30 }, (_, i) => `default${i}.toml`);
     for (const n of empties) fs.writeFileSync(path.join(src, 'config', n), '');
@@ -327,8 +327,8 @@ describe('launcher import', () => {
       source, dst, () => false,
     );
     expect(report.errors).toEqual([]);
-    // Дедупликация сравнивает с тем, что уже лежит в Trel, а не сворачивает
-    // одинаковые по содержимому файлы источника в один.
+    // Deduplication compares against what is already in Trel, it does not
+    // collapse source files that have identical content into one.
     expect(report.skipped.config ?? 0).toBe(0);
     expect(report.copied.config).toBe(60);
     for (const n of [...empties, ...defaults]) {
@@ -371,7 +371,7 @@ describe('launcher import', () => {
     expect(report.errors).toEqual([]);
     const from = fs.statSync(path.join(src, 'mods', 'Shared.jar'));
     const to = fs.statSync(path.join(dst, 'mods', 'Shared.jar'));
-    // Оба каталога — в os.tmpdir(), т.е. на одной ФС: link() должен пройти.
+    // Both directories are in os.tmpdir(), i.e. on the same FS: link() must succeed.
     expect(to.ino).toBe(from.ino);
     expect(to.nlink).toBeGreaterThan(1);
     expect(report.warnings.some((w) => w.includes('hardlink mode'))).toBe(true);
@@ -389,7 +389,7 @@ describe('launcher import', () => {
       source, dst, () => false,
     );
     expect(report.errors).toEqual([]);
-    // Раньше hardlink-ветка возвращалась до подсчёта — скорость в UI была 0.
+    // Previously the hardlink branch returned before the counting — the speed in the UI was 0.
     expect(report.bytesWritten).toBe(1024);
   });
 
@@ -397,7 +397,7 @@ describe('launcher import', () => {
     const src = tmpDir('trel-import-src-');
     const dst = tmpDir('trel-import-dst-');
     fs.mkdirSync(path.join(src, 'mods'), { recursive: true });
-    // Больше пула (8–24): каждый файл обязан дойти, ни один не потеряться.
+    // More than the pool (8–24): every file must arrive, none may be lost.
     for (let i = 0; i < 200; i++) fs.writeFileSync(path.join(src, 'mods', `M${i}.jar`), `mod-${i}`);
     const source = { id: 'pool', label: 'P', rootDir: src, available: ['mods'] as any, approxSize: 0, kind: 'java' as const };
     const report = await performImport({ sourceId: source.id, categories: ['mods'] }, source, dst, () => false);
@@ -415,8 +415,8 @@ describe('launcher import', () => {
     const plan = { sourceId: source.id, categories: ['mods'] as any };
     const first = await performImport(plan, source, dst, () => false);
     expect(first.copied.mods).toBe(1);
-    // Повтор после обрыва без дедупа: тот же файл уже на месте — ни копии,
-    // ни «A (1).jar» рядом. Дешёвый stat вместо чтения файла.
+    // A repeat after an interruption without dedup: the same file is already in
+    // place — neither a copy nor an "A (1).jar" next to it. A cheap stat, not a full read.
     const second = await performImport(plan, source, dst, () => false);
     expect(second.copied.mods).toBe(0);
     expect(second.skipped.mods).toBe(1);
@@ -424,7 +424,7 @@ describe('launcher import', () => {
   });
 
   it('preserves the executable bit on copied files', async () => {
-    if (process.platform === 'win32') return; // на Windows битов нет
+    if (process.platform === 'win32') return; // Windows has no bits
     const src = tmpDir('trel-import-src-');
     const dst = tmpDir('trel-import-dst-');
     fs.mkdirSync(path.join(src, 'mods'), { recursive: true });
@@ -439,7 +439,7 @@ describe('launcher import', () => {
   });
 
   it('skips symlinks with a warning instead of following them', async () => {
-    if (process.platform === 'win32') return; // создание симлинков требует прав
+    if (process.platform === 'win32') return; // creating symlinks requires privileges
     const src = tmpDir('trel-import-src-');
     const dst = tmpDir('trel-import-dst-');
     const outside = tmpDir('trel-import-outside-');
@@ -465,9 +465,9 @@ describe('launcher import', () => {
     await performImport({ sourceId: source.id, categories: ['mods'] }, source, dst, () => false, undefined,
       (_c, _t, _s, b, _bps, _eta, file) => { ticks.push({ bytes: b, currentFile: file }); });
     expect(ticks.length).toBeGreaterThan(0);
-    // Регресс NaNMB: раньше часть тиков шла вообще без байт.
+    // NaNMB regression: previously some ticks went out without any bytes.
     expect(ticks.every((tk) => typeof tk.bytes === 'number' && !Number.isNaN(tk.bytes))).toBe(true);
-    // Хотя бы раз мелькнуло имя копируемого файла.
+    // At least once the name of the copied file flashed by.
     expect(ticks.some((tk) => typeof tk.currentFile === 'string' && tk.currentFile.endsWith('.jar'))).toBe(true);
   });
 
@@ -477,8 +477,8 @@ describe('launcher import', () => {
     fs.mkdirSync(path.join(src, 'mods'), { recursive: true });
     fs.writeFileSync(path.join(src, 'mods', 'Cross.jar'), 'cross-volume');
 
-    // Эмулируем другой том: link() отвечает EXDEV, как при переносе между
-    // разделами или на FAT/exFAT/сетевой диск.
+    // We emulate another volume: link() answers with EXDEV, as when moving
+    // between partitions or onto a FAT/exFAT/network drive.
     linkState.error = Object.assign(new Error('cross-device link not permitted'), { code: 'EXDEV' });
     try {
       const source = { id: 'hl-x', label: 'HLX', rootDir: src, available: ['mods'] as any, approxSize: 0, kind: 'java' as const };
@@ -523,12 +523,12 @@ describe('launcher import', () => {
     expect(preview.totalFiles).toBe(2);
     expect(preview.totalBytes).toBe(1500);
     expect(preview.notEnoughSpace).toBe(false);
-    // Предпросмотр не должен ничего писать в папку игры.
+    // The preview must not write anything into the game folder.
     expect(fs.existsSync(path.join(dst, 'mods'))).toBe(false);
   });
 
   it('preview warns about hardlink sharing and source launcher memory', () => {
-    // Раскладка MultiMC/Prism: <инстанс>/instance.cfg + <инстанс>/.minecraft.
+    // The MultiMC/Prism layout: <instance>/instance.cfg + <instance>/.minecraft.
     const inst = tmpDir('trel-import-inst-');
     const src = path.join(inst, '.minecraft');
     const dst = tmpDir('trel-import-dst-');
@@ -543,8 +543,8 @@ describe('launcher import', () => {
   });
 
   it('ignores instance.cfg of a neighbouring folder when the picked dir is not .minecraft', () => {
-    // Пользователь мог выбрать произвольную папку, рядом с которой лежит чужой
-    // instance.cfg. Подписывать сборку чужим именем и чужим -Xmx нельзя.
+    // The user may have picked an arbitrary folder next to a foreign instance.cfg.
+    // We must not label the pack with someone else's name and someone else's -Xmx.
     const parent = tmpDir('trel-import-parent-');
     const src = path.join(parent, 'my-pack');
     fs.mkdirSync(path.join(src, 'mods'), { recursive: true });
@@ -634,8 +634,8 @@ describe('launcher import', () => {
 
     const controller = new AbortController();
     const source = { id: 'abort', label: 'A', rootDir: src, available: ['mods'] as any, approxSize: 0, kind: 'java' as const };
-    // Прерываем на первом тике, который сообщает о копировании (не на
-    // подготовительном «Counting files...»), — часть файлов уже уехала.
+    // We interrupt on the first tick that reports copying (not on the
+    // preparatory "Counting files...") — part of the files has already moved.
     const report = await performImport(
       { sourceId: source.id, categories: ['mods'] },
       source, dst, () => false, undefined,
@@ -644,14 +644,14 @@ describe('launcher import', () => {
     );
     expect(report.aborted).toBe(true);
     expect(report.warnings.some((w) => w.includes('cancelled'))).toBe(true);
-    // Ключевое: отмена реально останавливает копирование. Promise.all создаёт
-    // все задачи разом, поэтому проверка отмены только перед постановкой в
-    // очередь ничего не давала — папка докопировалась до конца.
+    // The key point: the cancellation really stops the copying. Promise.all
+    // creates all tasks at once, so checking for cancellation only before
+    // enqueueing did nothing — the folder was copied to the end.
     const onDisk = fs.readdirSync(path.join(dst, 'mods')).length;
     expect(onDisk).toBeLessThan(COUNT);
-    // Уже скопированное не удаляем: повторный запуск продолжит с этого места.
+    // We do not delete what is already copied: a repeat run continues from there.
     expect(report.copied.mods).toBe(onDisk);
-    // Манифест обязан отметить прерывание, иначе повторный импорт выглядит как успешный.
+    // The manifest must record the interruption, otherwise a repeated import looks successful.
     const manifest = JSON.parse(fs.readFileSync(path.join(dst, '.trel_import.json'), 'utf-8'));
     expect(manifest.aborted).toBe(true);
   });
@@ -671,7 +671,7 @@ describe('launcher import', () => {
       (_c, _t, _stage, bytes) => { seen.push(bytes ?? 0); },
     );
     expect(report.errors).toEqual([]);
-    // Счётчик растёт монотонно и сходится с итогом отчёта.
+    // The counter grows monotonically and matches the final report.
     expect(seen[seen.length - 1]).toBe(24 * 256 * 1024);
     expect(report.bytesWritten).toBe(24 * 256 * 1024);
     for (let i = 1; i < seen.length; i++) expect(seen[i]).toBeGreaterThanOrEqual(seen[i - 1]);
@@ -711,21 +711,21 @@ describe('launcher import', () => {
     const cacheFile = path.join(dst, '.trel_hash_cache.json');
     expect(fs.existsSync(cacheFile)).toBe(true);
 
-    // Второй проход: файл уже на месте, его хеш должен прийти из кеша, а сам
-    // файл — попасть в skipped, а не скопироваться повторно.
+    // Second pass: the file is already in place, its hash must come from the
+    // cache, and the file itself must land in skipped instead of being copied again.
     const second = await performImport(plan, source, dst, () => false);
     expect(second.skipped.mods).toBe(1);
     expect(second.copied.mods).toBe(0);
 
     const cache = JSON.parse(fs.readFileSync(cacheFile, 'utf-8')) as Record<string, string>;
-    // Кешируются обе стороны: и файл в папке игры (пре-скан дедупликации), и
-    // файл источника (его хеш считается на каждом копировании). Иначе
-    // повторный импорт всё равно перечитывал бы весь источник с диска.
+    // Both sides are cached: the file in the game folder (the pre-scan for
+    // deduplication) and the source file (its hash is computed on every copy).
+    // Otherwise a repeated import would still re-read the whole source from disk.
     const forSource = Object.keys(cache).find((k) => k.startsWith(path.join(src, 'mods', 'A.jar') + '|'));
     const forDest = Object.keys(cache).find((k) => k.startsWith(path.join(dst, 'mods', 'A.jar') + '|'));
     expect(forSource).toBeDefined();
     expect(forDest).toBeDefined();
-    // Содержимое одно и то же — значит и хеш обязан совпадать.
+    // The content is the same — so the hashes must match too.
     expect(cache[forSource!]).toBe(cache[forDest!]);
     expect(cache[forSource!]).toHaveLength(40);
   });
@@ -738,7 +738,7 @@ describe('launcher import', () => {
     fs.writeFileSync(path.join(src, 'mods', 'A.jar'), 'NEW-CONTENT');
     const destFile = path.join(dst, 'mods', 'A.jar');
     fs.writeFileSync(destFile, 'old-content');
-    // Подкладываем кеш с хешем «нового» содержимого, но для прежних size/mtime.
+    // We plant a cache with the hash of the "new" content, but for the old size/mtime.
     const st = fs.statSync(destFile);
     fs.writeFileSync(path.join(dst, '.trel_hash_cache.json'), JSON.stringify({
       [`${destFile}|${st.size}|${Math.floor(st.mtimeMs) - 5000}`]: 'f'.repeat(40),
@@ -750,8 +750,8 @@ describe('launcher import', () => {
       source, dst, () => false,
     );
     expect(report.errors).toEqual([]);
-    // Устаревшая запись не должна выдать чужой хеш за актуальный: файл
-    // отличается по содержимому, поэтому копия обязана появиться рядом.
+    // A stale entry must not pass a foreign hash off as current: the file
+    // differs in content, so a copy must appear next to it.
     expect(report.copied.mods).toBe(1);
     expect(fs.readdirSync(path.join(dst, 'mods')).length).toBe(2);
   });
@@ -759,8 +759,8 @@ describe('launcher import', () => {
   it('preview counts deep trees fully and flags insufficient space honestly', () => {
     const src = tmpDir('trel-import-src-');
     const dst = tmpDir('trel-import-dst-');
-    // Глубина 5 — раньше предпросмотр обходил config только на 2 уровня и
-    // занижал объём, из-за чего проверка места ничего не находила.
+    // Depth 5 — previously the preview only walked config two levels deep
+    // and underestimated the size, so the space check found nothing.
     const deep = path.join(src, 'config', 'a', 'b', 'c', 'd');
     fs.mkdirSync(deep, { recursive: true });
     fs.writeFileSync(path.join(deep, 'deep.cfg'), 'z'.repeat(1000));
@@ -774,8 +774,8 @@ describe('launcher import', () => {
 
   it('preview counts every version folder, not just the first fifteen', () => {
     const src = tmpDir('trel-import-src-');
-    // 20 профилей: старая оценка обходила только 15 и занижала объём, из-за
-    // чего проверка свободного места пропускала нехватку.
+    // 20 profiles: the old estimate walked only 15 and underestimated the
+    // size, so the free space check missed the shortage.
     for (let i = 0; i < 20; i++) {
       const id = `1.20.${i}`;
       const verDir = path.join(src, 'versions', id);
@@ -787,8 +787,8 @@ describe('launcher import', () => {
     const source = detectFromDir(src)!;
     const preview = previewImport({ sourceId: source.id, categories: ['version-install'] }, source, src + '-dst');
     expect(preview.files['version-install']).toBe(20);
-    // 20 × (1000 байт jar + json) — точная сумма зависит от длины json,
-    // поэтому проверяем, что учтены все 20, а не 15.
+    // 20 × (1000 bytes jar + json) — the exact sum depends on the json length,
+    // so we check that all 20 are counted, not 15.
     expect(preview.bytes['version-install']).toBeGreaterThan(20 * 1000);
   });
 
@@ -800,17 +800,17 @@ describe('launcher import', () => {
 
     const source = detectFromDir(src)!;
     const preview = previewImport({ sourceId: source.id, categories: ['mods'], useHardlinks: true }, source, dst);
-    // Ссылки места не занимают — предупреждать о нехватке нечестно.
+    // Links take up no space — warning about a shortage would be dishonest.
     expect(preview.notEnoughSpace).toBe(false);
   });
 
   it('drops categories nested inside a broader selected one (assets covers skins)', () => {
-    // assets/skins и assets/log_configs уже лежат внутри assets: выбирать всё
-    // вместе раньше давало двойное копирование и мусор «skins/ab (1)».
+    // assets/skins and assets/log_configs already live inside assets: picking
+    // everything together used to cause double copying and junk like "skins/ab (1)".
     expect(dropNestedCategories(['assets', 'skin-cache', 'log-configs'])).toEqual(['assets']);
-    // А без родителя обе остаются — они не пересекаются.
+    // Without the parent both remain — they do not intersect.
     expect(dropNestedCategories(['skin-cache', 'log-configs'])).toEqual(['skin-cache', 'log-configs']);
-    // Независимые категории не трогаем.
+    // Independent categories are left alone.
     expect(dropNestedCategories(['assets', 'mods', 'config'])).toEqual(['assets', 'mods', 'config']);
   });
 
@@ -932,8 +932,8 @@ describe('launcher import', () => {
     expect(first.diff).toEqual({ fresh: 1, overwrite: 0, identical: 1 });
     expect(first.savedBytesEstimate).toBe('old'.repeat(100).length);
     expect(first.fileTree?.length).toBe(2);
-    expect(first.etaSecondsEstimate).toBeUndefined(); // прошлого импорта ещё не было
-    // После реального импорта скорость известна — оценка времени появляется.
+    expect(first.etaSecondsEstimate).toBeUndefined(); // there was no previous import yet
+    // After a real import the speed is known — the time estimate appears.
     await performImport(plan, source, dst, () => false);
     const second = previewImport(plan, source, dst);
     expect(typeof second.etaSecondsEstimate === 'number' || second.etaSecondsEstimate === undefined).toBe(true);
@@ -960,7 +960,7 @@ describe('launcher import', () => {
     setImportPaused(true);
     try {
       const p = performImport({ sourceId: 'pz', categories: ['mods'] as any }, source, dst, () => false, undefined, undefined, ctl.signal);
-      await new Promise((r) => setTimeout(r, 300)); // на паузе файлы не едут (папка создаётся заранее)
+      await new Promise((r) => setTimeout(r, 300)); // while paused the files do not move (the folder is created in advance)
       const modsDir = path.join(dst, 'mods');
       expect(!fs.existsSync(modsDir) || fs.readdirSync(modsDir).length === 0).toBe(true);
       ctl.abort();
@@ -1003,7 +1003,7 @@ describe('launcher import', () => {
     fs.writeFileSync(path.join(src, 'mods', 'Mod.jar'), 'a');
     fs.writeFileSync(path.join(src, 'mods', 'mod.jar'), 'b');
     const source = { id: 'cc', label: 'C', rootDir: src, available: [] as any, approxSize: 0, kind: 'java' as const };
-    // На Linux проверки нет (том чувствителен), на win/mac — пара находится.
+    // On Linux there is no check (the volume is case-sensitive), on win/mac — the pair is found.
     const found = findCaseConflicts(src, ['mods'] as any);
     expect(process.platform === 'linux' ? found : found.length).toEqual(process.platform === 'linux' ? [] : found);
     if (process.platform !== 'linux') expect(found.length).toBe(1);
@@ -1035,7 +1035,7 @@ describe('launcher import', () => {
     const report = await performImport({ sourceId: 'nc', categories: ['schematics', 'replays', 'minimap'] as any }, source, dst, () => false);
     expect(report.errors).toEqual([]);
     expect(fs.existsSync(path.join(dst, 'schematics', 'house.litematic'))).toBe(true);
-    expect(fs.existsSync(path.join(dst, 'blueprints', 'b.nbt'))).toBe(true); // своя папка, та же категория
+    expect(fs.existsSync(path.join(dst, 'blueprints', 'b.nbt'))).toBe(true); // its own folder, the same category
     expect(fs.existsSync(path.join(dst, 'replay_recordings', 'fight.mcpr'))).toBe(true);
   });
 
@@ -1117,8 +1117,8 @@ describe('launcher import', () => {
   });
 
   it('does not duplicate a world present in two isolated versions', async () => {
-    // Без общих saves обе versions/*/saves обходятся — вторая копия MyWorld
-    // обязана скипнуться, а не лечь рядом как «MyWorld (1)».
+    // Without shared saves both versions/*/saves are walked — the second copy
+    // of MyWorld must be skipped, not land next to it as "MyWorld (1)".
     const src = tmpDir('trel-import-src-');
     const dst = tmpDir('trel-import-dst-');
     for (const d of [path.join(src, 'versions', 'v1', 'saves', 'MyWorld'), path.join(src, 'versions', 'v2', 'saves', 'MyWorld')]) {
@@ -1240,13 +1240,13 @@ describe('launcher import', () => {
         const out = resolveDestPath('/dst', names[rnd(names.length)], taken);
         expect(seen.has(out)).toBe(false);
         seen.add(out);
-        // Та же норма, что в боевом коде: lower только на win/mac.
+        // The same rule as in the production code: lower only on win/mac.
         taken.add(ci ? out.toLowerCase() : out);
       }
       const cats = (['assets', 'skin-cache', 'log-configs', 'mods', 'config'] as any[])
         .filter(() => Math.random() < 0.5);
       const eff = dropNestedCategories(cats);
-      // assets всегда поглощает вложенные; без assets всё остаётся
+      // assets always absorbs the nested ones; without assets everything stays
       if (eff.includes('assets' as any)) {
         expect(eff).not.toContain('skin-cache');
         expect(eff).not.toContain('log-configs');
@@ -1268,7 +1268,7 @@ describe('launcher import', () => {
     const mbps = 50 / Math.max(secs, 0.01);
     console.log(`bench: 50MB in ${secs.toFixed(1)}s = ${mbps.toFixed(0)} MB/s`);
     expect(report.errors).toEqual([]);
-    expect(mbps).toBeGreaterThan(2); // нижняя граница от 10-кратных регрессов, не рекорд: под нагрузкой параллельных тестов диск проседает
+    expect(mbps).toBeGreaterThan(2); // the lower bound guards against 10x regressions, it is not a record: under parallel test load the disk slows down
   }, 120000);
 
   it('reads FTB/Technic/instgroups names and mmc/packwiz/modrinth profiles', async () => {
@@ -1342,7 +1342,7 @@ describe('launcher import', () => {
     const preview = previewImport(
       { sourceId: 'ov', categories: ['assets', 'skin-cache', 'log-configs'] as any }, source, dst,
     );
-    // Было 4 (2+1+1 с двойным счётом), стало 2.
+    // Was 4 (2+1+1 with double counting), now 2.
     expect(preview.totalFiles).toBe(2);
 
     const report = await performImport(
@@ -1352,7 +1352,7 @@ describe('launcher import', () => {
     expect(report.copied['skin-cache']).toBeUndefined();
     expect(report.copied['log-configs']).toBeUndefined();
     expect(report.warnings.some((w) => w.includes('skin-cache'))).toBe(true);
-    // И никакого «client (1).xml» рядом.
+    // And no "client (1).xml" next to it.
     expect(fs.existsSync(path.join(dst, 'assets', 'log_configs', 'client.xml'))).toBe(true);
     const logDir = fs.readdirSync(path.join(dst, 'assets', 'log_configs'));
     expect(logDir).toEqual(['client.xml']);
@@ -1364,31 +1364,31 @@ describe('createSpeedMeter', () => {
 
   it('stays silent for the first few milliseconds instead of spiking', () => {
     const speed = createSpeedMeter(1000);
-    // Делить 1 МБ на 1 мс — верный способ показать «1000 МБ/с» на старте.
+    // Dividing 1 MB by 1 ms is a sure way to show "1000 MB/s" at the start.
     expect(speed(MB, 1001)).toBe(0);
   });
 
   it('falls back to the average since start before the window closes', () => {
     const speed = createSpeedMeter(1000);
-    // 10 МБ за 100 мс = 100 МБ/с.
+    // 10 MB in 100 ms = 100 MB/s.
     expect(speed(10 * MB, 1100)).toBeCloseTo(100 * MB, 0);
   });
 
   it('measures the window delta, not the average since start', () => {
     const speed = createSpeedMeter(0);
-    // Первая секунда — быстро (100 МБ), потом окно: ещё 10 МБ за 250 мс.
+    // The first second is fast (100 MB), then the window: another 10 MB in 250 ms.
     speed(100 * MB, 1000);
     const windowed = speed(110 * MB, 1250);
     expect(windowed).toBeCloseTo(40 * MB, 0);
-    // Средняя от старта дала бы ~88 МБ/с — вдвое больше реальной.
+    // The average since the start would give ~88 MB/s — twice the real value.
     expect(windowed).toBeLessThan(50 * MB);
   });
 
   it('reports zero while nothing is being written', () => {
     const speed = createSpeedMeter(0);
     speed(50 * MB, 1000);
-    // Пауза на хешировании: байты не растут — скорость обнуляется, а не
-    // застывает на прошлом значении.
+    // A pause during hashing: the bytes do not grow — the speed is reset
+    // instead of staying stuck at the previous value.
     expect(speed(50 * MB, 2000)).toBe(0);
   });
 
@@ -1396,7 +1396,7 @@ describe('createSpeedMeter', () => {
     const speed = createSpeedMeter(0);
     const first = speed(10 * MB, 1000);
     expect(first).toBeCloseTo(10 * MB, 0);
-    // Внутри окна отдаём прошлое значение, а не пересчитываем на глазок.
+    // Inside the window we return the previous value instead of recomputing by eye.
     expect(speed(11 * MB, 1100)).toBe(first);
   });
 });

@@ -7,7 +7,7 @@ const fmtSize = (b: number) => b < 1024 * 1024 ? `${(b / 1024).toFixed(0)} КБ`
 
 const HOTKEY_LS = 'trel.shots.hotkey';
 
-// Клавиши, по умолчанию занятые в Minecraft — чтобы игрок не выбрал конфликтующую.
+// Keys that are taken by default in Minecraft — so that the player does not pick a conflicting one.
 const MC_RESERVED: { key: string; action: string }[] = [
   { key: 'W', action: 'shots.mcForward' },
   { key: 'A', action: 'shots.mcLeft' },
@@ -91,7 +91,7 @@ export const ScreenshotsPage: React.FC = () => {
 
   useEffect(() => { refresh(); }, [refresh]);
 
-  // Регистрируем собственный глобальный хоткей и обновляем список при захвате.
+  // We register our own global hotkey and refresh the list on capture.
   useEffect(() => {
     window.api.screenshots.setHotkey(hotkey).catch(() => {});
     const off = window.api.screenshots.onCaptured((s) => { refresh(); showToast(t('shots.captured', { name: s.name })); });
@@ -100,7 +100,7 @@ export const ScreenshotsPage: React.FC = () => {
   }, []);
 
 
-  // Коды ошибок из main превращаем в человекочитаемые локализованные сообщения.
+  // We turn the error codes from main into human-readable localized messages.
   const reasonText = (r?: string) =>
     r === 'unsupported-key' ? t('shots.unsupportedKey')
     : r === 'register-failed' ? t('shots.registerFailed')
@@ -153,7 +153,7 @@ export const ScreenshotsPage: React.FC = () => {
   const openViewer = async (shot: Shot) => {
     try {
       const src = await window.api.screenshots.read(shot.path);
-      // Пока читали — скрин могли удалить: показ удалённого хуже пустоты.
+      // While we were reading — the screenshot might have been deleted: showing a deleted one is worse than showing nothing.
       if (!shotsRef.current.some((x) => x.path === shot.path)) return;
       setView({ shot, src });
     }
@@ -169,8 +169,8 @@ export const ScreenshotsPage: React.FC = () => {
         { label: t('worlds.deleteCancel'), value: 'cancel', variant: 'ghost' },
         { label: t('shots.deleteAction'), value: 'ok', variant: 'danger' },
       ],
-      // defaultIndex: 0 (отмена), а не Delete: случайный Enter в фокусе
-      // иначе сносил скриншот без осознанного клика.
+      // defaultIndex: 0 (cancel), and not Delete: a stray Enter in the focus
+      // would otherwise delete the screenshot without a deliberate click.
       defaultIndex: 0,
       cancelValue: 'cancel',
     });

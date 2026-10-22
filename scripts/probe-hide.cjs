@@ -1,4 +1,4 @@
-/* Проба автоскрытия: есть ли новая разметка и срабатывает ли таймер */
+/* Auto-hide probe: is the new markup present and does the timer fire */
 const { chromium } = require('playwright-core');
 
 (async () => {

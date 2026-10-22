@@ -1,20 +1,21 @@
 /**
- * Build script для TrelEmu — бандл Android-эмулятора в resources/trel-emu/.
+ * Build script for TrelEmu — bundles the Android emulator into
+ * resources/trel-emu/.
  *
- * Один раз загружает:
- *   1) QEMU static (Win64, NSIS-installer → распаковываем 7zip-ом или берём
- *      static-build с GitHub)
+ * Downloads once:
+ *   1) QEMU static (Win64, NSIS installer → unpack it with 7zip or take the
+ *      static build from GitHub)
  *   2) Android-x86 9.0 ISO (~700 MB)
- *   3) Конвертирует ISO в qcow2 template + сжатый qcow2 (~250 MB)
+ *   3) Converts the ISO into a qcow2 template + a compressed qcow2 (~250 MB)
  *
- * После первого запуска скрипт кэширует скачанное в build-trel-emu-cache/ —
- * повторные запуски ничего не качают, только пересобирают qcow2.
+ * After the first run the script caches the downloads in build-trel-emu-cache/ —
+ * subsequent runs download nothing and only rebuild the qcow2.
  *
- * Использование:
- *   node scripts/build-trel-emu.js              # полный билд
- *   node scripts/build-trel-emu.js --no-download  # пересобрать из кэша
+ * Usage:
+ *   node scripts/build-trel-emu.js              # full build
+ *   node scripts/build-trel-emu.js --no-download  # rebuild from cache
  *
- * Окружение: Windows, Node 18+, qemu-img.exe в PATH (для конвертации).
+ * Environment: Windows, Node 18+, qemu-img.exe in PATH (for the conversion).
  */
 'use strict';
 
@@ -109,13 +110,13 @@ async function downloadIfMissing(url, dest) {
 }
 
 function findQemuImg() {
-  // В PATH может быть QEMU от пользователя — не путаем с нашим.
+  // PATH may hold the user's own QEMU — do not confuse it with ours.
   const candidates = [
     path.join(QEMU_DIR, 'qemu-img.exe'),
     path.join(OUT, 'qemu', 'qemu-img.exe'),
   ];
   for (const c of candidates) if (fileExistsAndNonEmpty(c)) return c;
-  // Фолбэк: PATH (исключая пути с Netease/MuMu — это adb-конфликты)
+  // Fallback: PATH (excluding Netease/MuMu paths — those cause adb conflicts)
   const pathEnv = process.env.PATH || '';
   for (const dir of pathEnv.split(path.delimiter)) {
     if (/Netease|MuMu|Android/i.test(dir)) continue;
@@ -161,9 +162,9 @@ async function step1Qemu() {
     die('qemu-system-x86_64.exe не найден после распаковки. Структура инсталлятора изменилась?');
   }
 
-  // Важно: QEMU for Windows из qemu.weilnetz.de динамически линкован.
-  // Нельзя копировать только qemu-system-x86_64.exe и qemu-img.exe: без DLL
-  // процесс молча завершается с 0xc0000135. Копируем весь runtime-каталог.
+  // Important: QEMU for Windows from qemu.weilnetz.de is dynamically linked.
+  // You cannot copy only qemu-system-x86_64.exe and qemu-img.exe: without the DLLs
+  // the process silently exits with 0xc0000135. Copy the whole runtime directory.
   copyDirRecursive(QEMU_DIR, outQemuDir);
   log('  QEMU runtime скопирован в resources/trel-emu/qemu/');
 }
@@ -171,9 +172,9 @@ async function step1Qemu() {
 async function step2Android() {
   log('STEP 2/4: Android-x86 ISO');
   await downloadIfMissing(ANDROID_ISO_URL, ANDROID_ISO);
-  // Копируем ISO в resources/ — TrelEmuService умеет грузиться напрямую с ISO
-  // в live-режиме (без интерактивной установки). Это позволяет TrelEmu
-  // работать из коробки без ручной возни с qcow2.
+  // Copy the ISO into resources/ — TrelEmuService can boot straight from the ISO
+  // in live mode (without an interactive install). This lets TrelEmu
+  // work out of the box without manual qcow2 tinkering.
   const target = path.join(OUT, 'image', 'android-x86.iso');
   if (!fileExistsAndNonEmpty(target) || fileExistsAndNonEmpty(ANDROID_ISO)) {
     ensureDir(path.join(OUT, 'image'));
@@ -200,9 +201,9 @@ async function step3Install() {
     log('     2) Установить Android в ' + rawQcow);
     log('     3) Запустить скрипт повторно — он сожмёт готовый qcow2');
     log('  Сейчас положу заглушку, чтобы Trel не падал на импорте.');
-    // Заглушка: пустой qcow2, Trel увидит "TrelEmu не найден".
-    // Реальный билд требует интерактивной установки Android — этот шаг
-    // нужно выполнить вручную (см. README в resources/trel-emu/).
+    // Placeholder: empty qcow2, Trel will report "TrelEmu not found".
+    // A real build needs an interactive Android install — this step
+    // has to be done by hand (see the README in resources/trel-emu/).
     return;
   }
   log('  сжимаю qcow2…');

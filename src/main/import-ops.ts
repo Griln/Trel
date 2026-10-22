@@ -1,6 +1,7 @@
 /**
- * Тяжёлые операции импорта, не влезающие в import.ts: журнал/откат, импорт из
- * zip/mrpack, карантин модов, дубли modid, verify, архив миров, переезд.
+ * Heavy import operations that do not fit into import.ts: journal/rollback,
+ * import from zip/mrpack, mod quarantine, duplicate modids, verify, world
+ * archiving, moving the source.
  */
 import * as fs from 'node:fs';
 import * as fsp from 'node:fs/promises';
@@ -11,7 +12,7 @@ import AdmZip from 'adm-zip';
 export interface ImportJournal {
   at: string;
   sourceId: string;
-  /** Созданные пути по категориям — для отката и атомарности. */
+  /** Created paths per category — used for rollback and atomicity. */
   created: Record<string, string[]>;
   completedCategories: string[];
 }
@@ -39,7 +40,7 @@ export async function journalAdd(gameDir: string, sourceId: string, category: st
     j.sourceId = sourceId;
     j.created[category] = [...(j.created[category] ?? []), ...files];
     await fsp.writeFile(nt(journalPath(gameDir)), JSON.stringify(j), 'utf-8');
-  } catch { /* журнал необязателен */ }
+  } catch { /* the journal is optional */ }
 }
 
 export async function journalComplete(gameDir: string, category: string): Promise<void> {
@@ -48,10 +49,10 @@ export async function journalComplete(gameDir: string, category: string): Promis
     if (!j) return;
     if (!j.completedCategories.includes(category)) j.completedCategories.push(category);
     await fsp.writeFile(nt(journalPath(gameDir)), JSON.stringify(j), 'utf-8');
-  } catch { /* журнал необязателен */ }
+  } catch { /* the journal is optional */ }
 }
 
-/** Откат категории (атомарность) или всего импорта: удаляет созданное по журналу. */
+/** Rollback of a category (atomicity) or of the whole import: deletes what the journal recorded. */
 export async function rollbackJournal(gameDir: string, category?: string): Promise<number> {
   const j = readJournal(gameDir);
   if (!j) return 0;
@@ -59,16 +60,16 @@ export async function rollbackJournal(gameDir: string, category?: string): Promi
   const cats = category ? [category] : Object.keys(j.created);
   const gameReal = (() => { try { return fs.realpathSync(nt(gameDir)); } catch { return path.resolve(gameDir); } })();
   for (const cat of cats) {
-    // Сначала файлы, потом пустые папки (по длине пути — глубокие раньше).
+    // Files first, then empty folders (by path length — the deepest ones first).
     const files = [...(j.created[cat] ?? [])].sort((a, b) => b.length - a.length);
     for (const f of files) {
-      // Журнал — обычный json в папке игры: правка даёт удаление любых файлов.
-      // Удаляем только то, что реально внутри gameDir (через realpath).
+      // The journal is a plain json in the game folder: editing it allows deleting
+      // any files. We only delete what is really inside gameDir (via realpath).
       try {
         const real = fs.realpathSync(nt(f));
         if (real !== gameReal && !real.startsWith(gameReal + path.sep)) continue;
       } catch {
-        // Нет файла — нечего удалять; но путь всё равно проверяем строкой.
+        // No file — nothing to delete; the path is still validated as a string.
         const norm = path.resolve(f);
         if (norm !== gameReal && !norm.startsWith(gameReal + path.sep)) continue;
       }
@@ -77,7 +78,7 @@ export async function rollbackJournal(gameDir: string, category?: string): Promi
         if (!st) continue;
         if (st.isDirectory()) { await fsp.rmdir(nt(f)).catch(() => {}); }
         else { await fsp.unlink(nt(f)); removed++; }
-        // Чистим опустевших родителей до gameDir (не выше).
+        // Remove the parents that became empty, up to gameDir (not above it).
         let dir = path.dirname(f);
         while (dir.startsWith(gameDir) && dir !== gameDir) {
           const empty = await fsp.readdir(nt(dir)).catch(() => null);
@@ -85,7 +86,7 @@ export async function rollbackJournal(gameDir: string, category?: string): Promi
           await fsp.rmdir(nt(dir)).catch(() => {});
           dir = path.dirname(dir);
         }
-      } catch { /* уже нет — и ладно */ }
+      } catch { /* already gone — fine */ }
     }
     delete j.created[cat];
     j.completedCategories = j.completedCategories.filter((c) => c !== cat);
@@ -94,7 +95,7 @@ export async function rollbackJournal(gameDir: string, category?: string): Promi
   return removed;
 }
 
-/** Дописывает строку в лог импорта (для диагностики «а что оно делало»). */
+/** Appends a line to the import log (for diagnosing "what was it doing"). */
 export async function appendImportLog(gameDir: string, line: string): Promise<string> {
   const p = path.join(gameDir, LOG_FILE);
   try { await fsp.appendFile(nt(p), `[${new Date().toISOString()}] ${line}\n`, 'utf-8'); } catch {}
@@ -102,8 +103,9 @@ export async function appendImportLog(gameDir: string, line: string): Promise<st
 }
 
 /**
- * Распаковка zip/mrpack/curseforge-пака во временную папку с защитой zip-slip.
- * Возвращает корень с игровыми данными (сам архив / подпапка overrides/ и т.п.).
+ * Unpacks a zip/mrpack/curseforge pack into a temporary folder with zip-slip
+ * protection. Returns the root with the game data (the archive itself, the
+ * overrides/ subfolder, etc.).
  */
 export async function extractPackArchive(archivePath: string, signal?: AbortSignal): Promise<{ tmpDir: string; rootDir: string; packName: string }> {
   const zip = new AdmZip(nt(archivePath));
@@ -114,16 +116,16 @@ export async function extractPackArchive(archivePath: string, signal?: AbortSign
   for (const e of entries) {
     if (signal?.aborted) break;
     const name = e.entryName.replace(/\\/g, '/');
-    // Zip-slip: ../, абсолютные пути и виндовые диски наружу не выпускаем.
+    // Zip-slip: ../, absolute paths and windows drives never get out.
     const norm = path.posix.normalize(name);
     if (norm.startsWith('..') || path.isAbsolute(norm) || /^[a-zA-Z]:/.test(norm)) { slipped++; continue; }
     names.push(name);
   }
   if (slipped > 0) {
-    // Не молчим: пак с .. внутри — либо битый, либо злой.
+    // We do not stay silent: a pack with .. inside is either broken or malicious.
     await appendImportLog(tmpDir, `zip-slip blocked ${slipped} entries in ${path.basename(archivePath)}`);
   }
-  // adm-zip без фильтра вывалит и slip-записи, поэтому распаковываем вручную.
+  // adm-zip without a filter also dumps slip entries, so we unpack manually.
   for (const name of names) {
     if (signal?.aborted) break;
     const dest = path.join(tmpDir, ...name.split('/'));
@@ -131,7 +133,7 @@ export async function extractPackArchive(archivePath: string, signal?: AbortSign
     await fsp.mkdir(nt(path.dirname(dest)), { recursive: true });
     await fsp.writeFile(nt(dest), zip.readFile(name) ?? Buffer.alloc(0));
   }
-  // Корень данных: сам tmp, overrides/ или minecraft/ внутри.
+  // Data root: the tmp dir itself, overrides/ or minecraft/ inside.
   let rootDir = tmpDir;
   for (const sub of ['overrides', 'minecraft']) {
     try {
@@ -151,17 +153,17 @@ export async function extractPackArchive(archivePath: string, signal?: AbortSign
   return { tmpDir, rootDir, packName };
 }
 
-/** Зависимости модпака (mc/loader) из индекса — для проверки совместимости. */
+/** Modpack dependencies (mc/loader) from the index — used for a compatibility check. */
 export async function readPackDependencies(rootDir: string): Promise<{ mc?: string; loader?: string; loaderVersion?: string; name?: string }> {
-  // Индекс лежит в корне пака, а игровые файлы — в overrides//minecraft:
-  // rootDir может указывать и туда, и туда, поэтому смотрим оба уровня.
+  // The index sits in the pack root while the game files live in overrides//minecraft:
+  // rootDir may point to either one, so we look at both levels.
   const idxDirs = [rootDir, path.dirname(rootDir)];
   const readIdx = async (name: string): Promise<Record<string, unknown> | null> => {
     for (const d of idxDirs) {
       try {
         const raw = JSON.parse(await fsp.readFile(nt(path.join(d, name)), 'utf-8')) as unknown;
         if (raw && typeof raw === 'object') return raw as Record<string, unknown>;
-      } catch { /* нет файла — смотрим дальше */ }
+      } catch { /* no file — keep looking */ }
     }
     return null;
   };
@@ -187,9 +189,9 @@ export async function readPackDependencies(rootDir: string): Promise<{ mc?: stri
 const EXPECTED_JAR_TOPS = new Set(['META-INF', 'assets', 'data', 'fabric.mod.json', 'mods.toml', 'neoforge.mods.toml', 'pack.mcmeta', 'LICENSE', 'NOTICE', 'module-info.class', 'fabric.mod.json5']);
 
 /**
- * Карантин: эвристика по содержимому jar. Легитимный мод — классы + assets/data
- * + манифесты. Подозрительно: .exe/.dll/.so рядом, скрипты, запускные классы
- * в корне с именами вроде Start/Bootstrap/Installer.
+ * Quarantine: a heuristic over the jar contents. A legit mod is classes +
+ * assets/data + manifests. Suspicious: .exe/.dll/.so next to them, scripts,
+ * launcher classes in the root named like Start/Bootstrap/Installer.
  */
 export function scanJarSuspicious(jarPath: string): string | null {
   let zip: AdmZip;
@@ -201,19 +203,19 @@ export function scanJarSuspicious(jarPath: string): string | null {
   const bad: string[] = [];
   for (const t of tops) {
     const low = t.toLowerCase();
-    // Стартовые классы в корне (Start.class, Bootstrap.class) — классика
-    // малвари в «модах»: проверяем раньше общего разрешения на .class.
+    // Launcher classes in the root (Start.class, Bootstrap.class) — a classic
+    // malware trick in "mods": we check them before the general .class allowance.
     if (!t.includes('/') && /^(start|bootstrap|installer|launcher|update|patch)[.-]?/i.test(t)) { bad.push(t); continue; }
     if (EXPECTED_JAR_TOPS.has(t) || low.endsWith('.class') || low.endsWith('.json') || low.endsWith('.properties') || low.endsWith('.accesswidener') || low.endsWith('.mixins.json') || low.endsWith('.refmap.json')) continue;
     if (/\.(exe|dll|so|dylib|bat|ps1|vbs|js|py|sh)$/i.test(t)) bad.push(t);
     else if (/^(start|bootstrap|installer|launcher|update|patch)/i.test(t)) bad.push(t);
     else if (!t.includes('.') && !['assets', 'data', 'META-INF', 'net', 'com', 'org', 'io', 'me', 'dev', 'gg', 'xyz', 'club', 'moe', 'lol', 'rip', 'cn', 'ru', 'uk', 'de', 'fr', 'kotlin', 'javax', 'java', 'com', 'icons', 'textures', 'lang', 'coremods', 'META'].includes(t)) bad.push(t);
   }
-  // Вложенные jar — норма для больших модов (jar-in-jar), но фиксируем.
+  // Nested jars are normal for big mods (jar-in-jar), but we still report them.
   return bad.length > 0 ? `suspicious entries: ${bad.slice(0, 5).join(', ')}` : null;
 }
 
-/** Читает modid из fabric.mod.json / mods.toml внутри jar (без распаковки). */
+/** Reads the modid from fabric.mod.json / mods.toml inside a jar (without unpacking). */
 export function readModId(jarPath: string): { id?: string; version?: string } {
   try {
     const zip = new AdmZip(nt(jarPath));
@@ -229,11 +231,11 @@ export function readModId(jarPath: string): { id?: string; version?: string } {
       const ver = toml.match(/version\s*=\s*"([^"]+)"/)?.[1];
       if (id) return { id, version: ver };
     }
-  } catch { /* битый jar — карантин разберётся */ }
+  } catch { /* broken jar — the quarantine step will sort it out */ }
   return {};
 }
 
-/** Группирует моды по modid: один id в разных версиях — показать пользователю. */
+/** Groups the mods by modid: one id in several versions — show it to the user. */
 export function findDuplicateMods(modsDir: string): string[] {
   let files: string[] = [];
   try { files = fs.readdirSync(nt(modsDir)).filter((f) => f.endsWith('.jar')); } catch { return []; }
@@ -249,14 +251,14 @@ export function findDuplicateMods(modsDir: string): string[] {
 }
 
 /**
- * Подметание после переезда: считает оставшиеся файлы источника (пропущенные
- * дедупом остаются!) и сносит опустевшие папки снизу вверх.
+ * Sweep after a move: counts the files left in the source (the ones skipped by
+ * dedup stay!) and removes the emptied folders from the bottom up.
  */
 export async function sweepMovedSource(roots: string[], cap = 5000): Promise<{ left: number; removedDirs: number }> {
   let left = 0;
   let removedDirs = 0;
   const walk = async (dir: string, depth: number): Promise<boolean> => {
-    // true — папка пуста и её можно снести.
+    // true — the folder is empty and can be removed.
     if (depth <= 0 || left >= cap) return false;
     let names: string[] = [];
     try { names = await fsp.readdir(nt(dir)); } catch { return false; }
@@ -280,7 +282,7 @@ export async function sweepMovedSource(roots: string[], cap = 5000): Promise<{ l
   return { left, removedDirs };
 }
 
-/** Упаковывает папку (миры Trel) в zip с датой — страховка перед импортом чужих. */
+/** Packs a folder (Trel worlds) into a dated zip — a safety net before importing foreign ones. */
 export async function archiveDirToZip(srcDir: string, destZip: string): Promise<number> {
   const zip = new AdmZip();
   let count = 0;

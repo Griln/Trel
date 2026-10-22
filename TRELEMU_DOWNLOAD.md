@@ -1,93 +1,94 @@
-# Распространение эмулятора TrelEmu
+# Distributing the TrelEmu Emulator
 
-## Что это такое
+## What it is
 
-TrelEmu — встроенный эмулятор на базе QEMU и Android-x86, он нужен для запуска
-Bedrock. Сам лаунчер (Trel) небольшой — инсталлятор около 84 МБ, — но образ QEMU
-вместе с ISO Android-x86 весит около 1 ГБ. Чтобы не превращать инсталлятор
-в гигабайтный дистрибутив, пак эмулятора скачивается **отдельно** при первом
-запуске Trel.
+TrelEmu is a built-in emulator based on QEMU and Android-x86, used to run
+Bedrock. The launcher itself (Trel) is small — the installer is about 84 MB —
+but the QEMU image together with the Android-x86 ISO weighs about 1 GB. To
+avoid turning the installer into a gigabyte-sized distribution, the emulator
+pack is downloaded **separately** on the first Trel launch.
 
-## Что улучшено в версии 0.3.0
+## What improved in version 0.3.0
 
-| Улучшение | Где | Эффект |
+| Improvement | Where | Effect |
 |-----------|-----|--------|
-| Звук (AC97 и intel-hda) | `trelEmu.ts:qemuArgs` | Звук в Minecraft |
-| `-cpu max` вместо `host` | `trelEmu.ts:qemuArgs` | Ускоренная трансляция TCG |
-| `-accel tcg,thread=multi` | `trelEmu.ts:qemuArgs` | Параллельная трансляция |
-| Память по умолчанию 4096 МБ | `config.json` | Больше памяти под JIT-кэш TCG |
-| **Прямая загрузка ядра** | `isoReader.ts` и `qemuArgs` | Пропуск GRUB — **минус 30–60 секунд** при каждом старте |
-| Автоустановка APK Bedrock | `tryAutoInstallBedrock` | Положи `image/bedrock.apk` — установится само |
-| Опрос состояния 1500 → 800 мс | `POLL_INTERVAL_MS` | Быстрее замечаем поднятие ADB |
-| Таймаут 90 → 120 секунд | `STARTUP_TIMEOUT_MS` | Меньше ложных ошибок на медленном процессоре |
-| Пак на Codeberg Releases | `trelEmuDownloader.ts` | Инсталлятор 84 МБ вместо 1 ГБ |
+| Audio (AC97 and intel-hda) | `trelEmu.ts:qemuArgs` | Sound in Minecraft |
+| `-cpu max` instead of `host` | `trelEmu.ts:qemuArgs` | Faster TCG translation |
+| `-accel tcg,thread=multi` | `trelEmu.ts:qemuArgs` | Parallel translation |
+| Default memory 4096 MB | `config.json` | More room for the TCG JIT cache |
+| **Direct kernel boot** | `isoReader.ts` and `qemuArgs` | Skips GRUB — **30–60 seconds saved** on every start |
+| Automatic Bedrock APK install | `tryAutoInstallBedrock` | Drop `image/bedrock.apk` in place and it installs itself |
+| Poll interval 1500 → 800 ms | `POLL_INTERVAL_MS` | ADB startup is detected faster |
+| Timeout 90 → 120 seconds | `STARTUP_TIMEOUT_MS` | Fewer false errors on a slow CPU |
+| Pack on Codeberg Releases | `trelEmuDownloader.ts` | 84 MB installer instead of 1 GB |
 
-## Оставшиеся ограничения
+## Remaining limitations
 
-1. **TCG работает медленно** — загрузка Android занимает 5–15 минут. С Hyper-V
-   было бы 30 секунд и 30–60 кадров в секунду. Пользователь отказался от Hyper-V,
-   поэтому вопрос пока не решён.
-2. **Образ не сохраняет состояние между запусками** — каждый старт холодный.
-   Решается готовым образом qcow2, но таких образов для Android-x86 9.0 нет в
-   открытом доступе. Автоустановка через монитор QEMU — сложно и хрупко.
-3. **Сетевой ADB иногда не поднимается** в сборке android-x86 userdebug.
-   Помогает ручной `adb connect 127.0.0.1:5555`.
+1. **TCG is slow** — booting Android takes 5–15 minutes. With Hyper-V it
+   would be 30 seconds and 30–60 frames per second. The user turned down
+   Hyper-V, so the question is not settled yet.
+2. **The image keeps no state between runs** — every start is cold. A
+   ready-made qcow2 image would fix it, but no such image for Android-x86 9.0
+   is publicly available. Automatic install through the QEMU monitor is
+   complex and fragile.
+3. **Networked ADB sometimes fails to come up** in the android-x86 userdebug
+   build. Running `adb connect 127.0.0.1:5555` by hand helps.
 
-## Архитектура
+## Architecture
 
 ```
 ┌─────────────────────┐
-│  Trel-0.5.0-x64.exe │ 84 МБ, инсталлятор NSIS (без ресурсов TrelEmu)
-│  Trel.exe           │ 84 МБ, портативная сборка (без ресурсов TrelEmu)
+│  Trel-0.5.0-x64.exe │ 84 MB, NSIS installer (no TrelEmu assets)
+│  Trel.exe           │ 84 MB, portable build (no TrelEmu assets)
 └─────────┬───────────┘
-          │ запускается
+          │ launches
           ▼
 ┌─────────────────────┐
 │  Trel Launcher      │
 │                     │
-│  Каталог →          │
-│   "TrelEmu не       │  ← первое посещение
-│    установлен"      │
+│  Catalog →          │
+│   "TrelEmu not      │  ← first visit
+│    installed"       │
 │                     │
-│   [Скачать]         │  ← пользователь нажимает
-│   [Отмена]          │
+│   [Download]        │  ← user clicks
+│   [Cancel]          │
 │   0% → 100%         │
 │                     │
-│  после:             │
-│   "TrelEmu (встроен)│  ← готово
+│  after:             │
+│   "TrelEmu (bundled)│  ← ready
 │    ADB: 127.0.0.1"  │
 └─────────┬───────────┘
-          │ качает с
+          │ downloads from
           ▼
 ┌─────────────────────────────────────┐
-│  Хостинг паков:                     │
+│  Pack hosting:                      │
 │  codeberg.org/derwerwer/Trel        │
-│  Тег: trel-emu-v0.5.0               │
-│  Файлы:                             │
-│   - trel-emu-pack.zip   (1.1 ГБ)    │
-│   - trel-emu-pack.zip.sha1 (60 байт)│
+│  Tag: trel-emu-v0.5.0               │
+│  Files:                             │
+│   - trel-emu-pack.zip   (1.1 GB)    │
+│   - trel-emu-pack.zip.sha1 (60 B)   │
 │                                     │
-│  Зеркало: archive.org               │
+│  Mirror: archive.org                │
 │  trel-emu-pack-v0-5-0               │
 └─────────┬───────────────────────────┘
-          │ скачали
+          │ downloaded
           ▼
 ┌─────────────────────────────────────┐
-│  Куда сохраняется:                  │
+│  Where it is saved:                 │
 │                                     │
-│  Установленная версия:              │
+│  Installed version:                 │
 │   %APPDATA%\Trel\trel-emu\          │
 │   ├─ qemu/                          │
 │   ├─ image/                         │
 │   │   ├─ android-x86.iso            │
-│   │   └─ android-9.0.overlay.qcow2  │  ← сюда QEMU пишет состояние
-│   ├─ boot/                          │  ← извлечённые ядро и initrd
-│   │   ├─ kernel (7 МБ)              │
-│   │   └─ initrd.img (1.3 МБ)        │
+│   │   └─ android-9.0.overlay.qcow2  │  ← QEMU writes the state here
+│   ├─ boot/                          │  ← extracted kernel and initrd
+│   │   ├─ kernel (7 MB)              │
+│   │   └─ initrd.img (1.3 MB)        │
 │   └─ config.json                    │
 │                                     │
-│  Портативная версия:                │
-│   <папка Trel.exe>\trel-emu\        │
+│  Portable version:                  │
+│   <Trel.exe folder>\trel-emu\       │
 │   ├─ qemu/                          │
 │   ├─ image/                         │
 │   ├─ boot/                          │
@@ -95,23 +96,23 @@ Bedrock. Сам лаунчер (Trel) небольшой — инсталлят�
 └─────────────────────────────────────┘
 ```
 
-## Как выпустить новую версию пака
+## How to release a new pack version
 
-### 1) Подготовка кэша
+### 1) Prepare the cache
 
-В `build-trel-emu-cache/` должны лежать:
+The `build-trel-emu-cache/` directory must contain:
 
 ```
-qemu\                              (распакованный QEMU 2026-05-01)
-├── qemu-system-x86_64.exe         (≈27 МБ)
-├── qemu-img.exe                   (≈2 МБ)
-└── (остальные файлы QEMU не нужны для пакета)
+qemu\                              (unpacked QEMU 2026-05-01)
+├── qemu-system-x86_64.exe         (≈27 MB)
+├── qemu-img.exe                   (≈2 MB)
+└── (the other QEMU files are not needed for the pack)
 
-android-x86_64-9.0-r2.iso          (≈921 МБ; скачать с
+android-x86_64-9.0-r2.iso          (≈921 MB; download from
                                     https://archive.org/download/sjarb_android_9.0r2/android-x86_64-9.0-r2.iso)
 ```
 
-Файл `resources/trel-emu/config.json` — конфигурация по умолчанию:
+The file `resources/trel-emu/config.json` is the default configuration:
 
 ```json
 {
@@ -126,48 +127,50 @@ android-x86_64-9.0-r2.iso          (≈921 МБ; скачать с
 }
 ```
 
-### 2) Сборка пакета
+### 2) Build the pack
 
 ```bash
 npm run build:trel-emu-pack
 ```
 
-Скрипт `scripts/build-trel-emu-pack.js` собирает zip-архив без сжатия
-(образ ISO уже сжат) в `dist-trel-emu/trel-emu-pack.zip`
-и записывает рядом `trel-emu-pack.zip.sha1`.
+The `scripts/build-trel-emu-pack.js` script builds a zip archive without
+compression (the ISO image is already compressed) into
+`dist-trel-emu/trel-emu-pack.zip` and writes `trel-emu-pack.zip.sha1` next to
+it.
 
-⚠️ **ВАЖНО:** не пиши в `dist/`! Шаблон `dist/**/*` в `package.json` подхватывает
-electron-builder и упаковывает его внутрь asar. В итоге получишь инсталлятор на 1 ГБ.
+⚠️ **IMPORTANT:** do not write into `dist/`! The `dist/**/*` glob in
+`package.json` is picked up by electron-builder and packed into the asar. You
+will end up with a 1 GB installer.
 
-### 3) Загрузка на хостинг
+### 3) Upload to the host
 
-Создай релиз в репозитории `derwerwer/Trel` на Codeberg:
+Create a release in the `derwerwer/Trel` repository on Codeberg:
 
 ```
-Тег: trel-emu-v0.5.0
-Название: TrelEmu, пак версии 0.5.0
+Tag: trel-emu-v0.5.0
+Title: TrelEmu, version 0.5.0 pack
 
-Файлы (перетащить мышью):
+Files (drag and drop):
   - dist-trel-emu/trel-emu-pack.zip
   - dist-trel-emu/trel-emu-pack.zip.sha1
 ```
 
-Ссылки после публикации:
+Links after publishing:
 
 ```
 https://codeberg.org/derwerwer/Trel/releases/download/trel-emu-v0.5.0/trel-emu-pack.zip
 https://codeberg.org/derwerwer/Trel/releases/download/trel-emu-v0.5.0/trel-emu-pack.zip.sha1
 ```
 
-Зеркало на archive.org:
+Mirror on archive.org:
 
 ```
 https://archive.org/download/trel-emu-pack-v0-5-0/trel-emu-pack.zip
 ```
 
-### 4) Проверка ссылки в коде
+### 4) Check the link in the code
 
-В `src/main/trelEmuDownloader.ts` константа `defaultPackUrl`:
+In `src/main/trelEmuDownloader.ts`, the `defaultPackUrl` constant:
 
 ```typescript
 function defaultPackUrl(p: NodeJS.Platform = process.platform): string {
@@ -175,40 +178,46 @@ function defaultPackUrl(p: NodeJS.Platform = process.platform): string {
 }
 ```
 
-Тег в ссылке **должен совпадать** с тегом релиза, иначе будет 404.
+The tag in the URL **must match** the release tag, otherwise you get a 404.
 
-### 5) Переопределение ссылки (необязательно)
+### 5) Override the link (optional)
 
-Ссылку можно поменять без пересборки Trel, через переменные окружения:
+The link can be changed without rebuilding Trel, through environment
+variables:
 
-- `TRELEMU_PACK_URL` — адрес пакета
-- `TRELEMU_PACK_SHA1` — ожидаемый SHA1 (если не хочешь публиковать файл `.sha1`)
+- `TRELEMU_PACK_URL` — the pack URL
+- `TRELEMU_PACK_SHA1` — the expected SHA1 (if you do not want to publish the
+  `.sha1` file)
 
-Это удобно для проверок через локальный сервер или зеркало.
+This is handy for tests through a local server or a mirror.
 
-## Как установить APK Bedrock автоматически
+## How to install the Bedrock APK automatically
 
-1. Скачай APK Minecraft (подойдёт любой рабочий билд)
-2. Положи его в:
-   - Установленная версия: `%APPDATA%\Trel\trel-emu\image\bedrock.apk`
-   - Портативная версия: `<папка Trel.exe>\trel-emu\image\bedrock.apk`
-3. Запусти TrelEmu — APK поставится сам при первом подключении ADB
-4. **Снимок образа** запомнит установку, ставить больше не нужно
-   (пока не удалишь `android-9.0.overlay.qcow2`)
+1. Download the Minecraft APK (any working build will do)
+2. Put it in:
+   - Installed version: `%APPDATA%\Trel\trel-emu\image\bedrock.apk`
+   - Portable version: `<Trel.exe folder>\trel-emu\image\bedrock.apk`
+3. Launch TrelEmu — the APK installs itself on the first ADB connection
+4. The **image snapshot** remembers the installation, so there is no need to
+   install it again (until you delete `android-9.0.overlay.qcow2`)
 
-## Что умеет загрузчик
+## What the downloader supports
 
-- **Потоковое скачивание** — файл не буферизуется в памяти, читается частями
-- **Прогресс** — передаётся через IPC каждые 200 мс
-- **Отмена** — через AbortController, можно прервать в любой момент
-- **Проверка SHA1** — если рядом с архивом лежит файл `.sha1`
-- **Свой распаковщик zip** — поддерживает методы STORE (0) и DEFLATE (8)
-- **Защита от обхода каталогов** — проверяет пути файлов (нет `..`, нет абсолютных)
-- **Поиск в нескольких местах** — обход папки портативной сборки, затем AppData, затем ресурсов приложения
+- **Streaming download** — the file is not buffered in memory, it is read in
+  chunks
+- **Progress** — reported through IPC every 200 ms
+- **Cancellation** — via AbortController, it can be interrupted at any moment
+- **SHA1 verification** — if a `.sha1` file sits next to the archive
+- **Own zip extractor** — supports the STORE (0) and DEFLATE (8) methods
+- **Path traversal protection** — checks file paths (no `..`, no absolute
+  paths)
+- **Search in several places** — walks the portable build folder, then AppData,
+  then the application resources
 
-## Ограничения
+## Limitations
 
-- Формат ZIP64 не поддерживается (файлы меньше 4 ГБ, пак около 1.1 ГБ — норма)
-- Зашифрованные zip не поддерживаются
-- Размер пака ограничен 2 ГБ (предел хостинга)
-- Скорость скачивания зависит от сети и хостинга
+- The ZIP64 format is not supported (files under 4 GB, the pack is about 1.1
+  GB — that is fine)
+- Encrypted zip files are not supported
+- The pack size is limited to 2 GB (the hosting limit)
+- The download speed depends on the network and the host

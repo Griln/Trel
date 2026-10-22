@@ -95,7 +95,7 @@ export const SkinPage: React.FC<Props> = ({ accounts, activeUuid, onSelect, onCh
 
   const applyRef = useRef(false);
   const applySkin = async (uuid: string, dataUrl: string, model?: 'classic' | 'slim') => {
-    // Быстрые клики по пресетам interleav'или setSkin — побеждал не последний.
+    // Fast clicks on the presets interleaved with setSkin — the last one did not win.
     if (applyRef.current) return;
     applyRef.current = true;
     setError('');

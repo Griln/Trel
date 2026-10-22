@@ -30,7 +30,7 @@ export interface ModpackVersion {
   gameVersions: string[];
   loaders: string[];
   datePublished: string;
-  /** URL .mrpack-файла */
+  /** URL of the .mrpack file */
   fileUrl: string | null;
   fileName: string | null;
   fileSize: number;
@@ -45,7 +45,7 @@ export interface ModpackPlan {
 }
 
 export interface ModpackFile {
-  /** относительный путь внутри инстанса, напр. "mods/sodium.jar" */
+  /** relative path inside the instance, e.g. "mods/sodium.jar" */
   path: string;
   downloads: string[];
   sha1?: string;
@@ -62,8 +62,8 @@ export interface ModpackInstallResult {
 }
 
 /**
- * Чистая функция: разбирает modrinth.index.json в план установки.
- * Покрыта юнит-тестами.
+ * Pure function: parses modrinth.index.json into an install plan.
+ * Covered by unit tests.
  */
 export function parseModpackIndex(index: any): ModpackPlan {
   if (!index || typeof index !== 'object') throw new Error('Пустой modrinth.index.json');
@@ -84,7 +84,7 @@ export function parseModpackIndex(index: any): ModpackPlan {
   const files: ModpackFile[] = [];
   for (const f of rawFiles) {
     if (!f || typeof f.path !== 'string') continue;
-    // пропускаем серверные-only файлы
+    // skip server-only files
     const env = f.env;
     if (env && env.client === 'unsupported') continue;
     const downloads: string[] = Array.isArray(f.downloads) ? f.downloads.filter((u: any) => typeof u === 'string') : [];
@@ -104,13 +104,14 @@ export function parseModpackIndex(index: any): ModpackPlan {
 }
 
 /**
- * Приводит версию лоадера к формату, который ждёт LoaderService.install().
+ * Brings the loader version into the format expected by LoaderService.install().
  *
- * Forge — единственный, кому нужен префикс версии игры: его maven-артефакт
- * называется `forge-1.20.1-47.2.0-installer.jar`. В метаданных сборок этот
- * префикс встречается по-разному: modrinth.index.json хранит `forge: 47.2.0`,
- * CurseForge — `modLoaders[0].id = "forge-47.2.0"`, а Prism/MultiMC уже
- * `1.20.1-47.2.0`. Без нормализации установка Forge-сборки падала бы на 404.
+ * Forge is the only one that needs the game version prefix: its maven artifact
+ * is called `forge-1.20.1-47.2.0-installer.jar`. In build metadata this prefix
+ * appears in different shapes: modrinth.index.json stores `forge: 47.2.0`,
+ * CurseForge uses `modLoaders[0].id = "forge-47.2.0"`, while Prism/MultiMC
+ * already use `1.20.1-47.2.0`. Without normalization the Forge build install
+ * would fail with a 404.
  */
 export function normalizeLoaderVersion(loader: string, mc: string, loaderVersion: string): string {
   if (loader !== 'forge') return loaderVersion;
@@ -167,13 +168,13 @@ export class ModpackService {
     });
   }
 
-  /** Скачивает файл в буфер с проверкой sha (если задан). */
+  /** Downloads a file into a buffer with sha verification (if provided). */
   private async downloadBuffer(urls: string[], sha1?: string, maxBytes = 1024 * 1024 * 1024): Promise<Buffer> {
     let lastErr: Error | null = null;
     for (const url of urls) {
       try {
-        // URL из чужого .mrpack-манифеста: только доверенные хосты, иначе
-        // злой пак тянет малварь с любого сервера.
+        // URL from a foreign .mrpack manifest: only trusted hosts, otherwise
+        // a malicious pack could pull malware from any server.
         const { isUrlAllowed } = await import('./download-security');
         if (!isUrlAllowed(url)) throw new Error('URL blocked by download policy: ' + url);
         const { data, headers } = await axios.get(url, { responseType: 'arraybuffer', timeout: 120000, maxRedirects: 5, headers: { 'User-Agent': UA } });
@@ -207,7 +208,7 @@ export class ModpackService {
     if (!indexEntry) throw new Error('В .mrpack нет modrinth.index.json');
     const plan = parseModpackIndex(JSON.parse(zip.readAsText(indexEntry)));
 
-    // 1) Установка лоадера (создаёт versions/<id>/ с папками контента)
+    // 1) Loader install (creates versions/<id>/ with the content folders)
     this.report(win, 'Установка ' + (plan.loader === 'vanilla' ? 'Minecraft' : plan.loader) + ' ' + plan.mc, 20);
     let versionId: string;
     if (plan.loader === 'vanilla') {
@@ -221,12 +222,12 @@ export class ModpackService {
 
     const instDir = path.join(this.gameDir, 'versions', versionId);
 
-    // 2) Распаковка overrides
+    // 2) Unpacking overrides
     this.report(win, 'Применение конфигов модпака', 35);
     this.applyOverrides(zip, 'overrides/', instDir);
     this.applyOverrides(zip, 'client-overrides/', instDir);
 
-    // 3) Скачивание файлов модпака
+    // 3) Downloading the modpack files
     const total = plan.files.length;
     let done = 0;
     for (const f of plan.files) {
@@ -247,11 +248,11 @@ export class ModpackService {
   }
 
   /**
-   * Ставит версию по профилю, распознанному из импортированной сборки
-   * (DetectedModpack). Смысл: вместо тупого копирования файлов из чужого
-   * лаунчера пользователь получает чистую версию с правильным лоадером —
-   * её Trel умеет обновлять сам. Моды/конфиги при этом всё равно идут
-   * через обычный импорт категорий.
+   * Installs a version from a profile detected in an imported build
+   * (DetectedModpack). The point: instead of blindly copying files from a
+   * foreign launcher the user gets a clean version with the right loader —
+   * Trel can update it on its own. Mods/configs still go through the
+   * regular category import.
    */
   async installFromProfile(
     profile: { mc: string; loader: string; loaderVersion?: string; name?: string },

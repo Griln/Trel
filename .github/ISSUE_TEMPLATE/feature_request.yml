@@ -1,43 +1,43 @@
-name: Запрос функции
-description: Хочу, чтобы лаунчер умел новое
+name: Feature request
+description: I would like the launcher to do something new
 labels: ["feature", "needs-triage"]
 body:
   - type: textarea
     id: problem
     attributes:
-      label: Какую проблему это решает
-      description: Опиши ситуацию, в которой тебе не хватает возможности
-      placeholder: Сейчас нельзя держать две сборки с разной памятью одновременно
+      label: What problem does this solve
+      description: Describe the situation where you are missing a capability
+      placeholder: Right now I cannot keep two builds with different memory settings at the same time
     validations:
       required: true
 
   - type: textarea
     id: proposal
     attributes:
-      label: Что предлагаешь
-      description: Как ты представляешь решение
+      label: What you have in mind
+      description: How you imagine the solution working
     validations:
       required: true
 
   - type: textarea
     id: alternatives
     attributes:
-      label: Альтернативы
-      description: Что пробовал делать вместо этого
+      label: Alternatives
+      description: What you have tried instead of this
 
   - type: dropdown
     id: area
     attributes:
-      label: Раздел лаунчера
+      label: Launcher section
       options:
-        - Каталог версий
-        - Моды и модпаки
-        - Скины
-        - Миры и серверы
-        - Импорт
+        - Version catalog
+        - Mods and modpacks
+        - Skins
+        - Worlds and servers
+        - Import
         - Bedrock / TrelEmu
-        - Настройки
-        - Интерфейс
-        - Другое
+        - Settings
+        - Interface
+        - Other
     validations:
       required: false

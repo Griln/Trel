@@ -10,39 +10,39 @@ import { EventEmitter } from 'node:events';
 /**
  * TrelEmu asset downloader.
  *
- * Идея: TrelEmu — это QEMU + Android-x86 ISO. Это необязательный компонент:
- * пользователь может скачать pack прямо из лаунчера, а portable-пользователь
- * может положить папку trel-emu рядом с Trel.exe. Bundled resourcesPath/trel-emu
- * остаётся совместимым fallback для старых/специальных сборок.
+ * Idea: TrelEmu is a QEMU + Android-x86 ISO. It is an optional component:
+ * the user can download the pack right from the launcher, and a portable user
+ * can place the trel-emu folder next to Trel.exe. The bundled resourcesPath/trel-emu
+ * stays a compatible fallback for old/special builds.
  *
- * Resume-стратегия:
- *   1) Перед скачиванием — HEAD-запрос, узнаём Content-Length и Accept-Ranges.
- *   2) Если уже есть .partial — читаем его размер N, шлём `Range: bytes=N-`.
- *   3) Сервер отвечает:
- *        206 + Content-Range → дописываем в .partial
- *        200                → сервер не поддерживает Range, начинаем с нуля
- *        416                → .partial уже >= сервера, проверяем SHA1 и завершаем
- *   4) Ссылка на .partial и его размер пишутся в .meta.json — это позволяет
- *      продолжить загрузку после полного перезапуска Trel.
- *   5) После успешного скачивания: верифицируем SHA1, атомарно переименовываем
- *      .partial → final. Если проверка не прошла — удаляем .partial.
+ * Resume strategy:
+ *   1) Before downloading — a HEAD request, we learn the Content-Length and Accept-Ranges.
+ *   2) If a .partial already exists — we read its size N and send `Range: bytes=N-`.
+ *   3) The server responds:
+ *        206 + Content-Range → we append to the .partial
+ *        200                → the server does not support Range, we start from scratch
+ *        416                → the .partial is already >= the server's, we check the SHA1 and finish
+ *   4) The link to the .partial and its size are written into .meta.json — that allows
+ *      us to continue the download after a full Trel restart.
+ *   5) After a successful download: we verify the SHA1 and atomically rename
+ *      .partial → final. If the check fails — we delete the .partial.
  *
- * Откуда качаем:
- *   По умолчанию — GitHub Releases репозитория Griln/Trel.
- *   Файл `trel-emu-pack.zip` должен быть приложен к релизу.
- *   URL можно переопределить через env `TRELEMU_PACK_URL` (для тестов/зеркал).
+ * Where we download from:
+ *   By default — the GitHub Releases of the Griln/Trel repository.
+ *   The file `trel-emu-pack.zip` must be attached to the release.
+ *   The URL can be overridden via the env `TRELEMU_PACK_URL` (for tests/mirrors).
  *
- * Куда кладём:
+ * Where we put it:
  *   Installed: %APPDATA%/Trel/trel-emu/
- *   Portable: <директория Trel.exe>/trel-emu/
+ *   Portable: <Trel.exe directory>/trel-emu/
  *
- * Скачивание — стримом (без буфера 1 ГБ в RAM).
- * Извлечение — через встроенный zip-парсер.
- * ZIP64 не используем (pack < 2 ГБ).
- * Сжатие выключено (deflate/raw, не zip64 — этого хватает для нашего пака).
+ * The download is streamed (no 1 GB buffer in RAM).
+ * The extraction uses the built-in zip parser.
+ * We do not use ZIP64 (pack < 2 GB).
+ * Compression is off (deflate/raw, not zip64 — that is enough for our pack).
  *
- * Прогресс шлём через EventEmitter. IPC-хендлер подписывается и пересылает
- * renderer'у через `webContents.send('trelEmu:downloadProgress', ...)`.
+ * The progress is sent through an EventEmitter. The IPC handler subscribes and
+ * forwards it to the renderer via `webContents.send('trelEmu:downloadProgress', ...)`.
  */
 
 export type DownloadState =
@@ -51,19 +51,19 @@ export type DownloadState =
 
 export interface DownloadProgress {
   state: DownloadState;
-  /** Байт скачано (с учётом резюма). */
+  /** Bytes downloaded (resume included). */
   downloaded: number;
-  /** Полный размер (если сервер дал Content-Length). */
+  /** Total size (if the server gave a Content-Length). */
   total: number;
   /** 0..1. */
   ratio: number;
-  /** Скорость в байт/сек (последние 5 сек). */
+  /** Speed in bytes/sec (last 5 sec). */
   speed: number;
-  /** Текстовая подсказка для UI. */
+  /** Textual hint for the UI. */
   message: string;
-  /** Если state === 'error' — описание ошибки. */
+  /** If state === 'error' — the error description. */
   error?: string;
-  /** Сколько байт уже было скачано до resume (0 если скачиваем с нуля). */
+  /** How many bytes had already been downloaded before the resume (0 if downloading from scratch). */
   resumedFrom?: number;
 }
 
@@ -74,17 +74,17 @@ interface DownloadMeta {
   etag: string | null;
   lastModified: string | null;
   acceptsRanges: boolean;
-  /** Last write time — чтобы stale .meta.json не мешал новой загрузке. */
+  /** Last write time — so that a stale .meta.json does not interfere with a new download. */
   startedAt: number;
 }
 
 const PROGRESS_THROTTLE_MS = 200;
-const MAX_RESUME_AGE_MS = 7 * 24 * 60 * 60_000; // неделю — после этого resume не доверяем
+const MAX_RESUME_AGE_MS = 7 * 24 * 60 * 60_000; // a week — after that we do not trust the resume
 const HEAD_TIMEOUT_MS = 15_000;
 const CHUNK_TIMEOUT_MS = 30_000;
 
 const DEFAULT_URL = 'https://archive.org/download/trel-emu-pack-v0-5-0/trel-emu-pack.zip';
-/** SHA1 эталон. Считается автоматически при упаковке и пишется в .sha1 файл рядом. */
+/** SHA1 reference. It is computed automatically when packing and written into the .sha1 file next to it. */
 const DEFAULT_SHA1 = 'e81d46563a57a0d5d7ff12d361c00a129ddbeade';
 
 interface ManifestFile {
@@ -104,10 +104,10 @@ export class TrelEmuDownloader extends EventEmitter {
   private lastDownloaded = 0;
   private lastTime = 0;
   private measuredSpeed = 0;
-  /** Сколько байт уже было скачано ДО текущей сессии (для UI "Возобновляем с X МБ"). */
+  /** How many bytes had already been downloaded BEFORE the current session (for the UI "Resuming from X MB"). */
   private resumeStartBytes = 0;
 
-  /** Путь, куда распаковываем TrelEmu. */
+  /** The path where we unpack TrelEmu. */
   resolveTargetDir(): string {
     if (process.env.PORTABLE_EXECUTABLE_FILE) {
       return path.join(path.dirname(process.env.PORTABLE_EXECUTABLE_FILE), 'trel-emu');
@@ -125,11 +125,11 @@ export class TrelEmuDownloader extends EventEmitter {
   }
 
   /**
-   * Возвращает массив директорий, где ищем TrelEmu.
-   * TrelEmu теперь необязательный компонент: обычный release не обязан тащить
-   * 1+ ГБ эмулятора. Поэтому сначала ищем пользовательский скачанный pack,
-   * затем bundled resources как fallback для старых/специальных сборок, и только
-   * в dev-режиме смотрим project-local resources/trel-emu.
+   * Returns the list of directories where we look for TrelEmu.
+   * TrelEmu is now an optional component: a regular release is not obliged to
+   * ship 1+ GB of emulator. So we first look for the user-downloaded pack,
+   * then for the bundled resources as a fallback for old/special builds, and
+   * only in dev mode we look at the project-local resources/trel-emu.
    */
   getSearchDirs(): string[] {
     const dirs: string[] = [];
@@ -166,7 +166,7 @@ export class TrelEmuDownloader extends EventEmitter {
     return dirs;
   }
 
-  /** Директория для .partial и .meta.json (рядом с целевой папкой). */
+  /** The directory for the .partial and .meta.json files (next to the target folder). */
   private getDownloadsDir(targetDir: string): string {
     return path.join(targetDir, 'downloads');
   }
@@ -180,8 +180,8 @@ export class TrelEmuDownloader extends EventEmitter {
   }
 
   /**
-   * Если .partial + .meta.json существуют, согласуются и не старше недели —
-   * возвращает размер уже скачанного. Иначе 0.
+   * If the .partial + .meta.json exist, agree with each other and are not
+   * older than a week — returns the size already downloaded. Otherwise 0.
    */
   async getResumableBytes(targetDir: string, baseName: string, url: string): Promise<number> {
     const metaPath = this.getMetaPath(targetDir, baseName);
@@ -222,14 +222,14 @@ export class TrelEmuDownloader extends EventEmitter {
   }
 
   /**
-   * Скачивает, верифицирует и распаковывает TrelEmu pack.
+   * Downloads, verifies and unpacks the TrelEmu pack.
    *
-   * Поддерживает resume через HTTP Range: если в targetDir/downloads/ уже
-   * лежит .partial с .meta.json — продолжаем с того места, где остановились.
-   * Переживает полный рестарт Trel.
+   * Supports resume via HTTP Range: if a .partial with a .meta.json already
+   * lies in targetDir/downloads/ — we continue from the point where we stopped.
+   * It survives a full Trel restart.
    *
-   * @param urlOverride опционально — URL пака.
-   * @param sha1Override опционально — эталонный SHA1.
+   * @param urlOverride optional — the pack URL.
+   * @param sha1Override optional — the reference SHA1.
    */
   async downloadAndInstall(urlOverride?: string, sha1Override?: string): Promise<string> {
     if (this.isBusy()) {
@@ -243,14 +243,14 @@ export class TrelEmuDownloader extends EventEmitter {
     const tmpFinalPath = path.join(os.tmpdir(), `${baseName}-${Date.now()}-${process.pid}`);
 
     try {
-      // 1) Узнаём, можно ли resume'ить и сколько байт уже есть.
+      // 1) Find out whether we can resume and how many bytes are already there.
       const resumedFrom = await this.getResumableBytes(targetDir, baseName, url);
       this.resumeStartBytes = resumedFrom;
       if (resumedFrom > 0) {
         this.setState('resuming', resumedFrom, 0, `Возобновляем с ${(resumedFrom / 1024 / 1024).toFixed(1)} МБ…`);
       }
 
-      // 2) HEAD / Range: — узнаём Content-Length и поддержку Range.
+      // 2) HEAD / Range: — learn the Content-Length and the Range support.
       this.startTime = Date.now();
       this.lastTime = this.startTime;
       this.lastDownloaded = resumedFrom;
@@ -262,7 +262,7 @@ export class TrelEmuDownloader extends EventEmitter {
         throw new Error('Сервер не прислал Content-Length — невозможно верифицировать целостность');
       }
       if (resumedFrom > 0 && resumedFrom >= contentLength) {
-        // .partial уже полный — сразу к проверке.
+        // The .partial is already complete — go straight to the verification.
         const verified = await this.verifyPartialSha1(partialPath, sha1Override, url);
         if (!verified) {
           try { await fsp.unlink(partialPath); } catch {}
@@ -273,7 +273,7 @@ export class TrelEmuDownloader extends EventEmitter {
         return targetDir;
       }
 
-      // 3) Сохраняем метаданные для будущих resume.
+      // 3) Save the metadata for future resumes.
       const expectedSha1 = sha1Override || process.env.TRELEMU_PACK_SHA1 || await this.tryFetchSha1(url) || null;
       await this.writeMeta(targetDir, baseName, {
         url,
@@ -285,7 +285,7 @@ export class TrelEmuDownloader extends EventEmitter {
         startedAt: Date.now(),
       });
 
-      // 4) Качаем в .partial.
+      // 4) Download into the .partial.
       this.setState('downloading', resumedFrom, contentLength,
         resumedFrom > 0
           ? `Возобновляем с ${(resumedFrom / 1024 / 1024).toFixed(1)} МБ…`
@@ -294,23 +294,25 @@ export class TrelEmuDownloader extends EventEmitter {
       this.lastDownloaded = downloaded;
       this.lastTime = Date.now();
 
-      // 5) Верифицируем SHA1.
+      // 5) Verify the SHA1.
       this.setState('verifying', downloaded, contentLength, 'Проверяем целостность…');
       if (!expectedSha1 || expectedSha1 === DEFAULT_SHA1) {
-        // Апстрим не отдал .sha1: ставим, но честно показываем что без проверки.
+        // The upstream did not provide a .sha1: we install it anyway, but we honestly
+        // show that there was no verification.
         this.setState('verifying', downloaded, contentLength, 'Внимание:SHA1 нет — целостность не проверена');
       } else if (expectedSha1 !== sha1Computed) {
-        // SHA1 не сошёлся — удаляем .partial чтобы при следующем запуске не resume'или мусор.
+        // The SHA1 does not match — we delete the .partial so that the next run
+        // does not resume from garbage.
         try { await fsp.unlink(partialPath); } catch {}
         await this.clearMeta(targetDir, baseName);
         throw new Error(`SHA1 не совпадает: ожидалось ${expectedSha1}, получено ${sha1Computed}`);
       }
 
-      // 6) Распаковываем .partial (он уже полный) в целевую папку.
+      // 6) Unpack the .partial (it is already complete) into the target folder.
       this.setState('extracting', downloaded, contentLength, 'Распаковываем…');
       await this.extractZip(partialPath, targetDir);
 
-      // 7) Чистим .partial и .meta.json (распакованный архив больше не нужен).
+      // 7) Clean up the .partial and the .meta.json (the unpacked archive is no longer needed).
       try { await fsp.unlink(partialPath); } catch {}
       await this.clearMeta(targetDir, baseName);
 
@@ -331,8 +333,8 @@ export class TrelEmuDownloader extends EventEmitter {
   }
 
   /**
-   * Распаковка из уже-полного .partial. Если финальный файл не нужен —
-   * распаковываем напрямую.
+   * Unpacking from an already complete .partial. If the final file is not
+   * needed — we unpack directly.
    */
   private async finalizeFromPartial(
     partialPath: string,
@@ -347,7 +349,7 @@ export class TrelEmuDownloader extends EventEmitter {
     this.emit('progress', this.snapshot(total, total, 'Установка завершена'));
   }
 
-  /** Считает SHA1 .partial. Возвращает true если совпал с эталоном (или эталона нет). */
+  /** Computes the SHA1 of the .partial. Returns true if it matched the reference (or there is no reference). */
   private async verifyPartialSha1(partialPath: string, sha1Override: string | undefined, url: string): Promise<boolean> {
     const expectedSha1 = sha1Override || process.env.TRELEMU_PACK_SHA1 || await this.tryFetchSha1(url);
     if (!expectedSha1 || expectedSha1 === DEFAULT_SHA1) return true;
@@ -384,8 +386,9 @@ export class TrelEmuDownloader extends EventEmitter {
   }
 
   /**
-   * Делает HEAD (или Range: bytes=0-0 если есть resume), чтобы узнать Content-Length
-   * и поддержку Range. Возвращает body для дальнейшего чтения (если это был GET).
+   * Does a HEAD (or a Range: bytes=0-0 if there is a resume) to learn the
+   * Content-Length and the Range support. Returns the body for further reading
+   * (if it was a GET).
    */
   private async fetchHeadOrRange(
     url: string,
@@ -398,8 +401,8 @@ export class TrelEmuDownloader extends EventEmitter {
     lastModified: string | null;
     body: ReadableStream<Uint8Array> | null;
   }> {
-    // Сначала пробуем Range: bytes=0-0 — заодно проверим поддержку и получим
-    // Content-Length через Content-Range (если сервер вернёт 206).
+    // First we try Range: bytes=0-0 — that also checks the support and gives us the
+    // Content-Length through Content-Range (if the server returns 206).
     if (resumedFrom > 0) {
       const res = await fetch(url, {
         method: 'GET',
@@ -419,7 +422,7 @@ export class TrelEmuDownloader extends EventEmitter {
         };
       }
       if (res.status === 200) {
-        // Сервер проигнорировал Range и шлёт с нуля. Отбрасываем .partial.
+        // The server ignored the Range and sends from the start. We drop the .partial.
         try { await fsp.unlink(this.getPartialPath(this.resolveTargetDir(), 'trel-emu-pack.zip')); } catch {}
         const total = parseInt(res.headers.get('content-length') || '0', 10);
         return {
@@ -431,7 +434,7 @@ export class TrelEmuDownloader extends EventEmitter {
         };
       }
       if (res.status === 416) {
-        // .partial >= сервера. Считаем полным.
+        // .partial >= the server's size. We count it as complete.
         const contentRange = res.headers.get('content-range') || '';
         const m = /\/(\d+)/.exec(contentRange);
         const total = m ? parseInt(m[1], 10) : 0;
@@ -440,7 +443,7 @@ export class TrelEmuDownloader extends EventEmitter {
       throw new Error(`HTTP ${res.status} ${res.statusText} — не удалось скачать ${url}`);
     }
 
-    // Первый старт: чистый GET.
+    // First start: a plain GET.
     const res = await fetch(url, { signal });
     if (!res.ok) {
       throw new Error(`HTTP ${res.status} ${res.statusText} — файл недоступен по URL ${url}`);
@@ -466,8 +469,8 @@ export class TrelEmuDownloader extends EventEmitter {
       throw new Error('Сервер не прислал тело ответа (resume не возможен)');
     }
     const speedSamples: { time: number; bytes: number }[] = [];
-    // Открываем файл в 'a' (append) если resume'им, иначе 'w' (перезапись).
-    // Создаём директорию на всякий случай (она уже должна быть).
+    // We open the file in 'a' (append) if we resume, otherwise 'w' (overwrite).
+    // We create the directory just in case (it should already exist).
     await fsp.mkdir(path.dirname(dest), { recursive: true });
     const file = fs.createWriteStream(dest, {
       flags: startOffset > 0 ? 'a' : 'w',
@@ -476,8 +479,9 @@ export class TrelEmuDownloader extends EventEmitter {
     const hash = crypto.createHash('sha1');
     let downloaded = startOffset;
 
-    // Если resume'или, sha1 надо считать от начала файла, а не от startOffset —
-    // чтобы проверить ВЕСЬ файл. Досчитываем хэш уже-скачанной части.
+    // If we resume, the sha1 has to be computed from the beginning of the file,
+    // not from startOffset — so that we verify the WHOLE file. We read the hash
+    // over the already downloaded part.
     if (startOffset > 0) {
       const readHashFromFile = () => new Promise<void>((resolve, reject) => {
         const r = fs.createReadStream(dest, { start: 0, end: startOffset - 1 });
@@ -494,7 +498,7 @@ export class TrelEmuDownloader extends EventEmitter {
         const { done, value } = await reader.read();
         if (done) break;
         if (!value) continue;
-        // Пишем в файл.
+        // Write to the file.
         if (!file.write(Buffer.from(value))) {
           await new Promise<void>((resolve) => file.once('drain', () => resolve()));
         }
@@ -519,8 +523,8 @@ export class TrelEmuDownloader extends EventEmitter {
             : 'Скачиваем TrelEmu…'));
         }
       }
-      // Если сервер не поддерживает Range и прислал с нуля — downloaded уже total,
-      // и файл перезаписан с нуля (мы открыли 'w'). Тут всё ок.
+      // If the server does not support Range and sent it from the start — downloaded
+      // is already total, and the file was overwritten from scratch (we opened 'w'). All good here.
       await new Promise<void>((resolve, reject) => {
         file.end((err: Error | null | undefined) => err ? reject(err) : resolve());
       });
@@ -528,14 +532,14 @@ export class TrelEmuDownloader extends EventEmitter {
       try { file.destroy(); } catch {}
       throw e;
     }
-    // Последняя проверка: если expected total и downloaded != total — ошибка.
+    // Final check: if the expected total and downloaded != total — an error.
     if (total > 0 && downloaded !== total && acceptsRanges) {
       throw new Error(`Скачано ${downloaded} байт, ожидалось ${total} (Range не сошёлся)`);
     }
     return { downloaded, sha1Computed: hash.digest('hex') };
   }
 
-  /** Пытается скачать .sha1 рядом с .zip (часто кладут для верификации). */
+  /** Tries to download the .sha1 next to the .zip (they are often placed there for verification). */
   private async tryFetchSha1(url: string): Promise<string | null> {
     try {
       const sha1Url = url.replace(/\.zip$/i, '.zip.sha1');
@@ -547,8 +551,8 @@ export class TrelEmuDownloader extends EventEmitter {
   }
 
   /**
-   * Минимальный zip-экстрактор. Поддерживает STORE (метод 0) и DEFLATE (метод 8).
-   * ZIP64 не используем (файлы маленькие, общий pack < 2 ГБ). Encryption тоже.
+   * A minimal zip extractor. Supports STORE (method 0) and DEFLATE (method 8).
+   * We do not use ZIP64 (small files, total pack < 2 GB). No encryption either.
    */
   private async extractZip(zipPath: string, targetDir: string): Promise<void> {
     const data = await fsp.readFile(zipPath);
@@ -584,7 +588,7 @@ export class TrelEmuDownloader extends EventEmitter {
     }
 
     await fsp.mkdir(targetDir, { recursive: true });
-    // Zip-бомба: пак эмулятора ~1ГБ распакованного; 4ГБ+ = атака.
+    // Zip bomb: the emulator pack is ~1GB unpacked; 4GB+ = an attack.
     const totalUncomp = entries.reduce((a, e) => a + (e.isDir ? 0 : e.size), 0);
     if (entries.length > 100000 || totalUncomp > 4 * 1024 * 1024 * 1024) {
       throw new Error('Pack too large (zip bomb guard)');

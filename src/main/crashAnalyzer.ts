@@ -1,6 +1,6 @@
-// Crash Doctor — анализатор крашей Java-клиента Minecraft.
-// Чистые функции: на вход хвост лога + текст crash-report, на выход — диагноз.
-// База сигнатур легко расширяется (см. SIGNATURES). Покрыто юнит-тестами.
+// Crash Doctor — analyzer for crashes of the Minecraft Java client.
+// Pure functions: the input is a log tail + crash-report text, the output — a diagnosis.
+// The signature database is easy to extend (see SIGNATURES). Covered by unit tests.
 
 export type CrashFixActionType =
   | 'increase-memory'
@@ -14,45 +14,45 @@ export type CrashFixActionType =
 export interface CrashFixAction {
   type: CrashFixActionType;
   label: string;
-  /** Необязательная подсказка-значение (например, рекомендуемый Xmx в МБ). */
+  /** Optional hint value (for example the recommended Xmx in MB). */
   hint?: string | number;
-  /** Ссылка для действий типа update-gpu-driver (только allowlist-хосты). */
+  /** Link for actions of the update-gpu-driver type (allowlist hosts only). */
   url?: string;
 }
 
 export interface CrashDiagnosis {
-  /** Стабильный идентификатор причины (для i18n/тестов). */
+  /** Stable identifier of the cause (for i18n/tests). */
   id: string;
   severity: 'fatal' | 'warning' | 'info';
-  /** Короткий заголовок: что случилось. */
+  /** Short title: what happened. */
   title: string;
-  /** Человеческое объяснение причины. */
+  /** Human-readable explanation of the cause. */
   detail: string;
-  /** Конкретные шаги/кнопки для починки. */
+  /** Concrete steps/buttons to fix it. */
   actions: CrashFixAction[];
-  /** Имя мода/класса/зависимости, если удалось извлечь. */
+  /** Name of the mod/class/dependency, if it could be extracted. */
   culprit?: string;
 }
 
 export interface CrashInput {
-  /** Код выхода процесса (0 = чисто). */
+  /** Exit code of the process (0 = clean). */
   exitCode: number;
-  /** Хвост консольного лога (stdout+stderr). */
+  /** Tail of the console log (stdout+stderr). */
   logTail?: string;
-  /** Содержимое последнего crash-reports/*.txt, если есть. */
+  /** Contents of the latest crash-reports/*.txt, if there is one. */
   crashReport?: string;
-  /** Мод-лоадер профиля, если есть. */
+  /** Mod loader of the profile, if any. */
   loader?: string | null;
-  /** Базовая версия MC. */
+  /** Base MC version. */
   baseMc?: string | null;
 }
 
 interface Signature {
   id: string;
   severity: CrashDiagnosis['severity'];
-  /** Регексы; срабатывает, если хоть один найден в тексте. */
+  /** Regexes; it triggers if at least one is found in the text. */
   patterns: RegExp[];
-  /** Построить диагноз (можно извлечь culprit через capture group). */
+  /** Build the diagnosis (the culprit can be extracted via a capture group). */
   build: (text: string, input: CrashInput) => Omit<CrashDiagnosis, 'id' | 'severity'>;
 }
 
@@ -64,7 +64,7 @@ function firstCapture(text: string, patterns: RegExp[]): string | undefined {
   return undefined;
 }
 
-/** Производитель GPU для ссылки на драйвер (best-effort, без шелла). */
+/** GPU vendor for the driver link (best-effort, without spawning a shell). */
 export function detectGpuVendor(): 'nvidia' | 'amd' | 'intel' | null {
   try {
     const { execFileSync } = require('node:child_process') as typeof import('node:child_process');
@@ -72,7 +72,7 @@ export function detectGpuVendor(): 'nvidia' | 'amd' | 'intel' | null {
     if (process.platform === 'win32') {
       out = execFileSync('wmic', ['path', 'win32_VideoController', 'get', 'name'], { timeout: 8000, encoding: 'utf-8', windowsHide: true });
     } else {
-      // lspci может отсутствовать — тогда null и кнопка без ссылки.
+      // lspci may be missing — then null and a button without a link.
       out = execFileSync('lspci', { timeout: 8000, encoding: 'utf-8' });
     }
     const low = out.toLowerCase();
@@ -83,7 +83,7 @@ export function detectGpuVendor(): 'nvidia' | 'amd' | 'intel' | null {
   return null;
 }
 
-// Порядок важен: более специфичные сигнатуры идут раньше общих.
+// Order matters: the more specific signatures come before the generic ones.
 const SIGNATURES: Signature[] = [
   {
     id: 'forge-missing-mods',
@@ -259,12 +259,12 @@ const SIGNATURES: Signature[] = [
 ];
 
 /**
- * Анализирует краш. Возвращает диагноз или null, если выход штатный (code 0)
- * и в логах нет признаков ошибки.
+ * Analyzes a crash. Returns a diagnosis or null if the exit was clean (code 0)
+ * and there are no signs of an error in the logs.
  */
 export function analyzeCrash(input: CrashInput): CrashDiagnosis | null {
-  // Шапка crash-report (заголовок с описанием) + хвост лога: раньше брали
-  // только последние 60к и слепо резали шапку с главным диагнозом.
+  // The crash-report header (with the description) + the log tail: previously
+  // we took only the last 60k and blindly cut off the header with the main diagnosis.
   const head = (input.crashReport || '').slice(0, 20_000);
   const tail = ((input.crashReport || '') + '\n' + (input.logTail || '')).slice(-60_000);
   const text = head + '\n' + tail;
@@ -276,7 +276,7 @@ export function analyzeCrash(input: CrashInput): CrashDiagnosis | null {
     }
   }
 
-  // Ничего не распознали, но процесс упал — общий диагноз.
+  // Nothing was recognized, but the process crashed — generic diagnosis.
   if (input.exitCode !== 0) {
     return {
       id: 'unknown',
@@ -293,7 +293,7 @@ export function analyzeCrash(input: CrashInput): CrashDiagnosis | null {
   return null;
 }
 
-/** Список id всех известных сигнатур — для тестов и отладки. */
+/** List of the ids of all known signatures — for tests and debugging. */
 export function knownSignatureIds(): string[] {
   return SIGNATURES.map((s) => s.id);
 }

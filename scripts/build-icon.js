@@ -1,12 +1,13 @@
 /**
- * Генератор иконки для лаунчера (build/icon.ico + build/icon.png).
+ * Icon generator for the launcher (build/icon.ico + build/icon.png).
  *
- * Без внешних зависимостей: PNG-кодер и ICO-сборка реализованы вручную через
- * node:zlib (deflate IDAT) и node:buffer (CRC32, заголовки).
+ * No external dependencies: the PNG encoder and the ICO assembler are
+ * implemented by hand on top of node:zlib (deflate IDAT) and node:buffer
+ * (CRC32, headers).
  *
- * Дизайн: скруглённый квадрат с диагональным градиентом (фиолет → циан) и
- * белой стилизованной "T" по центру. Анти-алиасинг — только на скруглённых
- * углах (внутри T рисуется по точным пиксельным границам).
+ * Design: a rounded square with a diagonal gradient (purple → cyan) and a
+ * white stylized "T" in the center. Anti-aliasing is applied only to the
+ * rounded corners (inside the T is drawn along exact pixel boundaries).
  */
 'use strict';
 
@@ -14,7 +15,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const zlib = require('node:zlib');
 
-// ---------- CRC32 (для PNG-чанков) ----------
+// ---------- CRC32 (for PNG chunks) ----------
 const CRC_TABLE = (() => {
   const t = new Uint32Array(256);
   for (let n = 0; n < 256; n++) {
@@ -85,7 +86,7 @@ function drawIcon(size) {
   const buf = Buffer.alloc(size * size * 4);
   const radius = size * 0.172; // 44px @ 256
 
-  // Пропорции монограммы
+  // Monogram proportions
   const tWidth   = size * 0.58;
   const tBarH    = size * 0.16;
   const tStrokeW = size * 0.16;
@@ -101,7 +102,7 @@ function drawIcon(size) {
     for (let x = 0; x < size; x++) {
       const i = (y * size + x) * 4;
 
-      // SDF скруглённого квадрата
+      // SDF of the rounded square
       const cx = Math.min(Math.max(x + 0.5, radius), size - radius);
       const cy = Math.min(Math.max(y + 0.5, radius), size - radius);
       const dx = (x + 0.5) - cx;
@@ -114,16 +115,16 @@ function drawIcon(size) {
         continue;
       }
 
-      // AA на границе скруглённого края
+      // AA on the rounded edge boundary
       const alpha = Math.round(255 * (1 - smoothstep(-1, 1, sdf)));
 
-      // Диагональный градиент: top-left → bottom-right
+      // Diagonal gradient: top-left → bottom-right
       const t = (x + y) / (2 * (size - 1));
       let r = Math.round(PURPLE[0] + (CYAN[0] - PURPLE[0]) * t);
       let g = Math.round(PURPLE[1] + (CYAN[1] - PURPLE[1]) * t);
       let b = Math.round(PURPLE[2] + (CYAN[2] - PURPLE[2]) * t);
 
-      // Белая монограмма "T"
+      // White monogram "T"
       const px = x + 0.5, py = y + 0.5;
       const inBar    = px >= cxC - tWidth   / 2 && px < cxC + tWidth   / 2 &&
                        py >= tBarTop          && py < tBarBottom;

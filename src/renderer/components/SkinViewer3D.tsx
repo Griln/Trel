@@ -2,29 +2,29 @@ import React, { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 
 interface Props {
-  /** PNG data-URL скина. */
+  /** PNG data-URL of the skin. */
   skin: string;
-  /** classic = 4-пиксельные руки (Steve), slim = 3-пиксельные (Alex). */
+  /** classic = 4-pixel arms (Steve), slim = 3-pixel arms (Alex). */
   model?: 'classic' | 'slim';
-  /** Высота превью в css-пикселях. */
+  /** Preview height in css pixels. */
   height?: number;
-  /** Ширина превью в css-пикселях. По умолчанию равна height * 0.75. */
+  /** Preview width in css pixels. Defaults to height * 0.75. */
   width?: number;
-  /** Включить лёгкое автокручение, когда пользователь не тащит мышью. */
+  /** Enable a gentle auto-rotation when the user is not dragging the mouse. */
   autoRotate?: boolean;
   className?: string;
 }
 
 // ============================================================================
-// Уголок миникрафтовой геометрии.
-// Каждая часть тела — BoxGeometry с UV, нарезанными из 64×64 (или 64×32) PNG.
-// Стандартный layout кубика в текстуре:
+// Corner of the mini-craft geometry.
+// Every body part — a BoxGeometry with UVs cut out of a 64×64 (or 64×32) PNG.
+// Standard cube layout in the texture:
 //
 //     [Top  ][Bot   ]
 //   [R][Front][L][Bk]
 //
-// где W = ширина блока в пикселях, H = высота, D = глубина.
-// (u,v) — координата левого верхнего угла «развёртки» в PNG (top-left origin).
+// where W = block width in pixels, H = height, D = depth.
+// (u,v) — the coordinate of the top-left corner of the “unfold” in the PNG (top-left origin).
 // ============================================================================
 
 function setBoxUVs(
@@ -53,8 +53,8 @@ function setBoxUVs(
     const uR = x1 / texW;
     const vT = 1 - y0 / texH;
     const vB = 1 - y1 / texH;
-    // BoxGeometry face — 4 вершины (top-left, top-right, bottom-left, bottom-right).
-    // По умолчанию: (uL,vT) (uR,vT) (uL,vB) (uR,vB).
+    // BoxGeometry face — 4 vertices (top-left, top-right, bottom-left, bottom-right).
+    // By default: (uL,vT) (uR,vT) (uL,vB) (uR,vB).
     const off = faceIndex * 4;
     if (!mirror) {
       uv.setXY(off + 0, uL, vT);
@@ -69,21 +69,21 @@ function setBoxUVs(
     }
   };
 
-  // Box face order в three.js: +X, -X, +Y, -Y, +Z, -Z
-  //   +X = Left side (с точки зрения зрителя кубика)
+  // Box face order in three.js: +X, -X, +Y, -Y, +Z, -Z
+  //   +X = Left side (from the point of view of the cube viewer)
   //   -X = Right side
   //   +Y = Top
   //   -Y = Bottom
   //   +Z = Front
   //   -Z = Back
   //
-  // В layout PNG:
+  // In the PNG layout:
   //   Right side:  (u,         v+d), size d×h
   //   Front:       (u+d,       v+d), size w×h
   //   Left side:   (u+d+w,     v+d), size d×h
   //   Back:        (u+2d+w,    v+d), size w×h
   //   Top:         (u+d,       v),   size w×d
-  //   Bottom:      (u+d+w,     v),   size w×d  (зеркалится по горизонтали в MC)
+  //   Bottom:      (u+d+w,     v),   size w×d  (mirrored horizontally in MC)
 
   setFace(0, u + d + w, v + d, d, h);                 // +X = Left side of body part
   setFace(1, u, v + d, d, h);                         // -X = Right side
@@ -98,13 +98,13 @@ function setBoxUVs(
 interface PartDef {
   w: number; h: number; d: number;
   u: number; v: number;
-  /** Координаты второго слоя в PNG. null = у части нет 2-го слоя. */
+  /** Coordinates of the second layer in the PNG. null = the part has no second layer. */
   ovU: number | null; ovV: number | null;
-  /** Позиция центра в мировых координатах (1 unit = 1 пиксель скина). */
+  /** Center position in world coordinates (1 unit = 1 skin pixel). */
   pos: [number, number, number];
 }
 
-/** Раскладка для современного 64×64 скина, classic-руки (4 px). */
+/** Layout for a modern 64×64 skin, classic arms (4 px). */
 function partsClassic(): Record<string, PartDef> {
   return {
     head:  { w: 8, h: 8,  d: 8, u: 0,  v: 0,  ovU: 32, ovV: 0,  pos: [0,  10, 0] },
@@ -116,7 +116,7 @@ function partsClassic(): Record<string, PartDef> {
   };
 }
 
-/** Раскладка для slim (3-px руки). */
+/** Layout for slim (3-px arms). */
 function partsSlim(): Record<string, PartDef> {
   const p = partsClassic();
   p.armR = { w: 3, h: 12, d: 4, u: 40, v: 16, ovU: 40, ovV: 32, pos: [-5.5, 0, 0] };
@@ -124,7 +124,7 @@ function partsSlim(): Record<string, PartDef> {
   return p;
 }
 
-/** Для legacy 64×32 у левой руки/ноги нет своих текстур — зеркалим правую. */
+/** For legacy 64×32 the left arm/leg have no textures of their own — we mirror the right one. */
 function isLegacy(img: HTMLImageElement): boolean {
   return img.height < 64;
 }
@@ -138,7 +138,7 @@ export const SkinViewer3D: React.FC<Props> = ({
     setSkin?: (s: string, m: 'classic' | 'slim') => void;
   }>({});
 
-  // Инициализация сцены — один раз на life-time компонента.
+  // Scene initialization — once per component life-time.
   useEffect(() => {
     const mount = mountRef.current;
     if (!mount) return;
@@ -160,8 +160,8 @@ export const SkinViewer3D: React.FC<Props> = ({
     renderer.setClearColor(0x000000, 0);
     mount.appendChild(renderer.domElement);
 
-    // Свет: лёгкое окружение + один направленный сверху-спереди, чтобы лицо
-    // и грудь были чуть ярче, а зад/низ — приглушённее. Без жёстких теней.
+    // Light: a soft ambient plus one directional light from the top-front, so that the face
+    // and the chest are slightly brighter, while the back/bottom are muted. No harsh shadows.
     scene.add(new THREE.AmbientLight(0xffffff, 0.85));
     const key = new THREE.DirectionalLight(0xffffff, 0.45);
     key.position.set(2, 6, 5);
@@ -170,8 +170,8 @@ export const SkinViewer3D: React.FC<Props> = ({
     const playerGroup = new THREE.Group();
     scene.add(playerGroup);
 
-    // Текстура — создаётся через CanvasTexture, чтобы можно было пере-рисовать
-    // при смене скина без пересоздания материала.
+    // Texture — created via CanvasTexture, so that it can be re-drawn
+    // when the skin changes without recreating the material.
     const texCanvas = document.createElement('canvas');
     texCanvas.width = 64;
     texCanvas.height = 64;
@@ -190,12 +190,12 @@ export const SkinViewer3D: React.FC<Props> = ({
       side: THREE.DoubleSide,
     });
 
-    // Хранилище созданных мешей — чтобы можно было пересчитать UV при смене модели.
+    // Storage of the created meshes — so that the UVs can be recomputed when the model changes.
     type PartMesh = { base: THREE.Mesh; overlay?: THREE.Mesh; def: PartDef };
     const meshes: Record<string, PartMesh> = {};
 
     const buildParts = (layout: Record<string, PartDef>) => {
-      // Снести старые
+      // Dispose of the old ones
       for (const k of Object.keys(meshes)) {
         const m = meshes[k];
         playerGroup.remove(m.base);
@@ -227,21 +227,21 @@ export const SkinViewer3D: React.FC<Props> = ({
 
         meshes[name] = { base, overlay, def };
       }
-      // Сместить всю группу так, чтобы пояс был на y=0 → лицо ближе к центру кадра.
+      // Shift the whole group so that the waist sits at y=0 → the face is closer to the center of the frame.
       playerGroup.position.y = 2;
     };
 
     let currentModel: 'classic' | 'slim' = 'classic';
     buildParts(partsClassic());
 
-    // Render-on-demand: гонять 60fps вхолостую, когда модель статична,
-    // — лишний CPU/GPU и нагрев батареи. Кадр рисуется только когда
-    // действительно что-то поменялось.
+    // Render-on-demand: running 60fps for nothing while the model is static
+    // — wasted CPU/GPU and battery heating. A frame is drawn only when
+    // something actually changed.
     let needsRender = true;
     const requestRender = () => { needsRender = true; };
 
     // ------------------------------------------------------------------------
-    // Загрузка / обновление скина
+    // Loading / updating the skin
     // ------------------------------------------------------------------------
     const applySkin = (src: string, mdl: 'classic' | 'slim') => {
       if (mdl !== currentModel) {
@@ -277,7 +277,7 @@ export const SkinViewer3D: React.FC<Props> = ({
     applySkin(skin, model);
 
     // ------------------------------------------------------------------------
-    // Управление: drag — вращение, wheel — зум, auto-rotate когда не тащим.
+    // Controls: drag — rotation, wheel — zoom, auto-rotate when not dragging.
     // ------------------------------------------------------------------------
     let rotY = Math.PI * 0.0;
     let rotX = 0.1;
@@ -285,7 +285,7 @@ export const SkinViewer3D: React.FC<Props> = ({
     let lastX = 0;
     let lastY = 0;
     let lastInteract = performance.now();
-    // (needsRender / requestRender уже объявлены выше — до applySkin)
+    // (needsRender / requestRender are declared above — before applySkin)
 
     const onDown = (e: PointerEvent) => {
       dragging = true;
@@ -302,7 +302,7 @@ export const SkinViewer3D: React.FC<Props> = ({
       lastY = e.clientY;
       rotY += dx * 0.01;
       rotX += dy * 0.01;
-      // ограничить вертикаль, чтобы не уходить «через макушку»
+      // limit the vertical angle, so that we do not go “over the top”
       rotX = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, rotX));
       lastInteract = performance.now();
       needsRender = true;
@@ -350,8 +350,8 @@ export const SkinViewer3D: React.FC<Props> = ({
     };
     tick();
 
-    // Когда вкладка скрыта — полностью останавливаем рендер.
-    // Chromium и так душит rAF в скрытом окне, но явная пауза экономит ещё.
+    // When the tab is hidden — we stop rendering completely.
+    // Chromium throttles rAF in a hidden window anyway, but an explicit pause saves even more.
     const onVis = () => {
       paused = document.hidden;
       if (!paused) needsRender = true;
@@ -383,7 +383,7 @@ export const SkinViewer3D: React.FC<Props> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [height, width]);
 
-  // При смене скина или модели — переприменить, не пересоздавая сцену.
+  // When the skin or the model changes — re-apply it without recreating the scene.
   useEffect(() => {
     stateRef.current.setSkin?.(skin, model);
   }, [skin, model]);

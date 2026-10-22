@@ -8,25 +8,25 @@ import {
 import { useT } from "../i18n";
 
 /**
- * Onboarding v5 — интерактивное обучение по живому интерфейсу Trel Launcher.
+ * Onboarding v5 — an interactive tour over the live Trel Launcher UI.
  *
- * Особенности и исправления v5:
- * - Аппаратный SVG-спотлайт с маской: идеальные скруглённые углы (rx/ry),
- *   отсутствие пиксельных градиентов, швов и ступеней на любых мониторах.
- * - Полная синхронизация анимации: вырез в маске и светящаяся рамка (.onb-ring)
- *   плавно скользят между элементами по единой кривой cubic-bezier(0.16, 1, 0.3, 1).
- * - Никаких чёрных вспышек при смене шагов: предыдущая подсветка плавно перетекает
- *   в новую цель без сброса в темноту.
- * - Умное позиционирование карточки (.onb-tip): исключает перекрытие цели,
- *   не загораживает боковую панель, адаптируется под свободное пространство
- *   и плавно скользит на новое место.
- * - 100% надёжные цели на ВСЕХ 18 шагах: учитывают как пустое состояние на новом
- *   профиле (отсутствие версий/миров/скриншотов/серверов), так и наполненное.
- * - Чёткое разграничение кликов: на информационных шагах случайные клики по
- *   приложению блокируются защитным экраном; на шагах с заданием интерактивна
- *   только целевая зона.
- * - Мгновенная реакция на ресайз, прокрутку и появление DOM-элементов через
- *   ResizeObserver, MutationObserver и синхронизированные RAF-кадры.
+ * v5 features and fixes:
+ * - Hardware SVG spotlight with a mask: perfectly rounded corners (rx/ry),
+ *   no pixelated gradients, seams or stair-steps on any monitor.
+ * - Fully synchronized animation: the mask cutout and the glowing ring (.onb-ring)
+ *   glide smoothly between elements along a single cubic-bezier(0.16, 1, 0.3, 1) curve.
+ * - No black flashes when switching steps: the previous highlight smoothly flows
+ *   into the new target without a reset to darkness.
+ * - Smart positioning of the tooltip card (.onb-tip): it never overlaps the target,
+ *   does not cover the side panel, adapts to the free space
+ *   and slides smoothly to the new spot.
+ * - 100% reliable targets on ALL 18 steps: they account for both the empty state
+ *   of a fresh profile (no versions/worlds/screenshots/servers) and a filled one.
+ * - Strict click separation: on informational steps accidental clicks on the
+ *   app are blocked by a protective overlay; on steps with a task only
+ *   the target zone is interactive.
+ * - Instant reaction to resize, scroll and the appearance of DOM elements via
+ *   ResizeObserver, MutationObserver and synchronized RAF frames.
  */
 
 export const ONBOARDING_SEEN_KEY = "trel:onboarding-seen:v5";
@@ -40,7 +40,7 @@ type Step = {
   page: Page;
   Icon: React.FC<any>;
   rgb: string;
-  /** Селекторы цели по приоритету — берётся первый, у которого есть видимые элементы. */
+  /** Target selectors by priority — the first one with visible elements wins. */
   targets: string[];
   nav: { ru: string; en: string };
   title: { ru: string; en: string };
@@ -48,7 +48,7 @@ type Step = {
   bullets: { ru: string[]; en: string[] };
   task?: Task;
   taskLabel?: { ru: string; en: string };
-  /** Если шаг требует конкретную вкладку настроек — тур сам её включит. */
+  /** If a step requires a specific settings tab — the tour switches it on itself. */
   settingsTab?: "general" | "game" | "storage" | "danger";
 };
 
@@ -574,7 +574,7 @@ export const Onboarding: React.FC<Props> = ({ open, onClose, onNavigate }) => {
     onClose();
   };
 
-  // Каждое открытие начинает обучение заново: приветствие, первый шаг.
+  // Every open starts the tour from scratch: the welcome screen, the first step.
   useEffect(() => {
     if (open) {
       setStage("intro");
@@ -585,14 +585,14 @@ export const Onboarding: React.FC<Props> = ({ open, onClose, onNavigate }) => {
     }
   }, [open]);
 
-  // Сброс флагов задания при смене шага.
-  // Предыдущий rect сохраняем, чтобы переход был плавным скольжением без вспышки тьмы.
+  // Reset the task flags when the step changes.
+  // We keep the previous rect, so that the transition is a smooth slide without a flash of darkness.
   useEffect(() => {
     setTaskDone(false);
     setTaskExpired(false);
   }, [index]);
 
-  // Навигация на нужную страницу и синхронное измерение геометрии цели
+  // Navigate to the required page and measure the target geometry synchronously
   useEffect(() => {
     if (!open || stage !== "tour") return;
     onNavigate(step.page);
@@ -619,8 +619,8 @@ export const Onboarding: React.FC<Props> = ({ open, onClose, onNavigate }) => {
       const vw = window.innerWidth;
       const vh = window.innerHeight;
 
-      // Умные отступы: элементы, прилегающие к границам окна (например, сайдбар),
-      // не должны вылезать в отрицательные координаты или обрезаться за экраном.
+      // Smart insets: elements adjacent to the window edges (the sidebar, for example)
+      // must not end up in negative coordinates or get cut off by the screen.
       const atLeft = b.left <= 4;
       const atTop = b.top <= 4;
       const atRight = b.right >= vw - 4;
@@ -719,7 +719,7 @@ export const Onboarding: React.FC<Props> = ({ open, onClose, onNavigate }) => {
     };
   }, [open, stage, index]);
 
-  // Слушаем настоящие события документа: клик по цели или ввод текста
+  // We listen to real document events: a click on the target or text input
   useEffect(() => {
     if (!open || stage !== "tour" || !step.task || taskDone) return;
     const task = step.task;
@@ -735,15 +735,15 @@ export const Onboarding: React.FC<Props> = ({ open, onClose, onNavigate }) => {
     return () => document.removeEventListener(evt, onEvt, true);
   }, [open, stage, index, taskDone]);
 
-  // Страховка от тупика: через 8 секунд невыполненного задания
-  // появляется кнопка пропуска задания
+  // Deadlock safety net: after 8 seconds of an unfinished task
+  // a skip button appears
   useEffect(() => {
     if (!open || stage !== "tour" || !step.task || taskDone) return;
     const id = window.setTimeout(() => setTaskExpired(true), 8000);
     return () => window.clearTimeout(id);
   }, [open, stage, index, taskDone]);
 
-  // Выполненное задание: короткая победная пауза (900 мс) и автопереход дальше
+  // Completed task: a short victory pause (900 ms) and an automatic move forward
   useEffect(() => {
     if (!open || stage !== "tour" || !taskDone) return;
     const id = window.setTimeout(() => {
@@ -753,14 +753,14 @@ export const Onboarding: React.FC<Props> = ({ open, onClose, onNavigate }) => {
     return () => window.clearTimeout(id);
   }, [open, stage, taskDone, isLast]);
 
-  // Фактическое измерение высоты карточки для безупречного позиционирования
+  // Measure the actual card height for a flawless positioning
   useLayoutEffect(() => {
     if (stage !== "tour") return;
     const h = tipRef.current?.offsetHeight;
     if (h && Math.abs(h - tipH) > 2) setTipH(h);
   });
 
-  // Фокус в карточке — клавиши влево/вправо/Esc работают сразу
+  // Focus inside the card — the left/right/Esc keys work right away
   useEffect(() => {
     if (open && stage === "tour") tipRef.current?.focus();
   }, [open, stage, index]);
@@ -786,7 +786,7 @@ export const Onboarding: React.FC<Props> = ({ open, onClose, onNavigate }) => {
 
   if (!open) return null;
 
-  // ---------- Сцена: приветствие ----------
+  // ---------- Scene: welcome ----------
   if (stage === "intro") {
     return (
       <div className="onb-stage">
@@ -823,7 +823,7 @@ export const Onboarding: React.FC<Props> = ({ open, onClose, onNavigate }) => {
     );
   }
 
-  // ---------- Сцена: финал ----------
+  // ---------- Scene: finale ----------
   if (stage === "done") {
     return (
       <div className="onb-stage">
@@ -862,7 +862,7 @@ export const Onboarding: React.FC<Props> = ({ open, onClose, onNavigate }) => {
     );
   }
 
-  // ---------- Расчёт умного позиционирования карточки подсказки ----------
+  // ---------- Computing the smart position of the tooltip card ----------
   const vw = typeof window !== "undefined" ? window.innerWidth : 1280;
   const vh = typeof window !== "undefined" ? window.innerHeight : 800;
   let tipStyle: React.CSSProperties = {};
@@ -894,7 +894,7 @@ export const Onboarding: React.FC<Props> = ({ open, onClose, onNavigate }) => {
     type Candidate = { left: number; top: number; placement: "right" | "left" | "below" | "above"; score: number };
     const candidates: Candidate[] = [];
 
-    // 1. Справа от цели
+    // 1. To the right of the target
     const rightX = rect.x + rect.w + TIP_GAP;
     if (rightX + TIP_W <= vw - MARGIN) {
       const centerY = Math.max(MARGIN, Math.min(vh - tipH - MARGIN, rect.y + (rect.h - tipH) / 2));
@@ -905,7 +905,7 @@ export const Onboarding: React.FC<Props> = ({ open, onClose, onNavigate }) => {
       }
     }
 
-    // 2. Снизу от цели
+    // 2. Below the target
     const belowY = rect.y + rect.h + TIP_GAP;
     if (belowY + tipH <= vh - MARGIN) {
       const alignX = Math.max(MARGIN, Math.min(vw - TIP_W - MARGIN, rect.x));
@@ -916,7 +916,7 @@ export const Onboarding: React.FC<Props> = ({ open, onClose, onNavigate }) => {
       }
     }
 
-    // 3. Сверху от цели
+    // 3. Above the target
     const aboveY = rect.y - tipH - TIP_GAP;
     if (aboveY >= MARGIN) {
       const alignX = Math.max(MARGIN, Math.min(vw - TIP_W - MARGIN, rect.x));
@@ -927,27 +927,27 @@ export const Onboarding: React.FC<Props> = ({ open, onClose, onNavigate }) => {
       }
     }
 
-    // 4. Слева от цели
+    // 4. To the left of the target
     const leftX = rect.x - TIP_W - TIP_GAP;
     if (leftX >= MARGIN) {
       const centerY = Math.max(MARGIN, Math.min(vh - tipH - MARGIN, rect.y + (rect.h - tipH) / 2));
       candidates.push({ left: leftX, top: centerY, placement: "left", score: 75 });
     }
 
-    // Бонусы за естественный контекст размещения
+    // Bonuses for a natural placement context
     for (const c of candidates) {
       if (overlaps(c)) c.score -= 5000;
       if (overlapsSidebar(c)) c.score -= 200;
 
-      // Если цель в левой части экрана или в сайдбаре — отдаём предпочтение правой стороне
+      // If the target is on the left of the screen or in the sidebar — we prefer the right side
       if (rect.x <= 230 && c.placement === "right") {
         c.score += 600;
       }
-      // Если цель в верхней панели/поиске — предпочтительно размещение снизу
+      // If the target is in the top bar/search — placing it below is preferable
       if (rect.y <= 160 && c.placement === "below") {
         c.score += 350;
       }
-      // Если цель в самом низу — предпочтительно сверху
+      // If the target is at the very bottom — we prefer the top
       if (rect.y >= vh - 220 && c.placement === "above") {
         c.score += 350;
       }
@@ -962,16 +962,16 @@ export const Onboarding: React.FC<Props> = ({ open, onClose, onNavigate }) => {
     tipStyle = { left: chosen.left, top: chosen.top };
   }
 
-  // Защитные экраны: если это шаг с заданием, клики вне цели блокируются,
-  // а по самой цели — проходят. На чисто информационных шагах клики по приложению
-  // блокируются, чтобы исключить случайные срабатывания действий в окне.
+  // Protective overlays: if this is a step with a task, clicks outside the target are blocked,
+  // while clicks on the target itself go through. On purely informational steps clicks on the app
+  // are blocked, so that no action in the window is triggered by accident.
   const isInteractiveTask = !!step.task && !taskDone;
 
   const activeFrames = frames.length ? frames : (rect ? [rect] : []);
 
   return (
     <>
-      {/* 1. Аппаратный SVG-спотлайт с маской */}
+      {/* 1. Hardware SVG spotlight with a mask */}
       <svg className="onb-overlay" aria-hidden="true">
         <defs>
           <mask id="onb-spot-mask">
@@ -1001,7 +1001,7 @@ export const Onboarding: React.FC<Props> = ({ open, onClose, onNavigate }) => {
         />
       </svg>
 
-      {/* 2. Защитные экраны для прозрачного перехвата кликов */}
+      {/* 2. Protective overlays for transparent click interception */}
       {rect && isInteractiveTask ? (
         <>
           <div className="onb-shield" style={{ left: 0, top: 0, right: 0, height: Math.max(0, rect.y) }} />
@@ -1013,7 +1013,7 @@ export const Onboarding: React.FC<Props> = ({ open, onClose, onNavigate }) => {
         <div className="onb-shield" style={{ inset: 0 }} />
       )}
 
-      {/* 3. Светящиеся рамки на активных целях */}
+      {/* 3. Glowing rings on the active targets */}
       {activeFrames.map((fr, i) => (
         <div
           key={i}
@@ -1029,7 +1029,7 @@ export const Onboarding: React.FC<Props> = ({ open, onClose, onNavigate }) => {
         />
       ))}
 
-      {/* 4. Пульсирующий маячок для активного задания */}
+      {/* 4. Pulsing beacon for the active task */}
       {rect && isInteractiveTask && (
         <span
           className="onb-beacon"
@@ -1042,7 +1042,7 @@ export const Onboarding: React.FC<Props> = ({ open, onClose, onNavigate }) => {
         />
       )}
 
-      {/* 5. Интерактивная карточка с описанием шага */}
+      {/* 5. Interactive card with the step description */}
       <div
         ref={tipRef}
         className={"onb-tip" + (!rect ? " center" : "")}

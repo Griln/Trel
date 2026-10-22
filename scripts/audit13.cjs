@@ -1,4 +1,4 @@
-/* Проверка раунда 6: поиск 1.0, авто-перевыбор, «нет версий», панель */
+/* Round 6 check: 1.0 search, auto re-selection, "no versions", panel */
 const { chromium } = require('playwright-core');
 
 (async () => {
@@ -12,7 +12,7 @@ const { chromium } = require('playwright-core');
 
   await sleep(5000);
 
-  // --- каталог: поиск 1.0 и авто-перевыбор ---
+  // --- browse: 1.0 search and auto re-selection ---
   await page.evaluate(() => {
     const els = Array.from(document.querySelectorAll('.nav-item, .nav-hero'));
     const b = els.find((el) => /Каталог|Browse/i.test(el.textContent));
@@ -32,12 +32,12 @@ const { chromium } = require('playwright-core');
   console.log(`SEARCH «1.21.11»: rows=${n121} about=${about2}`);
   await input.fill(''); await sleep(400);
 
-  // --- панель: группы ---
+  // --- panel: groups ---
   const groups = await page.$$eval('.nav-group-label', (els) => els.map((e) => e.textContent));
   console.log('SIDEBAR GROUPS:', groups.join(' | '));
   await page.screenshot({ path: '/tmp/round6-sidebar.png' });
 
-  // --- контент: «нет версий» ---
+  // --- content: "no versions" ---
   await page.evaluate(() => {
     const els = Array.from(document.querySelectorAll('.nav-item, .nav-hero'));
     const b = els.find((el) => /Контент|Content/i.test(el.textContent));
@@ -47,7 +47,7 @@ const { chromium } = require('playwright-core');
   const vpickName = await page.evaluate(() => document.querySelector('#vpickName')?.textContent ?? '(нет)');
   console.log('CONTENT VPICK:', vpickName);
 
-  // --- диагностика ---
+  // --- diagnostics ---
   await page.evaluate(() => {
     const els = Array.from(document.querySelectorAll('.nav-item, .nav-hero'));
     const b = els.find((el) => /Диагностика|Diagnostics/i.test(el.textContent));

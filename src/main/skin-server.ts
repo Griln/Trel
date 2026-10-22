@@ -4,20 +4,20 @@ import { AddressInfo } from 'node:net';
 import { MinecraftAccount } from '../shared/types';
 
 /**
- * Полноценный локальный yggdrasil-совместимый auth-сервер.
+ * A full-fledged local yggdrasil-compatible auth server.
  *
- * Используется вместе с authlib-injector чтобы Minecraft работал в
- * online-mode=true без внешних сервисов и без Microsoft-аккаунтов.
+ * It is used together with authlib-injector so that Minecraft works in
+ * online-mode=true without external services and without Microsoft accounts.
  *
- * Покрывает:
- *   - authserver.mojang.com    — аутентификация, рефреш, валидация
- *   - sessionserver.mojang.com — join/hasJoined, профили, текстуры
- *   - api.mojang.com           — lookup ника ↔ UUID
+ * It covers:
+ *   - authserver.mojang.com    — authentication, refresh, validation
+ *   - sessionserver.mojang.com — join/hasJoined, profiles, textures
+ *   - api.mojang.com           — nickname ↔ UUID lookup
  *   - api.minecraftservices.com — publickeys, attributes, blocklist...
  *
- * Все аккаунты из локального accounts.json автоматически принимаются
- * без пароля — пользователь просто вводит ник, и лаунчер сам выпускает
- * accessToken и поднимает auth-сервер.
+ * All accounts from the local accounts.json are accepted automatically
+ * without a password — the user just types a nickname, and the launcher
+ * issues the accessToken and brings up the auth server itself.
  */
 export class SkinServer {
   private server: http.Server | null = null;
@@ -32,9 +32,9 @@ export class SkinServer {
   private publicKeyPem = '';
   private requestCounts = new Map<string, { count: number; resetAt: number }>();
   private readonly MAX_REQUESTS_PER_SEC = 50;
-  /** accessToken → account uuid (для /authserver/validate и /refresh) */
+  /** accessToken → account uuid (for /authserver/validate and /refresh) */
   private tokenToUuid = new Map<string, string>();
-  /** serverId → { username, uuid } (для связки join ↔ hasJoined) */
+  /** serverId → { username, uuid } (to link join ↔ hasJoined) */
   private sessions = new Map<string, { username: string; uuid: string; at: number }>();
 
   setAccounts(list: MinecraftAccount[]) {
@@ -153,7 +153,7 @@ export class SkinServer {
     if (this.requestCounts.size > 100) {
       for (const [k, v] of this.requestCounts) { if (now > v.resetAt) this.requestCounts.delete(k); }
     }
-    // Чистим старые сессии (старше 5 минут)
+    // Clean up old sessions (older than 5 minutes)
     for (const [sid, s] of this.sessions) { if (now - s.at > 300_000) this.sessions.delete(sid); }
 
     const CORS = { 'Access-Control-Allow-Origin': 'http://127.0.0.1', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type' };
@@ -207,7 +207,7 @@ export class SkinServer {
     }
 
     // ─── authserver.mojang.com ───────────────────────────────────────────
-    // /authserver/authenticate — вход. Принимаем любой локальный аккаунт без пароля.
+    // /authserver/authenticate — login. We accept any local account without a password.
     if (p === '/authserver/authenticate' && req.method === 'POST') {
       readBody().then((body) => {
         try {
@@ -236,7 +236,7 @@ export class SkinServer {
       return;
     }
 
-    // /authserver/refresh — обновление токена
+    // /authserver/refresh — token refresh
     if (p === '/authserver/refresh' && req.method === 'POST') {
       readBody().then((body) => {
         try {
@@ -268,7 +268,7 @@ export class SkinServer {
       return;
     }
 
-    // /authserver/validate — проверка токена
+    // /authserver/validate — token validation
     if (p === '/authserver/validate' && req.method === 'POST') {
       readBody().then((body) => {
         try {
@@ -283,15 +283,15 @@ export class SkinServer {
       return;
     }
 
-    // /authserver/signout — выход: гасим привязку токен→uuid, чтобы украденный
-    // позже токен не воскрешал сессию. Без тела — просто принимаем.
+    // /authserver/signout — logout: we drop the token→uuid binding so that a
+    // stolen token cannot resurrect the session later. No body — just accept it.
     if (p === '/authserver/signout' && req.method === 'POST') {
       readBody().then((body) => {
         try {
           const data = JSON.parse(body);
           const token = data.accessToken?.toString() || data.selectedProfile?.toString() || '';
           if (token) this.tokenToUuid.delete(token);
-        } catch { /* без тела нечего гасить */ }
+        } catch { /* no body, nothing to drop */ }
         empty();
       }).catch(() => empty());
       return;
@@ -306,7 +306,7 @@ export class SkinServer {
       return sendJson(200, this.profileResponse(acc));
     }
 
-    // /session/minecraft/join — клиент сообщает что заходит на сервер.
+    // /session/minecraft/join — the client announces that it joins a server.
     if (/^(?:\/sessionserver)?\/session\/minecraft\/join$/.test(p) && req.method === 'POST') {
       readBody().then((body) => {
         try {
@@ -316,7 +316,7 @@ export class SkinServer {
           if (serverId && user) {
             const acc = this.byUuidUndashed.get(user);
             if (acc) {
-              // Хард-кап сессий: флуд serverId в 5-минутном окне иначе растит Map.
+              // Hard cap on sessions: flooding serverId within the 5-minute window would otherwise grow the Map.
               if (this.sessions.size >= 2000) {
                 const oldest = this.sessions.keys().next();
                 if (!oldest.done) this.sessions.delete(oldest.value);
@@ -330,11 +330,11 @@ export class SkinServer {
       return;
     }
 
-    // /session/minecraft/hasJoined — сервер проверяет игрока.
+    // /session/minecraft/hasJoined — the server checks the player.
     if (/^(?:\/sessionserver)?\/session\/minecraft\/hasJoined$/.test(p)) {
       const username = url.searchParams.get('username');
       const serverId = url.searchParams.get('serverId');
-      // Сначала ищем по сессии (join ↔ hasJoined связка)
+      // First look up by session (the join ↔ hasJoined link)
       if (serverId) {
         const sess = this.sessions.get(serverId);
         if (sess && (!username || sess.username.toLowerCase() === username.toLowerCase())) {
@@ -345,7 +345,7 @@ export class SkinServer {
           }
         }
       }
-      // Фолбек: поиск по имени (для совместимости)
+      // Fallback: lookup by name (for compatibility)
       if (username) {
         const acc = this.byName.get(username.toLowerCase());
         if (acc) return sendJson(200, this.profileResponse(acc));
@@ -455,7 +455,7 @@ export class SkinServer {
       });
     }
 
-    // ─── PNG-текстура ─────────────────────────────────────────────────────
+    // ─── PNG texture ─────────────────────────────────────────────────────
     m = /^\/textures\/([a-f0-9]{64})\.png$/i.exec(p);
     if (m) {
       const hash = m[1].toLowerCase();

@@ -1,93 +1,92 @@
-# Как помочь проекту Trel
+# Contributing to Trel
 
-Спасибо, что хочешь помочь. Trel — лаунчер Minecraft, и любой вклад полезен:
-баг-репорт, новый перевод, поддержка нового модлоадера, улучшение интерфейса.
+Thanks for wanting to help. Trel is a Minecraft launcher, and every contribution
+matters: a bug report, a new translation, support for a new mod loader, a UI improvement.
 
-## Быстрый старт
+## Quick start
 
 ```bash
 git clone https://github.com/Griln/Trel.git
 cd Trel
 npm ci
-npm run dev        # Vite и Electron в режиме разработки
+npm run dev        # Vite and Electron in development mode
 ```
 
-## Что нужно проверить перед отправкой
+## What to run before submitting
 
 ```bash
-npm test           # тесты (vitest)
-npx tsc --noEmit   # проверка типов
-npm run build      # сборка интерфейса и основного процесса
+npm test           # tests (vitest)
+npx tsc --noEmit   # type checking
+npm run build      # build the UI and the main process
 ```
 
-Если что-то не собралось — приложи вывод в тексте запроса на слияние, это
-сильно ускорит разбор.
+If something fails to build — paste the output into the pull request description, this
+speeds up the review a lot.
 
-## Структура
+## Structure
 
-| Путь | Что внутри |
-|------|-----------|
-| `src/main/` | Основной процесс Electron: файловая система, запуск игры, автообновление, TrelEmu |
-| `src/preload/` | Мост между процессами через `contextBridge` |
-| `src/renderer/` | Интерфейс на React: страницы, компоненты, стили, переводы |
-| `src/shared/` | Общие типы и константы для обоих процессов |
-| `resources/` | Статические ресурсы: скины, данные старых версий, инструменты для Android |
-| `scripts/` | Сборка: иконка, пакет rpm, пакет эмулятора, публикация |
-| `previews/` | HTML-макеты интерфейса (дизайн-концепты) |
+| Path | What's inside |
+|------|---------------|
+| `src/main/` | Electron main process: file system, game launch, auto-update, TrelEmu |
+| `src/preload/` | Bridge between processes via `contextBridge` |
+| `src/renderer/` | React UI: pages, components, styles, translations |
+| `src/shared/` | Shared types and constants for both processes |
+| `resources/` | Static assets: skins, legacy version data, Android tooling |
+| `scripts/` | Build: icon, rpm package, emulator package, publishing |
+| `previews/` | HTML mockups of the UI (design concepts) |
 
-## Правила оформления
+## Code style
 
-- Коммиты — на английском, в стиле Conventional Commits: `feat:`, `fix:`, `docs:`, `chore:`, `refactor:`
-- Один коммит — одно логичное изменение
-- Имена переменных, функций и файлов — на английском
-- Комментарии в коде — на русском, без вплетения английских слов в русские
-  фразы; названия файлов, полей и команд оставляй как есть
-- Пользовательский интерфейс — на русском и английском одновременно
-  (см. `src/renderer/i18n/`)
+- Commits — in English, in Conventional Commits style: `feat:`, `fix:`, `docs:`, `chore:`, `refactor:`
+- One commit — one logical change
+- Variable, function, and file names — in English
+- Code comments are written in English; keep file names, field names, and commands as they are
+- User interface — in Russian and English at the same time
+  (see `src/renderer/i18n/`)
 
-## Переводы интерфейса
+## Interface translations
 
-Добавил новую строку в интерфейсе? Добавь её в оба файла:
+Added a new string to the UI? Add it to both files:
 
 ```
 src/renderer/i18n/ru.ts
 src/renderer/i18n/en.ts
 ```
 
-Наборы ключей должны совпадать один в один — это проверяет тест
-`src/renderer/i18n.test.ts`. В английском файле не должно оставаться русских
-слов: если перевода нет, оставь ключ с пустым значением, а не русский текст.
+The key sets must match one to one — this is checked by the test
+`src/renderer/i18n.test.ts`. The English file must not contain Russian words: if there is
+no translation, leave the key with an empty value instead of Russian text.
 
-## Безопасность
+## Security
 
-Любая загрузка с внешнего сервера обязана идти по `https` и проверяться по хешу,
-если хеш известен. Не отключай проверку целостности и не добавляй `eval`-подобные
-конструкции. Подробнее — в [SECURITY.md](SECURITY.md).
+Any download from an external server must go over `https` and be verified against a hash,
+if the hash is known. Don't disable integrity checks and don't add `eval`-like
+constructs. See [SECURITY.md](SECURITY.md) for details.
 
-## Запрос на слияние
+## Pull request
 
-1. Создай ветку от `main`: `git checkout -b feat/my-thing`
-2. Внеси изменения и запушь
-3. Открой запрос на слияние, опиши **что** изменилось и **зачем**
-4. Дождись зелёной сборки в CI
+1. Create a branch off `main`: `git checkout -b feat/my-thing`
+2. Make your changes and push
+3. Open a pull request, describe **what** changed and **why**
+4. Wait for the green CI build
 
-Не тащи в запрос сгенерированные артефакты: `dist/`, `release/`, `node_modules/`,
-`build-trel-emu-cache/` — они перечислены в `.gitignore` и не должны попадать
-в репозиторий.
+Don't pull generated artifacts into the request: `dist/`, `release/`, `node_modules/`,
+`build-trel-emu-cache/` — they are listed in `.gitignore` and must not end up
+in the repository.
 
-## Релизы
+## Releases
 
-Релизы публикуются автоматически из CI при пуше тега:
+Releases are published automatically from CI when you push a tag:
 
 ```bash
-# номер версии в теге должен совпадать с полем version в package.json
+# the version number in the tag must match the version field in package.json
 git tag vX.Y.Z
 git push origin vX.Y.Z
 ```
 
-Сборка соберёт файлы под Windows и Linux и прикрепит их к релизу.
-Подробнее — в [RELEASING.md](RELEASING.md).
+The build will produce files for Windows and Linux and attach them to the release.
+See [RELEASING.md](RELEASING.md) for details.
 
-## Правила поведения
+## Code of conduct
 
-Участие в проекте подразумевает согласие с [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
+Taking part in the project implies agreement with the [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).

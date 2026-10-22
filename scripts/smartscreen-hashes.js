@@ -5,11 +5,11 @@ const path = require('path');
 /**
  * SmartScreen Reputation Helper
  * 
- * Microsoft Defender SmartScreen блокирует неподписанные .exe.
- * Чтобы ускорить накопление репутации, можно отправить файл
- * в Microsoft через форму: https://www.microsoft.com/en-us/wdsi/filesubmission
+ * Microsoft Defender SmartScreen blocks unsigned .exe files.
+ * To speed up reputation accumulation, you can submit the file
+ * to Microsoft through the form: https://www.microsoft.com/en-us/wdsi/filesubmission
  * 
- * Этот скрипт выводит SHA256 хеши релизных файлов — вставь их в форму.
+ * This script prints SHA256 hashes of the release files — paste them into the form.
  */
 
 const RELEASE_DIR = path.resolve(__dirname, '..', 'release');

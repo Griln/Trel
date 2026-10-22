@@ -1,7 +1,7 @@
 /**
- * Снапшоты сборок: точка восстановления папки versions/<id> перед тем,
- * как пользователь полезет в моды. Сломал — откатился в клик.
- * Формат: <launcherDir>/snapshots/<safeId>-<stamp>.zip + manifest.json внутри.
+ * Build snapshots: a restore point for the versions/<id> folder before the
+ * user starts messing with mods. Broke it — rolled back in one click.
+ * Format: <launcherDir>/snapshots/<safeId>-<stamp>.zip + manifest.json inside.
  */
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -22,7 +22,7 @@ export class SnapshotService {
     return d;
   }
 
-  /** Создаёт снапшот папки версии. Возвращает файл. */
+  /** Creates a snapshot of the version folder. Returns the file. */
   create(versionId: string, label?: string): SnapshotInfo {
     if (!isSafeVersionId(versionId)) throw new Error('Bad version id');
     const src = path.join(this.gameDir, 'versions', versionId);
@@ -58,7 +58,7 @@ export class SnapshotService {
     return { file: path.basename(file), versionId, label: label ?? '', at: Date.now(), size: st.size };
   }
 
-  /** Список снапшотов (новее — раньше), опционально фильтр по версии. */
+  /** Snapshot list (newest first), optionally filtered by version. */
   list(versionId?: string): SnapshotInfo[] {
     let names: string[] = [];
     try { names = fs.readdirSync(this.dir()); } catch { return []; }
@@ -69,8 +69,8 @@ export class SnapshotService {
       let st: fs.Stats | null = null;
       try { st = fs.statSync(full); } catch { continue; }
       if (!st.isFile()) continue;
-      // versionId — из манифеста (имя файла лишь подсказка: в id бывают
-      // дефисы, сплит по '--' ненадёжен).
+      // versionId comes from the manifest (the file name is only a hint: ids
+      // contain dashes, splitting on '--' is unreliable).
       let vid = n.split('--')[0];
       let label = '';
       let at = st.mtimeMs;
@@ -90,7 +90,7 @@ export class SnapshotService {
     return out.sort((a, b) => b.at - a.at);
   }
 
-  /** Откат: текущую папку версии — в .bak-<ts>, из снапшота — на место. */
+  /** Rollback: the current version folder goes to .bak-<ts>, the snapshot takes its place. */
   restore(file: string): string {
     if (file.includes('/') || file.includes('\\') || file.includes('..') || !file.endsWith('.zip')) {
       throw new Error('Bad snapshot file');
@@ -106,7 +106,7 @@ export class SnapshotService {
       if (man) versionId = (JSON.parse(zip.readAsText(man)) as { versionId?: string }).versionId ?? null;
     } catch { /* ignore */ }
     if (!versionId || !isSafeVersionId(versionId)) throw new Error('Snapshot has no valid version');
-    // Zip-slip по всем записям до распаковки.
+    // Zip-slip check on every entry before unpacking.
     for (const e of entries) {
       const name = e.entryName.replace(/\\/g, '/');
       const norm = path.posix.normalize(name);
@@ -117,7 +117,7 @@ export class SnapshotService {
       fs.renameSync(dest, dest + '.bak-' + Date.now());
     }
     fs.mkdirSync(dest, { recursive: true });
-    // Распаковываем вручную: записи лежат под префиксом <versionId>/.
+    // Unpack manually: entries live under the <versionId>/ prefix.
     for (const e of entries) {
       if (e.isDirectory || e.entryName === 'trel-snapshot.json') continue;
       const rel = e.entryName.replace(/\\/g, '/');
@@ -131,8 +131,8 @@ export class SnapshotService {
   }
 
   /**
-   * Экспорт сборки для друга: .trelpack (обычный zip) с раскладкой
-   * overrides/ + trel-pack.json. Импорт — через fromArchive-флоу.
+   * Export a build for a friend: .trelpack (a plain zip) with the
+   * overrides/ + trel-pack.json layout. Import goes through the fromArchive flow.
    */
   exportPack(versionId: string, destZip: string): { file: string; size: number } {
     if (!isSafeVersionId(versionId)) throw new Error('Bad version id');
@@ -188,8 +188,8 @@ export class SnapshotService {
   }
 
   /**
-   * Импорт .trelpack в версию targetId: overrides/* → versions/<targetId>/.
-   * Базовую игру (vanilla json/jar) друг докачивает сам — предупреждаем.
+   * Import a .trelpack into the targetId version: overrides/* → versions/<targetId>/.
+   * The base game (vanilla json/jar) is downloaded by the recipient — we warn them.
    */
   async importPack(archivePath: string, targetId: string): Promise<{ versionId: string; copied: number }> {
     if (!isSafeVersionId(targetId)) throw new Error('Bad target version id');
@@ -221,7 +221,7 @@ export class SnapshotService {
     }
   }
 
-  /** Удалить снапшот. */
+  /** Deletes a snapshot. */
   remove(file: string): boolean {
     if (file.includes('/') || file.includes('\\') || file.includes('..') || !file.endsWith('.zip')) {
       throw new Error('Bad snapshot file');

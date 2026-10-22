@@ -1,16 +1,16 @@
-## Что изменилось
+## What changed
 
-<!-- Одним-двумя предложениями: что именно поменялось. -->
+<!-- One or two sentences: what exactly changed. -->
 
-## Зачем
+## Why
 
-<!-- Какую проблему это решает. Ссылка на issue, если есть: Closes #123 -->
+<!-- The problem this solves. Link the issue if there is one: Closes #123 -->
 
-## Как проверить
+## How to verify
 
-<!-- Шаги, по которым ревьюер может убедиться, что всё работает. -->
+<!-- Steps a reviewer can follow to confirm it works. -->
 
-- [ ] `npm test` проходит
-- [ ] `npx tsc --noEmit` без новых ошибок
-- [ ] Приложение запускается и основные сценарии работают
-- [ ] Если менялся интерфейс — обновлены `ru.ts` и `en.ts`
+- [ ] `npm test` passes
+- [ ] `npx tsc --noEmit` reports no new errors
+- [ ] The app starts and the main flows still work
+- [ ] If the interface changed, `ru.ts` and `en.ts` are both updated

@@ -1,44 +1,44 @@
-# Политика безопасности
+# Security Policy
 
-## Поддерживаемые версии
+## Supported versions
 
-| Версия | Поддержка |
-|---------|-----------|
+| Version | Support |
+|---------|---------|
 | 0.5.x   | ✅       |
 | < 0.5   | ❌       |
 
-## Как сообщить об уязвимости
+## Reporting a vulnerability
 
-**Не создавай публичный issue для уязвимости.** Напиши напрямую:
+**Do not open a public issue for a vulnerability.** Contact us directly:
 
 - GitHub Security Advisories: https://github.com/Griln/Trel/security/advisories/new
-- или на страницу безопасности репозитория: https://github.com/Griln/Trel/security
+- or the repository security page: https://github.com/Griln/Trel/security
 
-Опиши:
+Please describe:
 
-1. Что уязвимо и в каком компоненте
-2. Шаги воспроизведения
-3. Версия Trel, ОС, Java
-4. Влияние (что получает атакующий)
+1. What is vulnerable and in which component
+2. Steps to reproduce
+3. Trel version, OS, Java
+4. Impact (what an attacker gains)
 
-## Что будет дальше
+## What happens next
 
-- Ответ в течение **7 дней**
-- Подтверждение, что уязвимость принята, и оценка сроков
-- Исправление и публичный релиз
-- Упоминание тебя в списке изменений, если хочешь (по желанию)
+- A reply within **7 days**
+- Confirmation that the vulnerability was accepted, with a time estimate
+- A fix and a public release
+- A credit mention in the changelog, if you want it (optional)
 
-## Что считается уязвимостью
+## What counts as a vulnerability
 
-- Выполнение произвольного кода без согласия пользователя
-- Загрузка файлов по не-HTTPS или без проверки хеша
-- Утечка учётных данных Microsoft-аккаунта
-- Права доступа к файлам за пределами игровой директории
-- Эскалация привилегий в Electron (например, `nodeIntegration` в процессе отрисовки)
+- Arbitrary code execution without user consent
+- Downloading files over non-HTTPS or without hash verification
+- Leakage of Microsoft account credentials
+- File access permissions outside the game directory
+- Privilege escalation in Electron (for example, `nodeIntegration` in the renderer process)
 
-## Что НЕ является уязвимостью
+## What is NOT a vulnerability
 
-- Отсутствие подписи Windows-инсталлятора (SmartScreen) — для проекта с открытым кодом это ожидаемо
-- Запуск Minecraft без лицензии
-- Установка модов из непроверенных источников
-- Уязвимости в QEMU, Android-x86 и scrcpy — сообщай о них авторам этих проектов
+- Missing signature on the Windows installer (SmartScreen) — expected for an open source project
+- Running Minecraft without a license
+- Installing mods from unverified sources
+- Vulnerabilities in QEMU, Android-x86 and scrcpy — report them to those projects' maintainers

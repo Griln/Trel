@@ -77,42 +77,42 @@ export interface DetectedSource {
   kind: SourceKind;
   installableVersions?: string[];
   mojangOnlyBedrock?: boolean;
-  /** Доп. папки, где лежат файлы аккаунтов (корень лаунчера и т.п.). */
+  /** Extra folders that hold the account files (the launcher root and such). */
   accountsRoots?: string[];
   /**
-   * Сборка распознана как модпак Modrinth/CurseForge и может быть
-   * переустановлена штатным механизмом Trel (с обновлениями), а не
-   * скопирована файлами. Заполняется из modrinth.index.json / manifest.json.
+   * The build was recognized as a Modrinth/CurseForge modpack and can be
+   * reinstalled through Trel's own mechanism (with updates) instead of being
+   * copied file by file. Filled in from modrinth.index.json / manifest.json.
    */
   modpack?: DetectedModpack;
-  /** Память и JVM-аргументы, заданные в исходном лаунчере (instance.cfg и др.). */
+  /** Memory and JVM arguments set in the source launcher (instance.cfg and friends). */
   launcherTweaks?: LauncherTweaks;
-  /** Это выгруженный .zip сборки, а не папка: сначала распаковать. */
+  /** This is an exported .zip of a build, not a folder: it has to be unpacked first. */
   isArchive?: boolean;
 }
 
-/** Что удалось вычитать из метаданных модпака рядом с инстансом. */
+/** What could be read from the modpack metadata next to the instance. */
 export interface DetectedModpack {
   /** 'modrinth' — modrinth.index.json, 'curseforge' — manifest.json, 'packwiz' — packwiz.toml, 'mmc' — mmc-pack.json. */
   origin: 'modrinth' | 'curseforge' | 'packwiz' | 'mmc';
   name: string;
-  /** Версия сборки, если указана (не версия игры). */
+  /** Version of the build, if given (not the game version). */
   version?: string;
   mc: string;
   loader: 'vanilla' | 'fabric' | 'quilt' | 'forge' | 'neoforge';
   loaderVersion?: string;
-  /** Количество файлов, которые лаунчер докачивал бы сам. */
+  /** Number of files the launcher would have downloaded itself. */
   fileCount: number;
 }
 
-/** Настройки исходного лаунчера, которые стоит перенести вручную. */
+/** Settings of the source launcher that are worth porting over manually. */
 export interface LauncherTweaks {
-  /** -Xmx в мегабайтах. */
+  /** -Xmx in megabytes. */
   maxMemoryMb?: number;
   minMemoryMb?: number;
   jvmArgs?: string;
   javaPath?: string;
-  /** Требуемая мажорная Java из версионного json (17, 21…). */
+  /** Required major Java version from the version json (17, 21…). */
   javaMajor?: number;
 }
 
@@ -122,20 +122,20 @@ export interface ImportPlan {
   categories: ImportCategory[];
   deduplicate?: boolean;
   /**
-   * Переносить файлы жёсткими ссылками вместо копирования. Мгновенно и без
-   * расхода места, но файл становится общим с исходным лаунчером: правка в
-   * одном месте видна в другом. Только для одного тома; иначе — копия.
+   * Move the files as hardlinks instead of copying them. Instant and with no
+   * extra space used, but the file becomes shared with the source launcher: an
+   * edit in one place shows up in the other. Only for a single volume; otherwise — copy.
    */
   useHardlinks?: boolean;
-  /** Не трогать аккаунты и токены (accounts, usercache): только игровой контент. */
+  /** Do not touch the accounts and tokens (accounts, usercache): game content only. */
   skipSecrets?: boolean;
-  /** Удалить файлы источника после успешной verified-копии (переезд, не копия). */
+  /** Delete the source files after a successful verified copy (move, not copy). */
   moveSource?: boolean;
-  /** Упаковать текущие миры Trel в .zip перед импортом чужих. */
+  /** Pack the current Trel worlds into a .zip before importing foreign ones. */
   archiveWorlds?: boolean;
   /**
-   * Временная распаковка (только trel-pack-* в tmp): удалить после импорта.
-   * Ставит fromArchive-флоу, руками не задавать.
+   * Temporary unpack directory (only trel-pack-* in tmp): delete after the import.
+   * Set by the fromArchive flow, do not fill it in by hand.
    */
   cleanupDir?: string;
 }
@@ -147,76 +147,76 @@ export interface ImportReport {
   installedVersions: string[];
   errors: string[];
   warnings: string[];
-  /** Длительность по категориям в мс — видно, где узкое место. */
+  /** Duration per category in ms — shows where the bottleneck is. */
   durationsMs?: Partial<Record<ImportCategory, number>>;
-  /** Всего записано байт и общая длительность (для «МБ/с» в UI). */
+  /** Total bytes written and the overall duration (for the "MB/s" readout in the UI). */
   bytesWritten?: number;
   totalMs?: number;
-  /** Импорт был прерван пользователем: скопированное осталось на месте. */
+  /** The import was aborted by the user: what was copied stays in place. */
   aborted?: boolean;
-  /** Был на паузе (мс суммарно) — честная скорость считается без них. */
+  /** Was paused (ms in total) — the honest speed is measured without them. */
   pausedMs?: number;
-  /** Сколько раз ставили на паузу. */
+  /** How many times it was paused. */
   pauses?: number;
-  /** Сколько байт сэкономила дедупликация (уже было в Trel). */
+  /** How many bytes the deduplication saved (it was already in Trel). */
   savedBytes?: number;
-  /** Файлы, откаченные журналом (категория упала целиком). */
+  /** Files rolled back by the journal (the category failed as a whole). */
   rolledBackFiles?: number;
-  /** Источник удалён после переезда (moveSource). */
+  /** The source was removed after the move (moveSource). */
   movedSource?: boolean;
-  /** Путь к zip-архиву миров перед импортом. */
+  /** Path to the zip archive of the worlds taken before the import. */
   archivedWorlds?: string;
-  /** Подозрительные моды (карантин): "файл — причина". */
+  /** Suspicious mods (quarantine): "file — reason". */
   quarantine?: string[];
-  /** Один мод в нескольких версиях: "modid — файлы". */
+  /** One mod in several versions: "modid — files". */
   duplicateMods?: string[];
-  /** Authlib/ely endpoints, найденные у источника (сами не переносим). */
+  /** Authlib/ely endpoints found at the source (not migrated themselves). */
   authServers?: string[];
-  /** Секреты пропущены по skipSecrets. */
+  /** Secrets were skipped because of skipSecrets. */
   secretsSkipped?: boolean;
-  /** Путь к лог-файлу этого импорта. */
+  /** Path to the log file of this import. */
   logPath?: string;
 }
 
-/** Предпросмотр плана до запуска импорта. */
+/** Preview of the plan before the import starts. */
 export interface ImportPreview {
-  /** Файлов по категориям (для крупных папок — оценка сверху). */
+  /** Files per category (for big folders — an upper-bound estimate). */
   files: Partial<Record<ImportCategory, number>>;
-  /** Байт по категориям. */
+  /** Bytes per category. */
   bytes: Partial<Record<ImportCategory, number>>;
   totalFiles: number;
   totalBytes: number;
-  /** Свободно на томе игры (0, если прочитать не удалось). */
+  /** Free space on the game volume (0 if it could not be read). */
   freeBytes: number;
-  /** Статистика тома недоступна — проверка места не выполнялась. */
+  /** The volume statistics are unavailable — the space check was not performed. */
   freeSpaceUnknown: boolean;
-  /** Места не хватает — импорт лучше не начинать. */
+  /** There is not enough space — better not to start the import at all. */
   notEnoughSpace: boolean;
-  /** Версии, которые будут скопированы или скачаны. */
+  /** Versions that will be copied or downloaded. */
   versions: string[];
   warnings: string[];
-  /** Серверы из servers.dat источника (имя+адрес, первые 20). */
+  /** Servers from the source servers.dat (name+address, first 20). */
   servers?: Array<{ name: string; ip: string }>;
-  /** Что изменится: новое / перезапишется / уже есть (оценка по same-name+size). */
+  /** What will change: new / overwritten / already there (estimated by same-name+size). */
   diff?: { fresh: number; overwrite: number; identical: number };
-  /** Сколько байт уже есть в Trel (оценка экономии дедупа). */
+  /** How many bytes are already in Trel (estimated dedup savings). */
   savedBytesEstimate?: number;
-  /** Оценка времени по прошлой скорости (с), если известна. */
+  /** Time estimate based on the previous speed (s), if it is known. */
   etaSecondsEstimate?: number;
-  /** Первые файлы очереди (rel-пути, кап) — видно, что именно поедет. */
+  /** The first files of the queue (rel paths, capped) — shows what exactly will be moved. */
   fileTree?: Array<{ path: string; bytes: number }>;
 }
 
-/** Краткая сводка о прошлом импорте в эту папку игры (.trel_import.json). */
+/** Brief summary of the last import into this game folder (.trel_import.json). */
 export interface LastImportInfo {
-  /** Время завершения (мс). */
+  /** Completion time (ms). */
   at: number;
   sourceId: string;
   categories: string[];
   copiedFiles: number;
   aborted: boolean;
   hardlinks: boolean;
-  /** Средняя скорость прошлого импорта (Б/с) — для оценки времени до старта. */
+  /** Average speed of the last import (B/s) — used to estimate the time before the start. */
   lastSpeedBps?: number;
 }
 
@@ -260,11 +260,11 @@ function readJson(p: string): unknown | null {
 interface CopySpec {
   from: string[];
   to?: string[];
-  /** Запасные раскладки (TLauncher держит моды в TLMods/ и т.п.). */
+  /** Fallback layouts (TLauncher keeps the mods in TLMods/ and such). */
   altFrom?: string[][];
   /**
-   * Маска соседних папок: [сегменты родителя..., префикс]. Badlion хранит
-   * конфиги в BLClient-Mod-Profiles-<версия>/ — точное имя заранее неизвестно.
+   * Mask of the sibling folders: [parent segments..., prefix]. Badlion keeps its
+   * configs in BLClient-Mod-Profiles-<version>/ — the exact name is unknown upfront.
    */
   globFrom?: { parent: string[]; prefix: string };
 }
@@ -315,7 +315,7 @@ const BEDROCK_DIRS: Record<string, CopySpec[]> = {
   world_templates: [{ from: ['world_templates'] }],
 };
 
-/** Пофайловые категории: имя категории → файлы в корне источника. */
+/** File-based categories: category name → files in the source root. */
 export const FILE_CATS: Record<string, string[]> = {
   servers: ['servers.dat', 'servers.dat_old'],
   options: ['options.txt', 'controls.txt', 'hotbar.nbt', 'optionsshaders.txt',
@@ -326,12 +326,12 @@ export const FILE_CATS: Record<string, string[]> = {
 };
 
 /**
- * Каталоги-источники для одной категории.
+ * Source folders for a single category.
  *
- * Нюанс CurseForge: инстанс, который ни разу не запускали, содержит контент
- * только внутри overrides/ (моды, конфиги и т.д. распаковываются оттуда при
- * первом старте). Если целевой папки в корне инстанса нет — берём её из
- * overrides/, чтобы такие «не запущенные» сборки тоже импортировались.
+ * CurseForge nuance: an instance that was never launched keeps its content only
+ * inside overrides/ (mods, configs, etc. are unpacked from there on the first
+ * start). If the target folder is missing from the instance root — we take it
+ * from overrides/, so such "never launched" builds get imported too.
  */
 function specSourceDirs(rootDir: string, spec: CopySpec, allowOverrides: boolean): string[] {
   const main = path.join(rootDir, ...spec.from);
@@ -341,7 +341,7 @@ function specSourceDirs(rootDir: string, spec: CopySpec, allowOverrides: boolean
     if (safeStat(altDir)?.isDirectory()) return [altDir];
   }
   if (spec.globFrom) {
-    // Все соседние папки с префиксом (каждая версия Badlion — своя папка).
+    // All sibling folders with the prefix (each Badlion version has its own folder).
     const parent = path.join(rootDir, ...spec.globFrom.parent);
     const out: string[] = [];
     for (const name of safeReaddir(parent)) {
@@ -359,13 +359,13 @@ function specSourceDirs(rootDir: string, spec: CopySpec, allowOverrides: boolean
 }
 
 /**
- * Подпапки внутри versions/<id>, которые несёт с собой профиль.
+ * Subfolders inside versions/<id> that the profile brings along.
  *
- * Нюанс TLauncher «изоляция версий»: в этом режиме миры лежат в
- * versions/<v>/saves. Trel читает сохранения только из общей gameDir/saves,
- * поэтому такие миры импортируем в общую папку — но только если у источника
- * нет собственной общей saves (иначе versions/<v>/saves — просто остатки,
- * а не изоляция, и тащить их не нужно).
+ * TLauncher "version isolation" nuance: in that mode the worlds live in
+ * versions/<v>/saves. Trel reads the saves only from the shared gameDir/saves,
+ * so we import such worlds into the shared folder — but only if the source has
+ * no shared saves of its own (otherwise versions/<v>/saves is just leftovers,
+ * not isolation, and there is no point in dragging them along).
  */
 function versionContentSubs(rootDir: string): string[] {
   const subs = [...VERSION_CONTENT_SUBS];
@@ -401,19 +401,19 @@ function countFilesRecursive(dir: string, depth: number): number {
 }
 
 /**
- * Файлы и байты одним обходом.
+ * Files and bytes in a single walk.
  *
- * Предпросмотр раньше вызывал countFilesRecursive и dirSize отдельно — два
- * полных обхода одного дерева. На assets/libraries (десятки тысяч файлов) это
- * заметно. Глубина по умолчанию совпадает с глубиной копирования, иначе
- * предпросмотр занижал бы объём именно на глубоких деревьях — а он нужен
- * ровно для того, чтобы предсказать нехватку места.
+ * The preview used to call countFilesRecursive and dirSize separately — two
+ * full walks of the same tree. On assets/libraries (tens of thousands of files)
+ * that is noticeable. The default depth matches the copy depth, otherwise the
+ * preview would underestimate the size exactly on the deep trees — and the size
+ * is needed precisely to predict a lack of space.
  */
 export interface DirScan { files: number; bytes: number; top: Array<{ rel: string; bytes: number }>; truncated: boolean }
 /**
- * Один обход: счётчики + первые topCap файлов (rel-путь, размер) для дерева
- * превью и diff-оценки. Два отдельных walk (measure + листинг) удваивали бы
- * время превью на больших сборках.
+ * A single walk: the counters + the first topCap files (rel path, size) for the
+ * preview tree and the diff estimate. Two separate walks (measure + listing)
+ * would double the preview time on big builds.
  */
 export const SCAN_MAX_FILES = 200_000;
 export function scanDir(dir: string, depth: number, topCap = 300, maxFiles = SCAN_MAX_FILES): DirScan {
@@ -525,20 +525,20 @@ export function resolveDestPath(destDir: string, name: string, taken?: Set<strin
 // ─── Dedup / copy depth constants ────────────────────────────────────────
 
 /**
- * Предел рекурсии при копировании и хешировании. Объявлен до первого
- * использования (APPROX_DEPTH ниже читает его на этапе инициализации модуля).
+ * Recursion limit for copying and hashing. Declared before its first use
+ * (APPROX_DEPTH below reads it while the module initializes).
  */
 const MAX_COPY_DEPTH = 32;
 const DEDUP_HASH_DEPTH = MAX_COPY_DEPTH;
 
 /**
- * Глубина обхода при быстрой оценке размера для списка источников.
+ * Walk depth for the fast size estimate of the source list.
  *
- * Плоские категории (mods, config, screenshots) укладываются в 2–3 уровня, и
- * мелкая глубина экономит время детекта. Но у кэша структура принципиально
- * глубокая: `assets/objects/ab/<hash>`, `libraries/com/mojang/authlib/1.0/x.jar`
- * — с глубиной 2 карточка источника показывала 449 МБ там, где реально 2 ГБ.
- * У миров глубина нужна на DIM-1/region и датапаки внутри мира.
+ * Flat categories (mods, config, screenshots) fit into 2–3 levels, and a shallow
+ * depth saves detect time. But the cache structure is inherently deep:
+ * `assets/objects/ab/<hash>`, `libraries/com/mojang/authlib/1.0/x.jar` — with a
+ * depth of 2 the source card showed 449 MB where there really were 2 GB.
+ * Worlds need the depth for DIM-1/region and for the datapacks inside a world.
  */
 const APPROX_DEPTH: Partial<Record<ImportCategory, number>> = {
   assets: MAX_COPY_DEPTH,
@@ -548,15 +548,15 @@ const APPROX_DEPTH: Partial<Record<ImportCategory, number>> = {
   worlds: 5,
 };
 
-/** Путь `child` лежит строго внутри `parent` (оба — массивы сегментов). */
+/** The path `child` lies strictly inside `parent` (both are arrays of segments). */
 function isUnder(child: string[], parent: string[]): boolean {  if (child.length <= parent.length) return false;
   return parent.every((seg, i) => seg === child[i]);
 }
 
 /**
- * Конфликты регистра имён: на Windows/macOS `Mod.jar` и `mod.jar` — один файл,
- * и второй тихо перезапишет первый (или уедет в ` (1)`). Сканируем только
- * верхний уровень папок категорий — дёшево и ловит 99% случаев.
+ * Name case conflicts: on Windows/macOS `Mod.jar` and `mod.jar` are one file,
+ * and the second one silently overwrites the first (or ends up as ` (1)`). We
+ * scan only the top level of the category folders — cheap and it catches 99% of the cases.
  */
 export function findCaseConflicts(rootDir: string, categories: ImportCategory[], bedrock = false): string[] {
   if (process.platform !== 'win32' && process.platform !== 'darwin') return [];
@@ -580,21 +580,21 @@ export function findCaseConflicts(rootDir: string, categories: ImportCategory[],
 }
 
 /**
- * Крошечный NBT-ридер только для servers.dat: список серверов (name/ip) в
- * превью. Полный NBT не нужен — читаем Compound/List/String/Long/Byte,
- * остальное пропускаем по типам. servers.dat — сырой big-endian NBT.
+ * A tiny NBT reader used only for servers.dat: the server list (name/ip) for the
+ * preview. The full NBT is not needed — we read Compound/List/String/Long/Byte
+ * and skip the rest by type. servers.dat is raw big-endian NBT.
  */
 export function parseServersDat(filePath: string): Array<{ name: string; ip: string }> {
   const out: Array<{ name: string; ip: string }> = [];
   let buf: Buffer;
   try {
     const raw = fs.readFileSync(ntPath(filePath));
-    // На всякий случай пробуем gzip (старые версии): gzip-магия 1f 8b.
+    // Just in case we try gzip (old versions): the gzip magic is 1f 8b.
     try {
       buf = raw.length > 2 && raw[0] === 0x1f && raw[1] === 0x8b ? zlib.gunzipSync(raw) : raw;
     } catch { buf = raw; }
-    // Корень: 1 байт TAG_Compound (10) + u16 имя. Именно байт: чтение u16
-    // давало 0x0A00 и молча отбрасывало любой валидный файл.
+    // Root: 1 byte TAG_Compound (10) + u16 name. A byte on purpose: reading a u16
+    // gave 0x0A00 and silently discarded every valid file.
     if (buf.length < 3 || buf[0] !== 10) return out;
   } catch { return out; }
   let off = 1;
@@ -626,8 +626,8 @@ export function parseServersDat(filePath: string): Array<{ name: string; ip: str
     }
   };
   try {
-    readStr(); // имя корня
-    // Корень — compound: ищем servers.
+    readStr(); // root name
+    // The root is a compound: look for servers.
     for (;;) {
       const t = buf[off++];
       if (t === 0) break;
@@ -651,11 +651,11 @@ export function parseServersDat(filePath: string): Array<{ name: string; ip: str
         }
       } else skipPayload(t);
     }
-  } catch { /* битый dat — превью без серверов */ }
+  } catch { /* broken dat — preview without servers */ }
   return out;
 }
 
-/** Первые 4КБ двух файлов совпадают (дешёвая защита от однофамильцев на FAT). */
+/** The first 4 KB of two files match (a cheap guard against same-name files on FAT). */
 export function sameHead(a: string, b: string): boolean {
   try {
     const fa = fs.openSync(ntPath(a), 'r');
@@ -670,7 +670,7 @@ export function sameHead(a: string, b: string): boolean {
   } catch { return false; }
 }
 
-/** Битый JSON переносим как есть, но честно предупреждаем (иначе сюрприз в игре). */
+/** A broken JSON is copied as-is, but we warn honestly (otherwise it is a surprise in-game). */
 function warnIfJsonBroken(destPath: string, warnings: string[]): void {
   if (!destPath.endsWith('.json')) return;
   try {
@@ -681,27 +681,28 @@ function warnIfJsonBroken(destPath: string, warnings: string[]): void {
 }
 
 /**
- * Убирает категории, целиком вложенные в другую выбранную категорию.
+ * Removes the categories that are entirely nested inside another selected category.
  *
- * `assets` включает в себя `skin-cache` (assets/skins) и `log-configs`
- * (assets/log_configs). Если выбрать всё вместе, вложенные категории копируют
- * то же содержимое второй раз, а resolveDestPath, честно избегая перезаписи,
- * раскладывает его рядом под именами `skins/ab (1)/…` и `client (1).xml`.
- * Пользователь получал мусор и двойное время копирования. Раньше это было
- * недостижимо (кэш-категории не показывались в UI), теперь — достижимо.
+ * `assets` includes `skin-cache` (assets/skins) and `log-configs`
+ * (assets/log_configs). If everything is selected together, the nested categories
+ * copy the same content a second time, and resolveDestPath, honestly avoiding an
+ * overwrite, lays it out next to it as `skins/ab (1)/…` and `client (1).xml`.
+ * The user got garbage and double the copying time. This used to be unreachable
+ * (the cache categories were not shown in the UI), now it is reachable.
  */
 export function dropNestedCategories(categories: ImportCategory[], bedrock = false): ImportCategory[] {
   const DIRS = bedrock ? BEDROCK_DIRS : CATEGORY_DIRS;
   return categories.filter((cat) => {
     const specs = DIRS[cat];
-    // Файловые категории (accounts/servers/options/…) папок не копируют.
+    // File-based categories (accounts/servers/options/…) copy no folders.
     if (!specs || specs.length === 0) return true;
     for (const other of categories) {
       if (other === cat) continue;
       const otherSpecs = DIRS[other];
       if (!otherSpecs || otherSpecs.length === 0) continue;
-      // Категория лишняя, только если КАЖДЫЙ её путь накрыт другой категорией —
-      // и в источнике, и в назначении (spec.to может отличаться от spec.from).
+      // A category is redundant only if EVERY one of its paths is covered by
+      // another category — both in the source and in the destination (spec.to may
+      // differ from spec.from).
       const covered = specs.every((s) => otherSpecs.some((o) =>
         isUnder(s.from, o.from) && isUnder(s.to ?? s.from, o.to ?? o.from)));
       if (covered) return false;
@@ -729,11 +730,12 @@ function approxSizeOf(rootDir: string, categories: ImportCategory[], bedrock = f
 }
 
 /**
- * Файлы с аккаунтами разных лаунчеров. Единый список для детекта, оценки размера и самого импорта:
- * раньше детект знал только о четырёх файлах, из-за чего Prism/PolyMC (accounts.json) и
- * Microsoft Store-вариант вообще не предлагали категорию «аккаунты» и они молча не импортировались.
- * hmcl.json — HMCL; config/account.json и config/accounts.json — ATLauncher
- * (лежат в корне лаунчера, до которого добираемся через accountsRoots).
+ * Account files of the various launchers. A single list for the detect, the size
+ * estimation and the import itself: the detect used to know about only four
+ * files, which is why Prism/PolyMC (accounts.json) and the Microsoft Store
+ * variant were not offered the "accounts" category at all and were silently
+ * never imported. hmcl.json — HMCL; config/account.json and config/accounts.json —
+ * ATLauncher (they live in the launcher root, which we reach through accountsRoots).
  */
 const ACCOUNT_FILES = [
   'launcher_accounts.json',
@@ -749,12 +751,12 @@ const ACCOUNT_FILES = [
 ] as const;
 
 /**
- * Размер «файловых» категорий (те, что не описываются CATEGORY_DIRS).
+ * Size of the "file-based" categories (the ones not described by CATEGORY_DIRS).
  *
- * `maxVersions` ограничивает обход versions/ при быстрой оценке для списка
- * источников: там важна скорость детекта, а не точность до байта. Предпросмотр
- * передаёт Infinity — его цифра идёт в проверку свободного места, и на
- * источнике с 40 профилями усечение до 15 занижало объём в разы.
+ * `maxVersions` limits the walk over versions/ during the fast estimate for the
+ * source list: there the detect speed matters, not the byte-exact accuracy. The
+ * preview passes Infinity — its number goes into the free space check, and on a
+ * source with 40 profiles a cutoff at 15 understated the volume several times over.
  */
 function fileSizeInRoot(rootDir: string, cat: ImportCategory, maxVersions = 15): number {
   switch (cat) {
@@ -832,8 +834,9 @@ function fileSizeInRoot(rootDir: string, cat: ImportCategory, maxVersions = 15):
 
 const VERSION_CONTENT_SUBS = ['mods', 'shaderpacks', 'resourcepacks', 'texturepacks', 'config', 'datapacks', 'screenshots'];
 /**
- * Изолированный контент версий, который Trel читает только из общих папок:
- * миры — из saves, скрины — из screenshots. Остальное едет в versions/<v>/.
+ * Isolated version content that Trel reads only from the shared folders:
+ * worlds from saves, screenshots from screenshots. Everything else goes to
+ * versions/<v>/.
  */
 function versionContentDest(gameDir: string, vDir: string, ver: string, sub: string): string {
   if (sub === 'saves') return path.join(gameDir, 'saves');
@@ -888,7 +891,7 @@ function availableCategories(rootDir: string, bedrock = false): ImportCategory[]
     return out;
   }
 
-  // Accounts from multiple launcher files (только если там реально есть аккаунты)
+  // Accounts from multiple launcher files (only if there really are accounts in them)
   if (hasAccountFiles([rootDir]) || extractOfflineNames(rootDir).length > 0) out.push('accounts');
 
   // Servers
@@ -912,7 +915,7 @@ function availableCategories(rootDir: string, bedrock = false): ImportCategory[]
   // Per-version content
   if (hasVersionContent(rootDir)) out.push('version-content');
 
-  // Subfolder checks (включая CurseForge overrides/-fallback)
+  // Subfolder checks (including the CurseForge overrides/ fallback)
   for (const [cat, specs] of Object.entries(CATEGORY_DIRS)) {
     if (cat === 'accounts' || cat === 'servers' || cat === 'options' || cat === 'usercache' ||
         cat === 'version-content' || cat === 'pack-meta') continue;
@@ -1007,8 +1010,9 @@ export function detectInstallableVersions(rootDir: string): string[] {
 async function fileSha1(filePath: string): Promise<string | null> {
   try {
     const hash = crypto.createHash('sha1');
-    // 512 КБ чанки: меньше сисколлов на больших jar. Уступка циклу событий —
-    // раз в ~8 МБ: UI жив, а скорость почти как без уступок.
+    // 512 KB chunks: fewer syscalls on big jars. Yielding to the event loop —
+    // once every ~8 MB: the UI stays alive and the speed is nearly the same as
+    // without yielding.
     const stream = fs.createReadStream(ntPath(filePath), { highWaterMark: 512 * 1024 });
     let chunks = 0;
     for await (const chunk of stream) {
@@ -1020,10 +1024,10 @@ async function fileSha1(filePath: string): Promise<string | null> {
 }
 
 /**
- * Размеры файлов-источников. Идентичный контент ⇒ идентичный размер, поэтому
- * существующий файл назначения имеет смысл хешировать для дедупликации только
- * если его размер совпадает хотя бы с одним исходным. На свежей установке
- * пре-скан дедупликации становится почти бесплатным.
+ * Sizes of the source files. Identical content ⇒ identical size, so an existing
+ * destination file is only worth hashing for deduplication if its size matches
+ * at least one source file. On a fresh install the dedup pre-scan becomes
+ * almost free.
  */
 function collectSourceSizes(dir: string, depth: number, sizes: Set<number>): void {
   if (depth <= 0 || !safeStat(dir)?.isDirectory()) return;
@@ -1038,15 +1042,16 @@ function collectSourceSizes(dir: string, depth: number, sizes: Set<number>): voi
 }
 
 /**
- * Кеш SHA-1 между запусками импорта.
+ * SHA-1 cache between import runs.
  *
- * Дедупликация хеширует каждый файл в папке назначения, и при повторном
- * импорте того же источника вся эта работа повторялась с нуля: на 10 ГБ модов
- * и ресурспаков это минуты чтения диска. Ключ — путь + размер + mtime: если
- * файл тронули, запись просто не совпадёт и хеш пересчитается.
+ * Deduplication hashes every file in the destination folder, and on a repeated
+ * import of the same source all that work was done from scratch: on 10 GB of
+ * mods and resourcepacks that is minutes of disk reads. The key is path + size
+ * + mtime: if the file was touched, the entry simply does not match and the
+ * hash is recalculated.
  *
- * Кеш — ускорение, а не источник истины: любая ошибка чтения/записи молча
- * игнорируется, worst case — прежнее поведение.
+ * The cache is an optimization, not a source of truth: any read/write error is
+ * silently ignored, worst case — the previous behaviour.
  */
 const HASH_CACHE_FILE = '.trel_hash_cache.json';
 const HASH_CACHE_MAX_ENTRIES = 200_000;
@@ -1070,8 +1075,8 @@ function loadHashCache(gameDir: string): HashCache {
 
 async function saveHashCache(gameDir: string, cache: HashCache): Promise<void> {
   try {
-    // Огромный кеш сам становится проблемой (память + время парсинга), поэтому
-    // держим только свежий хвост: он и так перестроится при следующем импорте.
+    // A huge cache becomes a problem on its own (memory + parse time), so we
+    // keep only the fresh tail: it would be rebuilt during the next import anyway.
     const entries = cache.size > HASH_CACHE_MAX_ENTRIES
       ? [...cache.entries()].slice(-HASH_CACHE_MAX_ENTRIES)
       : [...cache.entries()];
@@ -1080,14 +1085,15 @@ async function saveHashCache(gameDir: string, cache: HashCache): Promise<void> {
       JSON.stringify(Object.fromEntries(entries)),
       'utf-8',
     );
-  } catch { /* кеш необязателен */ }
+  } catch { /* the cache is optional */ }
 }
 
 /**
- * SHA-1 файла с опорой на кеш. Ключ — путь + размер + mtime, поэтому тронутый
- * файл автоматически пересчитывается. Используется и для папки назначения
- * (пре-скан дедупликации), и для файлов источника: при повторном импорте того
- * же лаунчера обе стороны берутся из кеша, и дедупликация почти ничего не стоит.
+ * SHA-1 of a file backed by the cache. The key is path + size + mtime, so a
+ * touched file is recalculated automatically. It is used both for the
+ * destination folder (the dedup pre-scan) and for the source files: on a
+ * repeated import of the same launcher both sides come from the cache, and
+ * deduplication costs almost nothing.
  */
 async function fileSha1Cached(file: string, cache?: HashCache, st?: fs.Stats): Promise<string | null> {
   const stat = st ?? safeStat(file);
@@ -1114,7 +1120,7 @@ async function buildExistingHashes(
       const sub = await buildExistingHashes(full, depth - 1, sizeFilter, cache);
       for (const h of sub) hashes.add(h);
     } else {
-      // Размер не совпадает ни с одним исходным файлом — контент совпадать не может.
+      // The size does not match any source file — the content cannot match either.
       if (sizeFilter && !sizeFilter.has(st.size)) continue;
       const h = await fileSha1Cached(full, cache, st);
       if (h) hashes.add(h);
@@ -1126,11 +1132,11 @@ async function buildExistingHashes(
 // ─── Async copy with progress ───────────────────────────────────────────
 
 /**
- * Ограничитель конкурентности копирования. Раньше копирование шло батчами по
- * 8 только на верхнем уровне, а вложенные папки (миры!) копировались строго
- * последовательно. Теперь параллелятся все уровни, но одновременно в полёте
- * не больше MAX_CONCURRENT_COPIES файлов — рекурсия по папкам слот не занимает,
- * поэтому взаимоблокировка на глубоких деревьях невозможна.
+ * Copy concurrency limiter. The copy used to run in batches of 8 only on the
+ * top level, while the nested folders (worlds!) were copied strictly
+ * sequentially. Now all levels run in parallel, but no more than
+ * MAX_CONCURRENT_COPIES files are in flight at once — the folder recursion does
+ * not take a slot, so a deadlock on deep trees is impossible.
  */
 const MAX_CONCURRENT_COPIES = Math.max(8, Math.min(24, (os.availableParallelism?.() ?? os.cpus()?.length ?? 4) * 2));
 
@@ -1148,8 +1154,9 @@ async function withCopySlot<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 /**
- * Пауза импорта: UI ставит флаг, копирующие циклы замирают на месте (файл не
- * рвётся пополам — пауза проверяется между файлами), отмена работает и на паузе.
+ * Import pause: the UI sets a flag, the copying loops freeze in place (a file
+ * is not torn in half — the pause is checked between files), and cancelling
+ * works while paused too.
  */
 let _importPaused = false;
 export function setImportPaused(paused: boolean): void {
@@ -1168,13 +1175,13 @@ async function respectPause(signal?: AbortSignal): Promise<void> {
 }
 
 /**
- * Ограниченный пул вместо `Promise.all(items.map(...))`.
+ * A bounded pool instead of `Promise.all(items.map(...))`.
  *
- * Раньше на папку в 14к файлов создавалось 14к промисов разом: каждый держит
- * замыкание и ждёт слота, память пухнет, а «Остановить» ждёт пока очередь
- * досервится. Теперь в полёте не больше MAX_CONCURRENT_COPIES воркеров,
- * каждый тянет следующую задачу из общего индекса. Отмена проверяется между
- * задачами, а не только внутри них.
+ * The old code created 14k promises at once for a folder of 14k files: each one
+ * holds a closure and waits for a slot, memory balloons, and "Stop" waits until
+ * the queue drains. Now at most MAX_CONCURRENT_COPIES workers are in flight,
+ * each pulling the next task from a shared index. Cancellation is checked
+ * between the tasks, not only inside them.
  */
 async function runPooled<T>(items: T[], fn: (item: T) => Promise<void>, signal?: AbortSignal): Promise<void> {
   let next = 0;
@@ -1192,8 +1199,8 @@ async function runPooled<T>(items: T[], fn: (item: T) => Promise<void>, signal?:
         try {
           await fn(items[idx]);
         } catch (e) {
-          // Первый упавший останавливает очередь: иначе после reject
-          // Promise.all остальные воркеры дописывали бы файлы в фоне.
+          // The first failure stops the queue: otherwise after a rejected
+          // Promise.all the remaining workers would keep writing files in the background.
           failed = true;
           throw e;
         }
@@ -1208,30 +1215,31 @@ interface CopyResult { copied: number; skipped: number; errors: string[]; warnin
 type CopyOutcome = 'copied' | 'skipped' | 'aborted';
 
 /**
- * Контекст дедупликации на время одного импорта.
+ * Deduplication context for the duration of one import.
  *
- * `known` — снимок содержимого папки назначения ДО импорта, и он намеренно не
- * пополняется скопированными файлами. Иначе два разных файла с одинаковым
- * содержимым (десяток пустых конфигов, дефолтные .toml, один и тот же мод под
- * двумя именами) сворачивались бы в один: первый копировался, остальные
- * «пропускались как дубликаты». Причём непредсказуемо — пока файлов мало, они
- * хешируются параллельно и не видят друг друга, а на большой папке очередь
- * сериализуется и часть файлов молча терялась. Обещание в UI простое:
- * пропускаем то, что уже есть в Trel.
+ * `known` is a snapshot of the destination folder taken BEFORE the import, and
+ * it is intentionally not extended with the copied files. Otherwise two
+ * different files with identical content (a dozen empty configs, default
+ * .toml files, the same mod under two names) would collapse into one: the first
+ * is copied, the rest are "skipped as duplicates". And it is unpredictable —
+ * while there are few files they are hashed in parallel and do not see each
+ * other, but on a big folder the queue serializes and some files get silently
+ * lost. The promise in the UI is simple: we skip what is already in Trel.
  */
 interface DedupContext {
   known: Set<string>;
-  /** Кеш «путь|размер|mtime → sha1», переживающий перезапуск лаунчера. */
+  /** Cache of "path|size|mtime → sha1" that survives a launcher restart. */
   cache?: HashCache;
 }
 
 /**
- * Хеш + копия одного файла внутри слота конкурентности.
+ * Hash + copy of a single file inside a concurrency slot.
  *
- * Отмену проверяем ПОСЛЕ получения слота, а не только перед постановкой в
- * очередь: Promise.all создаёт все задачи разом, поэтому к моменту отмены
- * тысячи файлов уже прошли внешнюю проверку и ждут своей очереди. Без этой
- * проверки «Остановить» ждал бы копирования всей папки до конца.
+ * We check for cancellation AFTER taking the slot, not only before joining the
+ * queue: Promise.all creates all tasks at once, so by the time the cancellation
+ * arrives thousands of files have already passed the outer check and are
+ * waiting for their turn. Without this check "Stop" would wait for the whole
+ * folder to be copied.
  */
 async function copyFileMaybeDedup(
   from: string, to: string, size: number,
@@ -1245,9 +1253,9 @@ async function copyFileMaybeDedup(
     if (dedup) {
       const h = await fileSha1Cached(from, dedup.cache);
       if (h && dedup.known.has(h)) {
-        // Сеть и хитрый тулинг умеют менять содержимое с сохранением mtime:
-        // тогда кеш врёт и файл молча теряется. Перепроверяем ~2% попаданий
-        // настоящим перехешированием — дёшево и ловит протухание.
+        // The network and clever tooling can change the content while keeping the
+        // mtime: the cache then lies and the file is silently lost. We re-check
+        // ~2% of the hits with a real rehash — cheap and it catches staleness.
         if (dedup.cache && Math.random() < 0.02) {
           const fresh = await fileSha1(from);
           if (fresh && fresh !== h) {
@@ -1256,8 +1264,8 @@ async function copyFileMaybeDedup(
           } else { _bytesSaved += size; return 'skipped'; }
         } else { _bytesSaved += size; return 'skipped'; }
       }
-      // Хеширование крупного файла — это ещё десятки миллисекунд, за которые
-      // отмена могла прийти.
+      // Hashing a big file takes tens of milliseconds more, during which the
+      // cancellation could arrive.
       if (signal?.aborted) return 'aborted';
     }
     await copyFileAtomic(from, to, size, mode);
@@ -1289,9 +1297,9 @@ async function copyTreeNoOverwrite(
   if (names.length === 0) { return { copied, skipped, errors, warnings }; }
   // Pre-compute all destinations serially to avoid rename race conditions
   const entries: Array<{ from: string; to: string; isDir: boolean; size: number }> = [];
-  // Общий реестр занятых имён на dest: worlds/saves и version-content/saves
-  // пишут в одну папку разными вызовами — без общего набора одинаковые миры
-  // разъезжались бы в «Мир (1)» вместо честного скипа/перезаписи.
+  // Shared registry of taken names on dest: worlds/saves and version-content/saves
+  // write into one folder through different calls — without a shared set the
+  // same worlds would end up as "World (1)" instead of an honest skip/overwrite.
   let taken = takenReg?.get(dest);
   if (!taken) { taken = new Set<string>(); takenReg?.set(dest, taken); }
   for (const name of names) {
@@ -1312,10 +1320,11 @@ async function copyTreeNoOverwrite(
       warnings.push(`skipping special file: ${path.relative(src, from)}`);
       continue;
     }
-    // Повтор после обрыва без дедупликации: тот же файл уже на месте —
-    // пропускаем без чтения (два stat вместо копии), счётчик skipped честный.
-    // FAT округляет mtime до 2с, поэтому окно — 2с; для файлов < 1МБ сверху
-    // сверяем первые 4КБ содержимого, чтобы не скипнуть чужое однофамильце.
+    // Repeat after an interruption without deduplication: the same file is
+    // already in place — we skip it without reading (two stats instead of a
+    // copy), and the skipped counter stays honest. FAT rounds the mtime to 2s,
+    // so the window is 2s; for files < 1 MB we compare the first 4 KB of the
+    // content to avoid skipping a foreign same-name file.
     if (!dedup && st.isFile()) {
       const dstSt = safeStat(path.join(dest, name));
       if (dstSt?.isFile() && dstSt.size === st.size && Math.abs(dstSt.mtimeMs - st.mtimeMs) < 2000
@@ -1335,8 +1344,8 @@ async function copyTreeNoOverwrite(
         await copyDirAtomic(e.from, e.to, MAX_COPY_DEPTH, warnings, dedup, signal, mode, created);
       } else {
         const outcome = await copyFileMaybeDedup(e.from, e.to, e.size, dedup, mode, signal, created);
-        // Отменённый файл не считаем ни скопированным, ни пропущенным по
-        // дедупликации: иначе отчёт врёт о проделанной работе.
+        // A cancelled file is counted neither as copied nor as skipped by the
+        // deduplication: otherwise the report lies about the work done.
         if (outcome === 'aborted') return;
         if (outcome === 'skipped') { skipped++; return; }
       }
@@ -1369,30 +1378,31 @@ async function copyFileIfExists(src: string, destDir: string, destName?: string,
 // ─── Atomic file/dir copy with retry ────────────────────────────────────
 
 /**
- * Стратегия переноса одного файла.
- *   'copy'     — обычная копия (по умолчанию);
- *   'hardlink' — жёсткая ссылка: мгновенно и без расхода места, но файл
- *                становится общим с исходным лаунчером (один inode).
- * Reflink (copy-on-write) включён всегда: на Btrfs/XFS/ZFS/APFS ядро делает
- * CoW-копию мгновенно, на остальных ФС флаг молча игнорируется.
+ * Strategy for transferring a single file.
+ *   'copy'     — a regular copy (the default);
+ *   'hardlink' — a hardlink: instant and with no extra space used, but the file
+ *                becomes shared with the source launcher (one inode).
+ * Reflink (copy-on-write) is always enabled: on Btrfs/XFS/ZFS/APFS the kernel
+ * makes a CoW copy instantly, on other filesystems the flag is silently ignored.
  */
 type CopyMode = 'copy' | 'hardlink';
 
-/** Байты, реально записанные на диск (для замера скорости в отчёте). */
+/** Bytes actually written to disk (for the speed measurement in the report). */
 let _bytesWritten = 0;
-/** Байты, сэкономленные дедупом (файл уже был в Trel и не копировался). */
+/** Bytes saved by the dedup (the file was already in Trel and was not copied). */
 let _bytesSaved = 0;
 /**
- * Пары «куда → откуда» за текущий импорт. Нужны verify и переезду: по одному
- * имени пару не восстановить — resolveDestPath переименовывает коллизии
- * в « (n)», и same-name в назначении может быть совсем другим файлом.
- * Заполняется только во время performImport (IPC держит importLock).
+ * "Destination → source" pairs for the current import. They are needed by the
+ * verify and by the move: a pair cannot be restored from the name alone —
+ * resolveDestPath renames the collisions to " (n)", and a same-name file in
+ * the destination may be a completely different file. Filled in only during
+ * performImport (the IPC holds importLock).
  */
 let _copyPairs: Map<string, string> | null = null;
-/** Починенных протухших записей кеша (выборочная перепроверка, см. ниже). */
+/** Stale cache entries repaired (selective re-check, see below). */
 let _staleFixed = 0;
 export function takeStaleFixed(): number { const v = _staleFixed; _staleFixed = 0; return v; }
-/** Пауз за импорт (для отчёта). */
+/** Pauses during the import (for the report). */
 let _pauseCount = 0;
 export function takePauseCount(): number { const v = _pauseCount; _pauseCount = 0; return v; }
 export function takeBytesWritten(): number {
@@ -1405,23 +1415,24 @@ export function takeBytesSaved(): number {
   _bytesSaved = 0;
   return v;
 }
-/** Текущее значение счётчика без сброса — для живого прогресса. */
+/** Current counter value without a reset — for the live progress. */
 function peekBytesWritten(): number {
   return _bytesWritten;
 }
 
 /**
- * Измеритель скорости копирования.
+ * Copy speed meter.
  *
- * Скорость считаем по приращению байт за окно, а не в среднем от старта:
- * иначе долгая пауза на хешировании (дедупликация) навсегда занижает цифру,
- * и пользователь видит «2 МБ/с» на копировании, которое давно идёт вдвое
- * быстрее. Пока окно не закрылось, показываем среднюю от старта — грубее, но
- * честнее нуля на бегущем копировании. Первые ~50 мс не показываем ничего:
- * деление на почти нулевой интервал даёт бессмысленные всплески.
+ * The speed is computed from the byte delta over a window, not as an average
+ * since the start: otherwise a long pause for hashing (deduplication) lowers
+ * the number forever, and the user sees "2 MB/s" for a copy that has long been
+ * running twice as fast. While the window is still open we show the average
+ * since the start — rougher, but more honest than zero during a running copy.
+ * The first ~50 ms show nothing: dividing by a near-zero interval produces
+ * meaningless spikes.
  *
- * Время передаётся аргументом, чтобы логику можно было проверить тестами без
- * реального копирования.
+ * The time is passed in as an argument so that the logic can be tested without
+ * really copying anything.
  */
 export function createSpeedMeter(startedAt: number, windowMs = 250, minElapsedMs = 50) {
   let lastBytes = 0;
@@ -1431,8 +1442,8 @@ export function createSpeedMeter(startedAt: number, windowMs = 250, minElapsedMs
     const dt = now - lastAt;
     if (dt >= windowMs) {
       const delta = bytes - lastBytes;
-      // Отрицательного приращения быть не может, но мусорному значению в UI
-      // тоже делать нечего.
+      // A negative delta cannot happen, but there is nothing to do with a bogus
+      // value in the UI either.
       lastSpeed = delta > 0 ? delta / (dt / 1000) : 0;
       lastBytes = bytes;
       lastAt = now;
@@ -1446,7 +1457,7 @@ export function createSpeedMeter(startedAt: number, windowMs = 250, minElapsedMs
   };
 }
 
-/** Имя файла, который копируется прямо сейчас — для живого прогресса в UI. */
+/** Name of the file being copied right now — for the live progress in the UI. */
 let _currentCopyFile = '';
 export function peekCurrentCopyFile(): string { return _currentCopyFile; }
 
@@ -1458,12 +1469,13 @@ async function copyFileAtomic(src: string, dest: string, expectedSize?: number, 
     for (let i = 0; i < MAX_ATTEMPTS; i++) {
       try {
         if (mode === 'hardlink') {
-          // Жёсткая ссылка возможна только внутри одной ФС; при EXDEV/EPERM
-          // (другой том, FAT/exFAT, сетевой диск) откатываемся на копирование.
+          // A hardlink is only possible inside one filesystem; on EXDEV/EPERM
+          // (another volume, FAT/exFAT, a network drive) we fall back to copying.
           try {
             await fsp.link(ntPath(src), ntPath(dest));
-            // Ссылка — тот же inode, проверять размер всё равно надо: гонка с
-            // записью в исходный файл даст битую «копию» без единого байта I/O.
+            // The link is the same inode, so the size still has to be checked: a
+            // race with a write to the source file would give a broken "copy"
+            // without a single byte of I/O.
             const [ss, ds] = await Promise.all([fsp.stat(ntPath(src)), fsp.stat(ntPath(dest))]);
             if (expectedSize !== undefined && ss.size !== expectedSize) {
               throw new Error(`[CORRUPT] size mismatch: ${expectedSize} source vs ${ss.size} dest`);
@@ -1480,17 +1492,17 @@ async function copyFileAtomic(src: string, dest: string, expectedSize?: number, 
             if (code !== 'EXDEV' && code !== 'EPERM' && code !== 'ENOSYS' && code !== 'EMLINK') throw le;
           }
         }
-        // COPYFILE_FICLONE: попросить ФС сделать reflink, иначе обычная копия.
+        // COPYFILE_FICLONE: ask the filesystem for a reflink, otherwise a regular copy.
         await fsp.copyFile(ntPath(src), ntPath(tmp), fs.constants.COPYFILE_FICLONE);
         await fsp.rename(ntPath(tmp), ntPath(dest));
-        // Post-copy size verification (best-effort). Размер источника приходит
-        // из пре-скана — лишний stat не нужен.
+        // Post-copy size verification (best-effort). The source size comes from
+        // the pre-scan — an extra stat is not needed.
         try {
           const ds = await fsp.stat(ntPath(dest));
           const size = expectedSize ?? (await fsp.stat(ntPath(src))).size;
           if (ds.size !== size) throw new Error(`[CORRUPT] size mismatch: ${size} source vs ${ds.size} dest`);
-          // Исполняемый бит: скрипты (.sh) и нативные либы из чужого лаунчера
-          // иначе тихо теряют +x и потом «не запускаются».
+          // The executable bit: scripts (.sh) and native libs from a foreign
+          // launcher otherwise silently lose +x and then "do not run".
           if (process.platform !== 'win32' && expectedSize !== undefined) {
             try {
               const ss = await fsp.stat(ntPath(src));
@@ -1524,8 +1536,8 @@ async function copyFileAtomic(src: string, dest: string, expectedSize?: number, 
       }
     }
   } finally {
-    // В полёте несколько файлов — чужое имя не затираем, пусть висит
-    // последнее актуальное вместо мигания в пустоту.
+    // Several files are in flight — we do not overwrite a foreign name, let the
+    // last relevant one stay instead of flickering into emptiness.
     if (_currentCopyFile === path.basename(src)) _currentCopyFile = '';
   }
 }
@@ -1540,9 +1552,9 @@ async function copyDirAtomic(
   await fsp.mkdir(ntPath(dest), { recursive: true });
   const names = safeReaddir(src).filter(n => !JUNK_NAMES.has(n) && !exclude?.has(n));
   if (names.length === 0) return;
-  // Пре-скан: пути назначения считаются серийно (без гонок rename), защита
-  // от symlink/junction выполняется один раз — раньше каждый файл проверялся
-  // дважды, а сами файлы копировались строго последовательно.
+  // Pre-scan: the destination paths are computed serially (no rename races),
+  // the symlink/junction guard runs once — earlier every file was checked
+  // twice, and the files themselves were copied strictly sequentially.
   const entries: Array<{ from: string; to: string; isDir: boolean; size: number }> = [];
   const taken = new Set<string>();
   for (const name of names) {
@@ -1558,15 +1570,17 @@ async function copyDirAtomic(
       warnings?.push(`skipping escaped path: ${path.relative(src, from)} -> ${real}`);
       continue;
     }
-    // Сокеты, FIFO и прочие нерегулярные файлы копировать нечем — молча
-    // падать в copyFile с криптической ошибкой хуже, чем честно пропустить.
+    // Sockets, FIFOs and the other irregular files have nothing to copy —
+    // failing silently in copyFile with a cryptic error is worse than skipping
+    // them honestly.
     if (!st.isDirectory() && !st.isFile()) {
       warnings?.push(`skipping special file: ${path.relative(src, from)}`);
       continue;
     }
-    // Повтор после обрыва без дедупликации: файл с тем же именем, размером и
-    // mtime уже на месте — копировать заново (и плодить «(1)») смысла нет.
-    // Дешёвые два stat вместо чтения всего файла.
+    // Repeat after an interruption without deduplication: a file with the same
+    // name, size and mtime is already in place — there is no point in copying
+    // it again (and spawning "(1)"). Two cheap stats instead of reading the
+    // whole file.
     if (!dedup && st.isFile()) {
       const dstSt = safeStat(path.join(dest, name));
       if (dstSt?.isFile() && dstSt.size === st.size && Math.abs(dstSt.mtimeMs - st.mtimeMs) < 2000
@@ -1599,7 +1613,7 @@ function normalizeUuid(value: unknown): string | undefined {
 
 const VALID_NAME_RE = /^[a-zA-Z0-9_]{1,16}$/;
 
-/** Ключи, по которым объект — это профиль версии (launcher_profiles.profiles), а не аккаунт. */
+/** Keys by which an object is a version profile (launcher_profiles.profiles), not an account. */
 const VERSION_PROFILE_KEYS = ['lastVersionId', 'gameDir', 'javaArgs', 'javaDir', 'icon', 'resolution', 'logConfig'];
 
 function isVersionProfile(obj: Record<string, unknown>): boolean {
@@ -1611,7 +1625,7 @@ function str(value: unknown): string | undefined {
 }
 
 /**
- * Распознаёт один объект-аккаунт. Поддерживаемые формы:
+ * Recognizes a single account object. Supported shapes:
  *  - Minecraft Launcher (launcher_accounts.json): { accessToken, minecraftProfile: { id, name }, ... }
  *  - legacy launcher_profiles.authenticationDatabase: { accessToken, username(email), profiles: { <uuid>: { displayName } } }
  *  - Prism/PolyMC/MultiMC accounts.json: { profile: { id, name }, type: "MSA" | "Offline" }
@@ -1627,7 +1641,7 @@ function accountFromObject(value: unknown, keyHint?: string): ImportedAccount | 
   const nested = (obj.minecraftProfile ?? obj.profile) as Record<string, unknown> | undefined;
   const profile = nested && typeof nested === 'object' && !Array.isArray(nested) ? nested : undefined;
 
-  // legacy authenticationDatabase: имя игрока лежит в profiles[<uuid>].displayName
+  // legacy authenticationDatabase: the player name lives in profiles[<uuid>].displayName
   let legacyName: string | undefined;
   let legacyUuid: string | undefined;
   const profiles = obj.profiles;
@@ -1638,27 +1652,28 @@ function accountFromObject(value: unknown, keyHint?: string): ImportedAccount | 
     }
   }
 
-  // Ник — первый валидный кандидат. displayName идёт РАНЬШЕ username:
-  // у HMCL username — это часто email-логин, который проваливает проверку
-  // ников и раньше блокировал всю запись, до displayName дело не доходило.
+  // The nickname is the first valid candidate. displayName comes BEFORE username:
+  // in HMCL the username is often an email login that fails the nickname check
+  // and used to block the whole record — displayName was never even reached.
   const name = [profile?.name, legacyName, obj.name, obj.displayName, obj.username, obj.userName, obj.playerName, obj.lastUsername]
     .map((v) => { const s = str(v); return s && VALID_NAME_RE.test(s) ? s : undefined; })
     .find((s): s is string => !!s);
   if (!name) return null;
 
-  // Ключ объекта тоже может нести UUID (Modrinth App хранит аккаунты как
+  // The object key may carry a UUID as well (Modrinth App stores the accounts as
   // { "<uuid>": { name, ... } }).
   const uuid = normalizeUuid(profile?.id) ?? legacyUuid ?? normalizeUuid(obj.uuid) ?? normalizeUuid(obj.id)
     ?? normalizeUuid(obj.userid) ?? normalizeUuid(keyHint);
   const kind = String(obj.type ?? obj.accountType ?? '').toLowerCase();
   const offlineKind = kind === 'offline' || kind === 'free' || kind === 'legacy_offline';
   const onlineKind = kind === 'online' || kind === 'msa' || kind === 'microsoft' || kind === 'mojang' || kind === 'ely' || kind === 'premium';
-  // snake_case-варианты токенов — Modrinth App и части GDLauncher-экспортов.
+  // snake_case token variants — Modrinth App and some GDLauncher exports.
   const accessToken = str(obj.accessToken) ?? str(obj.access_token);
   const refreshToken = str(obj.refreshToken) ?? str(obj.msRefreshToken) ?? str(obj.refresh_token);
   const online = !offlineKind && (onlineKind || !!refreshToken || !!str(obj.xuid) || !!accessToken);
-  // online-аккаунт без UUID бесполезен: игра не примет сессию, а UUID придётся
-  // всё равно получать заново — заводим его как offline с тем же ником
+  // An online account without a UUID is useless: the game will not accept the
+  // session, and the UUID has to be fetched again anyway — so we register it as
+  // offline with the same nickname
   const type: 'offline' | 'online' = online && uuid ? 'online' : 'offline';
   return {
     name,
@@ -1670,7 +1685,7 @@ function accountFromObject(value: unknown, keyHint?: string): ImportedAccount | 
   };
 }
 
-/** Побеждает более информативная запись: online > offline, с UUID > без UUID, с токеном > без. */
+/** The more informative record wins: online > offline, with UUID > without UUID, with token > without. */
 function accountScore(a: ImportedAccount): number {
   return (a.type === 'online' ? 4 : 0) + (a.uuid ? 2 : 0) + (a.refreshToken ? 1 : 0);
 }
@@ -1692,7 +1707,7 @@ function collectImportedAccounts(value: unknown, out: Map<string, ImportedAccoun
   if (account) mergeAccount(out, account);
   if (Array.isArray(value)) { for (const item of value) collectImportedAccounts(item, out, depth + 1); return; }
   for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
-    // не спускаемся в profiles обработанного аккаунта: там уже разобрано выше
+    // we do not descend into the profiles of a processed account: they were already parsed above
     if (account && key === 'profiles') continue;
     collectImportedAccounts(item, out, depth + 1, key);
   }
@@ -1707,8 +1722,8 @@ function collectNamesDeep(value: unknown, out: Set<string>, depth = 0): void {
   }
   if (typeof value === 'object') {
     const obj = value as Record<string, unknown>;
-    // Профили версий (launcher_profiles.profiles) тоже имеют поле name ("Forge", "latest-release"),
-    // без этого фильтра импорт создавал фальшивые аккаунты с такими именами.
+    // Version profiles (launcher_profiles.profiles) have a name field as well ("Forge", "latest-release"),
+    // without this filter the import created fake accounts with such names.
     if (isVersionProfile(obj)) return;
     for (const key of ['name', 'username', 'userName', 'displayName', 'playerName', 'lastUsername', 'selectedProfileName']) {
       const v = obj[key];
@@ -1775,25 +1790,25 @@ function extractOfflineNames(rootDir: string): string[] {
 // ─── Source detection ───────────────────────────────────────────────────
 
 
-/** Человекочитаемое имя инстанса из instance.cfg (Prism/MultiMC/PolyMC). */
+/** Human-readable instance name from instance.cfg (Prism/MultiMC/PolyMC). */
 function readInstanceName(instRoot: string): string | null {
   const cfg = readIniLike(path.join(instRoot, 'instance.cfg'));
   const cfgName = cfg?.name?.trim();
   if (cfgName) return withGroup(instRoot, cfgName);
-  // FTB App: instance.json → name; Technic: installedPacks.json у родителя.
+  // FTB App: instance.json → name; Technic: installedPacks.json in the parent.
   for (const file of ['instance.json', 'minecraftinstance.json', 'manifest.json', 'profile.json']) {
     const j = readJson(path.join(instRoot, file)) as Record<string, unknown> | null;
     const n = j && typeof j.name === 'string' ? j.name.trim() : '';
     if (n) return withGroup(instRoot, n.slice(0, 80));
-    // Modrinth App хранит имя внутри metadata.name.
+    // Modrinth App stores the name inside metadata.name.
     const meta = j && typeof j.metadata === 'object' && j.metadata ? (j.metadata as Record<string, unknown>) : null;
     const mn = meta && typeof meta.name === 'string' ? meta.name.trim() : '';
     if (mn) return withGroup(instRoot, mn.slice(0, 80));
   }
-  // MultiMC instgroups.json: «Группа / Имя» — сортировка групп видна и в Trel.
+  // MultiMC instgroups.json: "Group / Name" — the group sorting is visible in Trel too.
   const base = readInstanceBaseName(instRoot);
   if (base) return withGroup(instRoot, base);
-  // Technic: имя пака в installedPacks.json у корня лаунчера (slug → name).
+  // Technic: the pack name in installedPacks.json at the launcher root (slug → name).
   for (let d = instRoot, i = 0; i < 3; i++) {
     const packs = readJson(path.join(d, 'installedPacks.json')) as Record<string, { name?: string }> | null;
     if (packs && typeof packs === 'object') {
@@ -1807,7 +1822,7 @@ function readInstanceName(instRoot: string): string | null {
   return null;
 }
 
-/** Базовое имя инстанса без группы (для withGroup). */
+/** Base instance name without the group (for withGroup). */
 function readInstanceBaseName(instRoot: string): string | null {
   for (const file of ['instance.json', 'minecraftinstance.json', 'manifest.json', 'profile.json']) {
     const j = readJson(path.join(instRoot, file)) as Record<string, unknown> | null;
@@ -1820,7 +1835,7 @@ function readInstanceBaseName(instRoot: string): string | null {
   return null;
 }
 
-/** MultiMC instgroups.json: «Имя (Группа)» — группы видно и в списке Trel. */
+/** MultiMC instgroups.json: "Name (Group)" — the groups are visible in the Trel list too. */
 function withGroup(instRoot: string, name: string): string {
   try {
     const raw = readJson(path.join(path.dirname(instRoot), 'instgroups.json')) as {
@@ -1835,11 +1850,11 @@ function withGroup(instRoot: string, name: string): string {
         }
       }
     }
-  } catch { /* групп нет — обычное имя */ }
+  } catch { /* no groups — plain name */ }
   return name;
 }
 
-/** Простейший разбор key=value файлов (instance.cfg у MultiMC-семейства). */
+/** Simplistic parsing of key=value files (instance.cfg in the MultiMC family). */
 function readIniLike(file: string): Record<string, string> | null {
   try {
     const raw = fs.readFileSync(ntPath(file), 'utf-8');
@@ -1853,9 +1868,10 @@ function readIniLike(file: string): Record<string, string> | null {
 }
 
 /**
- * Память/JVM-аргументы исходного лаунчера. Trel не применяет их автоматически
- * (чужие -Xmx могут не влезть в память этой машины), но показывает в отчёте:
- * иначе сборка на 8 ГБ молча запустится с дефолтными 2 ГБ и будет лагать.
+ * Memory/JVM arguments of the source launcher. Trel does not apply them
+ * automatically (a foreign -Xmx may not fit into this machine's memory), but it
+ * shows them in the report: otherwise a build meant for 8 GB silently starts
+ * with the default 2 GB and lags.
  */
 function detectLauncherTweaks(instRoot: string, gameRoot: string): LauncherTweaks | undefined {
   const out: LauncherTweaks = {};
@@ -1869,14 +1885,14 @@ function detectLauncherTweaks(instRoot: string, gameRoot: string): LauncherTweak
     if (cfg.JvmArgs?.trim()) out.jvmArgs = cfg.JvmArgs.trim().slice(0, 500);
     if (cfg.JavaPath?.trim()) out.javaPath = cfg.JavaPath.trim().slice(0, 500);
   }
-  // CurseForge: minecraftinstance.json → allocatedMemory (МБ), jvmArgs
+  // CurseForge: minecraftinstance.json → allocatedMemory (MB), jvmArgs
   const cf = readJson(path.join(instRoot, 'minecraftinstance.json')) as Record<string, unknown> | null;
   if (cf) {
     const mem = Number(cf.allocatedMemory);
     if (Number.isFinite(mem) && mem > 0) out.maxMemoryMb ??= mem;
     if (typeof cf.jvmArgs === 'string' && cf.jvmArgs.trim()) out.jvmArgs ??= cf.jvmArgs.trim().slice(0, 500);
   }
-  // Ванильный лаунчер: user_jvm_args.txt / launcher_profiles javaArgs
+  // Vanilla launcher: user_jvm_args.txt / launcher_profiles javaArgs
   const jvmFile = path.join(gameRoot, 'user_jvm_args.txt');
   if (!out.jvmArgs && safeStat(jvmFile)) {
     try {
@@ -1889,7 +1905,7 @@ function detectLauncherTweaks(instRoot: string, gameRoot: string): LauncherTweak
     const m = out.jvmArgs.match(/-Xmx(\d+)([gGmM])/);
     if (m) out.maxMemoryMb = m[2].toLowerCase() === 'g' ? Number(m[1]) * 1024 : Number(m[1]);
   }
-  // Требуемая Java из первого версионного json (HMCL/Mojang пишут javaVersion).
+  // Required Java version from the first version json (HMCL/Mojang write javaVersion).
   if (out.maxMemoryMb || out.jvmArgs || out.javaPath) {
     try {
       const vDir = path.join(gameRoot, 'versions');
@@ -1916,16 +1932,16 @@ function loaderFromId(id: string): DetectedModpack['loader'] {
 }
 
 /**
- * Распознаёт модпак рядом с инстансом.
+ * Recognizes a modpack next to the instance.
  *
- * Смысл: если сборка — это Modrinth/CurseForge модпак, копировать её файлами
- * бессмысленно. Лучше поставить её штатным механизмом Trel: получится обычная
- * версия с лоадером, которую можно обновлять. Мы лишь достаём метаданные —
- * решение принимает пользователь в UI.
+ * The idea: if the build is a Modrinth/CurseForge modpack, copying it file by
+ * file is pointless. Better to install it through Trel's own mechanism: that
+ * gives a regular version with a loader that can be updated. We only extract
+ * the metadata — the decision is made by the user in the UI.
  */
 function detectModpack(rootDir: string, instRoot: string): DetectedModpack | undefined {
   for (const dir of [rootDir, instRoot]) {
-    // Modrinth App: profile.json с game_version/loader (индекса может не быть).
+    // Modrinth App: profile.json with game_version/loader (there may be no index).
     const profile = readJson(path.join(dir, 'profile.json')) as Record<string, unknown> | null;
     const pgv = profile?.game_version ?? (profile?.metadata as Record<string, unknown> | undefined)?.game_version;
     if (typeof pgv === 'string' && pgv) {
@@ -1940,8 +1956,8 @@ function detectModpack(rootDir: string, instRoot: string): DetectedModpack | und
         fileCount: 0,
       };
     }
-    // packwiz: сборка текстом (packwiz.toml). Штатной установки у Trel нет —
-    // копируем файлами, но честно говорим что это packwiz.
+    // packwiz: a text-based build (packwiz.toml). Trel has no native installation
+    // for it — we copy the files, but we honestly say that this is packwiz.
     try {
       const pw = fs.readFileSync(ntPath(path.join(dir, 'packwiz.toml')), 'utf-8');
       const pwName = pw.match(/^name\s*=\s*"([^"]+)"/m)?.[1];
@@ -1954,7 +1970,7 @@ function detectModpack(rootDir: string, instRoot: string): DetectedModpack | und
           fileCount: (pw.match(/^\[\[mods\]\]/gm) ?? []).length,
         };
       }
-    } catch { /* не packwiz */ }
+    } catch { /* not packwiz */ }
     const mrIndex = readJson(path.join(dir, 'modrinth.index.json')) as Record<string, any> | null;
     if (mrIndex && typeof mrIndex.name === 'string' && mrIndex.dependencies) {
       const deps = mrIndex.dependencies as Record<string, string>;
@@ -1976,8 +1992,8 @@ function detectModpack(rootDir: string, instRoot: string): DetectedModpack | und
         };
       }
     }
-    // MultiMC-семейство: mmc-pack.json рядом с инстансом (компоненты).
-    // uid net.minecraft → версия игры, остальные uid → лоадер.
+    // MultiMC family: mmc-pack.json next to the instance (components).
+    // uid net.minecraft → game version, the other uids → loader.
     try {
       const mmc = readJson(path.join(dir, 'mmc-pack.json')) as { components?: Array<{ uid?: string; version?: string }> } | null
         ?? readJson(path.join(dir, '..', 'mmc-pack.json')) as { components?: Array<{ uid?: string; version?: string }> } | null;
@@ -1998,14 +2014,14 @@ function detectModpack(rootDir: string, instRoot: string): DetectedModpack | und
           fileCount: comps.length,
         };
       }
-    } catch { /* не mmc */ }
+    } catch { /* not mmc */ }
     const cfManifest = readJson(path.join(dir, 'manifest.json')) as Record<string, any> | null;
     const mcBlock = cfManifest?.minecraft;
     if (cfManifest && mcBlock && typeof mcBlock.version === 'string') {
       const loaderId = Array.isArray(mcBlock.modLoaders) && mcBlock.modLoaders.length > 0
         ? String(mcBlock.modLoaders[0]?.id ?? '') : '';
       const loader = loaderFromId(loaderId);
-      // id вида "forge-47.2.0" / "neoforge-21.1.65" / "fabric-0.16.0"
+      // ids like "forge-47.2.0" / "neoforge-21.1.65" / "fabric-0.16.0"
       const lv = loaderId.includes('-') ? loaderId.slice(loaderId.indexOf('-') + 1) : undefined;
       return {
         origin: 'curseforge',
@@ -2024,7 +2040,7 @@ function detectModpack(rootDir: string, instRoot: string): DetectedModpack | und
 
 function inferJavaSourceLabel(rootDir: string, fallback: string): string {
   const has = (f: string) => !!safeStat(path.join(rootDir, f));
-  // Маркеры конкретных лаунчеров — имя должно быть точным, а не «data folder».
+  // Markers of specific launchers — the name must be exact, not a "data folder".
   if (has('TLauncherProfile.json') || has('TLauncherProfiles.json')) return 'TLauncher';
   if (safeStat(path.join(path.dirname(rootDir), 'tlauncher.properties'))) return 'TLauncher';
   if (has('sklauncher_accounts.json')) return 'SKlauncher';
@@ -2038,8 +2054,8 @@ function inferJavaSourceLabel(rootDir: string, fallback: string): string {
 }
 
 
-/** Есть ли файлы аккаунтов с реальным содержимым хотя бы в одном из корней.
-    Пустые/служебные json (profiles: {}) категорию «аккаунты» не включают. */
+/** Whether there are account files with real content in at least one of the roots.
+    Empty/service json (profiles: {}) do not enable the "accounts" category. */
 function hasAccountFiles(roots: string[]): boolean {
   for (const root of roots) {
     for (const f of ACCOUNT_FILES) {
@@ -2064,9 +2080,9 @@ function hasRealJavaImportContent(categories: ImportCategory[], installableVersi
 }
 
 /**
- * Нестандартные game dirs из настроек HMCL (.hmcl/game-directories/*.json).
- * Формат свободный ({ path } / { gameDir } / просто строка), поэтому читаем
- * терпимо: всё, что похоже на путь к существующей папке, — кандидат.
+ * Non-standard game dirs from the HMCL settings (.hmcl/game-directories/*.json).
+ * The format is free-form ({ path } / { gameDir } / a plain string), so we read
+ * it leniently: anything that looks like a path to an existing folder is a candidate.
  */
 export function hmclExtraGameDirs(bases: string[], home: string): string[] {
   const out: string[] = [];
@@ -2090,9 +2106,10 @@ export function hmclExtraGameDirs(bases: string[], home: string): string[] {
 }
 
 /**
- * Заметки о клиенте/особенностях рядом с источником. Не блокируют импорт,
- * но объясняют странности: встроенные моды Feather/Lunar не переносятся,
- * миры Nostalgia — LevelDB и в Java не поедут, Betacraft гадит в options.txt.
+ * Notes about the client/quirks next to the source. They do not block the
+ * import, but they explain the oddities: the built-in mods of Feather/Lunar are
+ * not carried over, the Nostalgia worlds are LevelDB and will not run on Java,
+ * Betacraft pollutes options.txt.
  */
 export function sourceNotes(source: DetectedSource): string[] {
   const notes: string[] = [];
@@ -2151,10 +2168,10 @@ export function sourceNotes(source: DetectedSource): string[] {
 }
 
 /**
- * Хранилища секретов рядом с источником. Токены никогда не тащим молча:
- * HMCL держит accessToken открытым текстом, GDLauncher — в sqlite
- * gdl_conf.db, TLauncher — в accounts.dat. Предупреждаем и предлагаем
- * импорт без секретов (skipSecrets).
+ * Secret stores next to the source. Tokens are never dragged along silently:
+ * HMCL keeps the accessToken in plain text, GDLauncher in the sqlite
+ * gdl_conf.db, TLauncher in accounts.dat. We warn and offer an import without
+ * secrets (skipSecrets).
  */
 export function secretStoreWarnings(source: DetectedSource): string[] {
   const warns: string[] = [];
@@ -2181,9 +2198,9 @@ export function secretStoreWarnings(source: DetectedSource): string[] {
 }
 
 /**
- * Authlib-injector / Ely.by endpoints из конфигов источника (HMCL и др.).
- * Сами серверы не переносим и не включаем, но показываем список, чтобы
- * пользователь знал, что ему понадобится после переезда.
+ * Authlib-injector / Ely.by endpoints from the source configs (HMCL and others).
+ * We do not migrate or enable the servers themselves, but we show the list so
+ * that the user knows what will be needed after the move.
  */
 export function extractAuthServers(source: DetectedSource): string[] {
   const found = new Set<string>();
@@ -2213,14 +2230,14 @@ export function detectSources(excludeGameDir?: string): DetectedSource[] {
   const { appdata, userprofile, home } = baseSearchPaths();
   const sources: DetectedSource[] = [];
 
-  // Базы, где лаунчеры хранят данные: Windows/macOS — appdata,
-  // Linux — ещё и ~/.local/share (Prism, MultiMC и др. живут именно там).
+  // Bases where the launchers store their data: Windows/macOS — appdata,
+  // Linux — also ~/.local/share (Prism, MultiMC and others live exactly there).
   const bases: string[] = process.platform === 'linux'
     ? [appdata, path.join(home, '.local', 'share')]
     : [appdata];
   const inBases = (sub: string): string[] => bases.map((b) => path.join(b, sub));
-  // Portable-установки живут где угодно, но всегда рядом с бинарём/процессом:
-  // MultiMC/Prism/ATLauncher portable держат instances/ возле exe.
+  // Portable installations live anywhere, but always next to the binary/process:
+  // the portable MultiMC/Prism/ATLauncher keep instances/ next to the exe.
   const portableNeighbors = (sub: string): string[] => {
     const out: string[] = [];
     for (const base of [process.cwd()]) {
@@ -2237,8 +2254,8 @@ export function detectSources(excludeGameDir?: string): DetectedSource[] {
     return null;
   };
 
-  // Плоские лаунчеры: данные игры в .minecraft внутри корня лаунчера,
-  // аккаунты/настройки — в корне лаунчера (учтено через accountsRoots).
+  // Flat launchers: the game data lives in .minecraft inside the launcher root,
+  // accounts/settings — in the launcher root (covered via accountsRoots).
   const flatpakData = (appId: string, rel: string): string => path.join(home, '.var', 'app', appId, 'data', rel);
   const flatRoots: Array<{ id: string; label: string; dirs: string[] }> = [
     { id: 'mojang',     label: 'Mojang Launcher',  dirs: [path.join(appdata, '.minecraft')] },
@@ -2248,9 +2265,9 @@ export function detectSources(excludeGameDir?: string): DetectedSource[] {
     { id: 'sklauncher', label: 'SKlauncher',       dirs: [path.join(appdata, 'SKlauncher', '.minecraft')] },
     { id: 'crystal',    label: 'Crystal Launcher', dirs: [path.join(appdata, 'CrystalLauncher', '.minecraft')] },
     { id: 'cristalix',  label: 'Cristalix',          dirs: [path.join(appdata, '.cristalix', 'minecraft'), path.join(home, '.cristalix', 'minecraft')] },
-    // HMCL держит игру в .minecraft рядом с собой: раньше его версии
-    // перечислялись как «инстансы», но папки версий не содержат saves/mods
-    // и отсеивались — HMCL фактически не импортировался.
+    // HMCL keeps the game in .minecraft next to itself: earlier its versions
+    // were listed as "instances", but the version folders contain no saves/mods
+    // and were filtered out — HMCL was effectively never imported.
     { id: 'hmcl',       label: 'HMCL',             dirs: [path.join(appdata, 'hmcl', '.minecraft'), path.join(home, '.hmcl', '.minecraft')] },
   ];
   for (const r of flatRoots) {
@@ -2264,8 +2281,8 @@ export function detectSources(excludeGameDir?: string): DetectedSource[] {
     sources.push({ id: r.id, label: inferJavaSourceLabel(dir, r.label), rootDir: dir, available: cats, approxSize: approxSizeOf(dir, cats), kind: 'java', installableVersions, accountsRoots: accRoots, launcherTweaks: detectLauncherTweaks(dir, dir) });
   }
 
-  // HMCL хранит игру в произвольных game dirs (настройки → game-directories/*.json).
-  // Дефолтный .minecraft уже покрыт выше, здесь — только нестандартные пути.
+  // HMCL stores the game in arbitrary game dirs (settings → game-directories/*.json).
+  // The default .minecraft is already covered above, here — only non-standard paths.
   for (const dir of hmclExtraGameDirs(bases, home)) {
     const installableVersions = detectInstallableVersions(dir);
     const cats = availableCategories(dir);
@@ -2275,8 +2292,8 @@ export function detectSources(excludeGameDir?: string): DetectedSource[] {
     sources.push({ id: 'hmcl', label: inferJavaSourceLabel(dir, 'HMCL'), rootDir: dir, available: cats, approxSize: approxSizeOf(dir, cats), kind: 'java', installableVersions, accountsRoots: accRoots, launcherTweaks: detectLauncherTweaks(dir, dir) });
   }
 
-  // Инстанс-лаунчеры: каждый инстанс — отдельный источник,
-  // аккаунты берём также из корня лаунчера.
+  // Instance launchers: every instance is a separate source,
+  // the accounts are taken from the launcher root as well.
   const localApp = process.platform === 'win32' ? path.join(userprofile, 'AppData', 'Local') : home;
   const prismPortable = process.env.PRISMLAUNCHER_DATA_DIR
     ? [path.join(process.env.PRISMLAUNCHER_DATA_DIR, 'instances')] : [];
@@ -2300,8 +2317,8 @@ export function detectSources(excludeGameDir?: string): DetectedSource[] {
     { idPrefix: 'legacyfabric', labelPrefix: 'Legacy Fabric', parents: inBases('LegacyFabric/instances'), instanceSub: '.minecraft' },
     { idPrefix: 'labymod',    labelPrefix: 'LabyMod',     parents: inBases('LabyMod/instances'), instanceSub: '.minecraft' },
   ];
-  // Экспорты сборок (*.zip рядом с инстансами Prism/MultiMC/ATLauncher):
-  // подхватываем как архивные источники — распакуются через fromArchive-флоу.
+  // Build exports (*.zip next to the Prism/MultiMC/ATLauncher instances):
+  // we pick them up as archive sources — they get unpacked via the fromArchive flow.
   const exportParents = [inBases('PrismLauncher/instances'), inBases('MultiMC/instances'), inBases('ATLauncher/Instances')].flat();
   for (const parent of exportParents) {
     if (!safeStat(parent)?.isDirectory()) continue;
@@ -2327,9 +2344,9 @@ export function detectSources(excludeGameDir?: string): DetectedSource[] {
       if (cats.length === 0 || !hasRealJavaImportContent(cats, installableVersions)) continue;
       const accRoots = [root, instRoot, launcherRoot];
       if (!cats.includes('accounts') && hasAccountFiles(accRoots)) cats.push('accounts');
-      // Prism/MultiMC пишут человекочитаемое имя сборки в instance.cfg,
-      // CurseForge — в minecraftinstance.json, Modrinth App — в profile.json:
-      // папка может называться "q7x2fd21", а сборка — "Better MC".
+      // Prism/MultiMC write the human-readable build name to instance.cfg,
+      // CurseForge — to minecraftinstance.json, Modrinth App — to profile.json:
+      // the folder may be called "q7x2fd21" while the build is "Better MC".
       const nice = readInstanceName(instRoot);
       sources.push({
         id: `${r.idPrefix}:${name}`,
@@ -2343,16 +2360,16 @@ export function detectSources(excludeGameDir?: string): DetectedSource[] {
   }
 
   const bedrockRoot = detectBedrockRoot();
-  // Bedrock-источник импорта значим только на Windows: на Linux/macOS
-  // Bedrock/TrelEmu отключён, и импорт worlds/add-ons не имеет куда ложиться.
+  // The Bedrock import source only matters on Windows: on Linux/macOS
+  // Bedrock/TrelEmu is disabled, and importing worlds/add-ons has nowhere to go.
   if (bedrockRoot && process.platform === 'win32') {
     const cats = availableCategories(bedrockRoot, true);
     if (cats.length > 0) sources.push({ id: 'bedrock', label: 'Minecraft Bedrock Edition', rootDir: bedrockRoot, available: cats, approxSize: approxSizeOf(bedrockRoot, cats, true), kind: 'bedrock' });
   }
 
-  // Убираем дубликаты по реальному пути и исключаем собственную папку игры Trel:
-  // импортировать лаунчер «сам в себя» нельзя, а один .minecraft мог попасть
-  // в список дважды под разными id (mojang/legacy и т.п.).
+  // Drop the duplicates by real path and exclude Trel's own game folder:
+  // a launcher cannot be imported "into itself", and the same .minecraft could
+  // end up in the list twice under different ids (mojang/legacy and such).
   const seen = new Set<string>();
   const filtered = sources.filter((s) => {
     const real = realpathSafe(s.rootDir) ?? path.resolve(s.rootDir);
@@ -2371,19 +2388,19 @@ export function detectSources(excludeGameDir?: string): DetectedSource[] {
 }
 
 /**
- * Асинхронная обёртка над detectSources: скан идёт в отдельном потоке, чтобы
- * не блокировать main-процесс (а с ним — весь UI) на медленных дисках.
+ * Async wrapper around detectSources: the scan runs in a separate thread so
+ * that it does not block the main process (and with it the whole UI) on slow disks.
  *
- * Любая проблема с воркером (нет файла после сборки, asar, запрет на потоки,
- * зависший диск) не должна ломать импорт: тогда честно считаем синхронно.
- * Результат кэшируется тем же _detectCache, что и синхронный путь.
+ * Any problem with the worker (no file after the build, asar, threads forbidden,
+ * a stuck disk) must not break the import: in that case we honestly count
+ * synchronously. The result is cached by the same _detectCache as the sync path.
  */
 export async function detectSourcesAsync(excludeGameDir?: string, timeoutMs = 20_000): Promise<DetectedSource[]> {
   const now = Date.now();
   const cacheKey = excludeGameDir ? path.resolve(excludeGameDir) : '';
   if (_detectCache && _detectCache.key === cacheKey && (now - _detectCache.timestamp) < DETECT_CACHE_TTL) return _detectCache.sources;
 
-  // Воркер компилируется рядом с этим файлом (dist-electron/main/import-worker.js).
+  // The worker is compiled next to this file (dist-electron/main/import-worker.js).
   const workerFile = path.join(__dirname, 'import-worker.js');
   if (!safeStat(workerFile)) return detectSources(excludeGameDir);
 
@@ -2440,21 +2457,21 @@ export async function performImport(
 ): Promise<ImportReport> {
   const report: ImportReport = { copied: {}, skipped: {}, newAccounts: [], installedVersions: [], errors: [], warnings: [], durationsMs: {} };
   const importStarted = Date.now();
-  takeBytesWritten(); takeBytesSaved();  // сбрасываем счётчики прошлого запуска
+  takeBytesWritten(); takeBytesSaved();  // reset the counters of the previous run
   _copyPairs = new Map();
 
-  // Вложенные категории (skin-cache внутри assets и т.п.) копировали бы одно и
-  // то же дважды, оставляя рядом «skins/ab (1)». Отбрасываем их здесь, а не в
-  // UI: план приходит и из IPC, и из тестов.
+  // The nested categories (skin-cache inside assets and such) would copy the
+  // very same thing twice, leaving "skins/ab (1)" next to it. We drop them here
+  // rather than in the UI: the plan comes both from the IPC and from the tests.
   const effective = dropNestedCategories(plan.categories, source.kind === 'bedrock');
   if (effective.length !== plan.categories.length) {
     const dropped = plan.categories.filter((c) => !effective.includes(c));
     report.warnings.push(`skipped categories already covered by a broader one: ${dropped.join(', ')}`);
-    // Дальше по функции план читается только на чтение — подменяем целиком,
-    // чтобы ни одна ветка не работала со старым списком.
+    // Further down the function the plan is only read — we replace it entirely
+    // so that no branch works with the old list.
     plan = { ...plan, categories: effective };
   }
-  // Импорт без секретов: аккаунты и usercache вообще не трогаем.
+  // Import without secrets: accounts and usercache are not touched at all.
   if (plan.skipSecrets && (plan.categories.includes('accounts') || plan.categories.includes('usercache'))) {
     plan = { ...plan, categories: plan.categories.filter((c) => c !== 'accounts' && c !== 'usercache') };
     report.secretsSkipped = true;
@@ -2463,8 +2480,8 @@ export async function performImport(
 
   const logPath = await importOps.appendImportLog(gameDir, `start ${plan.sourceId} cats=[${plan.categories.join(',')}] dedup=${!!plan.deduplicate} hardlinks=${!!plan.useHardlinks} move=${!!plan.moveSource}`);
   report.logPath = logPath;
-  // Нюансы клиента и хранилища секретов рядом с источником — в отчёт сразу,
-  // чтобы пользователь видел их даже при отмене в середине.
+  // The client quirks and the secret store next to the source — straight into the
+  // report, so that the user sees them even when the import is cancelled midway.
   for (const n of sourceNotes(source)) report.warnings.push(n);
   for (const w of secretStoreWarnings(source)) report.warnings.push(w);
   const authServers = extractAuthServers(source);
@@ -2472,7 +2489,7 @@ export async function performImport(
     report.authServers = authServers;
     report.warnings.push(`auth servers used by the source (not migrated, re-login needed): ${authServers.join(', ')}`);
   }
-  // Страховка миров Trel перед чужим импортом.
+  // Safety net for the Trel worlds before a foreign import.
   if (plan.archiveWorlds && !signal?.aborted) {
     const savesDir = path.join(gameDir, 'saves');
     if (safeStat(savesDir)?.isDirectory()) {
@@ -2490,9 +2507,10 @@ export async function performImport(
   if (plan.useHardlinks) {
     report.warnings.push('hardlink mode: imported files share storage with the source launcher');
   }
-  // Память исходного лаунчера: Trel не применяет чужой -Xmx автоматически
-  // (он может не влезть в память этой машины), но молчать нельзя — иначе
-  // тяжёлая сборка запустится с дефолтом и будет лагать.
+  // Memory of the source launcher: Trel does not apply a foreign -Xmx
+  // automatically (it may not fit into this machine's memory), but staying
+  // silent is not an option — otherwise a heavy build starts with the default
+  // and lags.
   if (source.launcherTweaks?.maxMemoryMb) {
     report.warnings.push(`source launcher allocated ${source.launcherTweaks.maxMemoryMb} MB RAM — set the same value in Trel settings`);
   }
@@ -2506,11 +2524,12 @@ export async function performImport(
     report.warnings.push(`source pack needs Java ${source.launcherTweaks.javaMajor} — install that runtime or the game will crash on launch`);
   }
 
-  // Cleanup orphaned .trel_tmp from previous aborted runs. Полный обход
-  // gameDir (assets/libraries — десятки тысяч файлов) был заметной частью
-  // старта импорта, поэтому глубину ограничили: временные файлы живут
-  // только рядом с местом копирования (корень, versions/<id>, папки
-  // категорий). Папки категорий дочищаются отдельно перед своим копированием.
+  // Cleanup orphaned .trel_tmp from previous aborted runs. A full walk of the
+  // gameDir (assets/libraries — tens of thousands of files) was a noticeable
+  // part of the import startup, so the depth is limited: the temporary files
+  // live only next to the copy destination (the root, versions/<id>, the
+  // category folders). The category folders are cleaned up separately before
+  // their own copy.
   try { rmTrelTmps(gameDir, 4); } catch {}
 
   // Self-import / nesting guard: source must not be inside gameDir or vice versa
@@ -2556,11 +2575,11 @@ export async function performImport(
   }
   let completedSteps = 0;
   /**
-   * Прогресс со счётчиком байт и мгновенной скоростью.
+   * Progress with a byte counter and an instant speed.
    *
-   * Байты уже считались в copyFileAtomic, но попадали только в финальный
-   * отчёт: во время копирования пользователь видел «mods (120/400)» и не мог
-   * понять, идёт перенос или подвис.
+   * The bytes were already counted in copyFileAtomic, but they only made it
+   * into the final report: during the copy the user saw "mods (120/400)" and
+   * could not tell whether the transfer was running or hung.
    */
   const speedAt = createSpeedMeter(importStarted);
   const emit = (stage: string, etaSeconds?: number) => {
@@ -2578,10 +2597,11 @@ export async function performImport(
           const added = addImportedAccount ? addImportedAccount(account) : addAccount(account.name);
           if (added) report.newAccounts.push(account.name);
           else report.skipped.accounts = (report.skipped.accounts ?? 0) + 1;
-          // Токен доступа в чужих лаунчерах живёт ~24 часа, а refresh-токен Microsoft
-          // обычно лежит в отдельном зашифрованном хранилище и не переносится.
-          // Поэтому лицензионный аккаунт переносим вместе с UUID/именем, но честно
-          // предупреждаем, что для игры на онлайн-серверах нужен повторный вход.
+          // The access token in the foreign launchers lives for ~24 hours, and the
+          // Microsoft refresh token usually sits in a separate encrypted store and
+          // is not migrated. So we migrate a licensed account together with its
+          // UUID/name, but we honestly warn that online servers require a fresh
+          // login.
           if (account.type === 'online' && !account.refreshToken) {
             report.warnings.push(`account "${account.name}": imported as online (UUID preserved), re-login via Microsoft required to refresh session`);
           }
@@ -2592,8 +2612,8 @@ export async function performImport(
     step('Accounts');
   }
 
-  // ── Пофайловые категории (servers/options/usercache/pack-meta) ──
-  // Списки файлов — в FILE_CATS, чтобы переезд (moveSource) знал те же имена.
+  // ── File-based categories (servers/options/usercache/pack-meta) ──
+  // The file lists live in FILE_CATS, so that the move (moveSource) knows the same names.
   const journalByCat: Record<string, string[]> = {};
   const copyFileCat = async (cat: ImportCategory, stage: string) => {
     const files = FILE_CATS[cat] ?? [];
@@ -2616,7 +2636,7 @@ export async function performImport(
   };
   if (plan.categories.includes('servers')) {
     await copyFileCat('servers', 'Servers');
-    // ATLauncher хранит серверы не в servers.dat, а поштучно в Servers/*.dat.
+    // ATLauncher keeps the servers not in servers.dat, but one by one in Servers/*.dat.
     const atServers = path.join(source.rootDir, 'Servers');
     if (safeStat(atServers)?.isDirectory()) {
       const created: string[] = [];
@@ -2654,8 +2674,9 @@ export async function performImport(
           if (safeStat(srcFolder)?.isDirectory() && (entry.hasJar || entry.hasJson)) {
             const warnings: string[] = [];
             const created: string[] = [];
-            // natives/ — платформенные .dll/.so под чужую машину: в Trel
-            // докачаются свои, а чужие — мёртвый вес и риск битого рантайма.
+            // natives/ — the platform .dll/.so built for a foreign machine: Trel
+            // downloads its own, and the foreign ones are dead weight plus a
+            // risk of a broken runtime.
             const excluded = safeStat(path.join(srcFolder, 'natives'))?.isDirectory() ? new Set(['natives']) : undefined;
             if (excluded) warnings.push(`version "${vid}": natives/ skipped (platform libraries download for this machine)`);
             await copyDirAtomic(srcFolder, dstFolder, MAX_COPY_DEPTH, warnings, undefined, signal, copyMode, created, excluded);
@@ -2665,8 +2686,9 @@ export async function performImport(
             report.copied['version-install'] = (report.copied['version-install'] ?? 0) + 1;
           } else if (installVersion) {
             await installVersion(vid);
-            // Скачанное принадлежит лаунчеру целиком — откат его не удаляет,
-            // но след в журнале остаётся (аудит) и тихо пропускается.
+            // A download belongs to the launcher as a whole — the rollback does
+            // not delete it, but the trace stays in the journal (audit) and is
+            // silently skipped.
             await importOps.journalAdd(gameDir, plan.sourceId, 'version-install-downloaded', [`downloaded:${vid}`]);
             report.installedVersions.push(vid);
             report.copied['version-install'] = (report.copied['version-install'] ?? 0) + 1;
@@ -2701,9 +2723,9 @@ export async function performImport(
     dedup = { known: new Set<string>(), cache: hashCache };
     emit('Scanning existing files...');
     const contentCats = ['mods', 'shaderpacks', 'resourcepacks', 'texturepacks', 'config', 'datapacks', 'scripts', 'version-content', 'schematics', 'minimap', 'coremods', 'openloader'];
-    // Сначала — размеры файлов-источников: хешировать существующий файл
-    // назначения имеет смысл только если его размер встречается среди
-    // исходных (одинаковый контент ⇒ одинаковый размер).
+    // First — the sizes of the source files: hashing an existing destination
+    // file only makes sense if its size occurs among the source files
+    // (identical content ⇒ identical size).
     const sourceSizes = new Set<number>();
     for (const cat of plan.categories) {
       if (!contentCats.includes(cat)) continue;
@@ -2763,11 +2785,12 @@ export async function performImport(
   }
 
   // ── Content folders ──
-  // Общий реестр имён: категории с общим назначением (worlds/saves и
-  // version-content/saves) делят один набор, иначе — «Мир (1)».
+  // Shared name registry: the categories with a common destination (worlds/saves
+  // and version-content/saves) share one set, otherwise you get "World (1)".
   const takenReg = new Map<string, Set<string>>();
-  // Атомарность категории: если копирование категории упало исключением (диск,
-  // права), уже созданное ею откатывается по журналу — никакой «половины mods».
+  // Category atomicity: if the copy of a category failed with an exception (disk,
+  // permissions), what it has already created is rolled back via the journal —
+  // no "half of mods".
   for (const cat of plan.categories) {
     if (signal?.aborted) break;
     if (skipCats.has(cat)) continue;
@@ -2788,15 +2811,16 @@ export async function performImport(
     }
     for (const spec of specs) {
       if (signal?.aborted) break;
-      // Матчей может быть несколько (glob: профили Badlion по версиям) —
-      // едут в одно назначение, коллизии разруливает общий taken-реестр.
+      // There may be several matches (glob: the Badlion profiles per version) —
+      // they all go to one destination, and the shared taken-registry resolves
+      // the collisions.
       const froms = specSourceDirs(source.rootDir, spec, source.kind === 'java');
       if (froms.length === 0) continue;
       const to = path.join(gameDir, ...(spec.to ?? spec.from));
       for (const from of froms) {
       if (signal?.aborted) break;
-      // Показываем в предупреждении, что контент взят из overrides/ —
-      // это значит, что исходный инстанс ни разу не запускался.
+      // We show in the warning that the content was taken from overrides/ —
+      // that means the source instance was never launched.
       const mainDir = path.join(source.rootDir, ...spec.from);
       if (from !== mainDir) report.warnings.push(`${cat}: taken from ${path.relative(source.rootDir, from)}`);
       try {
@@ -2814,10 +2838,10 @@ export async function performImport(
         specAccum += r.copied;
         catCopied += r.copied; catSkipped += r.skipped; report.errors.push(...r.errors); report.warnings.push(...r.warnings);
       } catch (e) {
-        // Категория либо вся, либо никак: откатываем созданное и идём дальше.
+        // The category is all or nothing: we roll back what was created and move on.
         const gone = await importOps.rollbackJournal(gameDir, cat).catch(() => 0);
-        // rollbackJournal читает журнал с диска — а туда мы ещё не писали,
-        // поэтому чистим и живой список напрямую.
+        // rollbackJournal reads the journal from disk — and we have not written
+        // there yet, so we clean up the live list directly as well.
         for (const f of [...created].sort((a, b) => b.length - a.length)) {
           try { await fsp.unlink(ntPath(f)); } catch {}
         }
@@ -2849,11 +2873,12 @@ export async function performImport(
         for (const sub of versionContentSubs(source.rootDir)) {
           const from = path.join(vDirSrc, ver, sub);
           if (!safeStat(from)?.isDirectory()) continue;
-          // TLauncher-isolation: миры из versions/<v>/saves едут в общие saves,
-          // потому что других мест для сохранений Trel не читает.
+          // TLauncher isolation: the worlds from versions/<v>/saves go to the
+          // shared saves, because Trel reads the saves from nowhere else.
           const to = versionContentDest(gameDir, vDirDst, ver, sub);
-          // Тот же мир уже приехал из общих saves: не плодим «Мир (1)»,
-          // а честно пропускаем с предупреждением (источник не трогаем).
+          // The same world has already arrived from the shared saves: we do not
+          // spawn "World (1)", but skip it honestly with a warning (the source
+          // is left untouched).
           let exclude: Set<string> | undefined;
           if (sub === 'saves') {
             const dupes = safeReaddir(from).filter((w) =>
@@ -2887,18 +2912,19 @@ export async function performImport(
 
   report.aborted = signal?.aborted ?? false;
   if (report.aborted) {
-    // Прерванный импорт — не ошибка, но и не успех: часть файлов уже на месте.
-    // Повтор подхватит пропущенное (skip identical / дедуп), журнал знает что готово.
+    // An aborted import is neither an error nor a success: some files are
+    // already in place. A re-run picks up what was skipped (skip identical /
+    // dedup), the journal knows what is done.
     report.warnings.push('import was cancelled: already copied files were kept, re-run resumes where it stopped');
   }
 
-  // ── Пост-проверки (только при успехе, чтобы не шуметь на отмене) ──
+  // ── Post-checks (only on success, so that a cancellation stays quiet) ──
   if (!report.aborted) {
-    // Case-конфликты на Windows/macOS: два имени в один файл.
+    // Case conflicts on Windows/macOS: two names into one file.
     for (const c of findCaseConflicts(source.rootDir, plan.categories, source.kind === 'bedrock')) {
       report.warnings.push(`name case conflict (one file may have overwritten the other): ${c}`);
     }
-    // Карантин + дубли modid + verify целостности модов.
+    // Quarantine + duplicate modids + verify the integrity of the mods.
     if ((report.copied.mods ?? 0) > 0 || (report.skipped.mods ?? 0) > 0) {
       emit('Checking mods...');
       const destMods = path.join(gameDir, 'mods');
@@ -2911,8 +2937,9 @@ export async function performImport(
         const destJar = path.join(destMods, j);
         const why = importOps.scanJarSuspicious(destJar);
         if (why) quar.push(`${j} — ${why}`);
-        // Verify: хеш копии обязан совпасть с хешем её источника. Пару берём
-        // из журнала копий, а не по имени: коллизии лежат рядом как « (n)».
+        // Verify: the hash of the copy must match the hash of its source. We take
+        // the pair from the copy journal, not by name: the collisions lie next
+        // to it as " (n)".
         const sj = _copyPairs?.get(destJar);
         if (sj && checked < 50) {
           const [hs, hd] = await Promise.all([fileSha1Cached(sj, hashCache), fileSha1Cached(destJar, hashCache)]);
@@ -2935,19 +2962,20 @@ export async function performImport(
         }
       }
     }
-    // Экономия дедупа: байты, которые не стали копировать (уже есть в Trel).
+    // Dedup savings: the bytes that were not copied (already present in Trel).
     report.savedBytes = takeBytesSaved() || undefined;
-    // Переезд: удаляем источник только если всё сошлось (нет ошибок/отмены).
+    // Move: the source is deleted only if everything matched (no errors/cancellation).
     if (plan.moveSource && report.errors.length === 0) {
       emit('Moving source files...');
       let moved = 0;
-      // Удаляем только то, что скопировали в этом запуске (пары из журнала),
-      // и только если размеры сошлись. По имени искать нельзя: « (n)» врёт.
+      // We delete only what we copied in this run (the pairs from the journal),
+      // and only if the sizes matched. Looking it up by name does not work:
+      // " (n)" lies.
       for (const [dest, srcFile] of _copyPairs ?? []) {
         try {
           const [ss, ds] = await Promise.all([fsp.stat(ntPath(srcFile)), fsp.stat(ntPath(dest))]);
           if (ss.isFile() && ds.isFile() && ss.size === ds.size) { await fsp.unlink(ntPath(srcFile)); moved++; }
-        } catch { /* близнец не сошёлся — оставляем */ }
+        } catch { /* the twin did not match — leave it */ }
       }
       const swept = await importOps.sweepMovedSource(
         [...new Set([...(_copyPairs ?? new Map()).values()].map((f) => path.dirname(f)))].slice(0, 50));
@@ -2962,8 +2990,8 @@ export async function performImport(
     }
   }
 
-  // Сводка переименований: « (n)» в созданных путях = коллизии имён.
-  // Отдельно миры: «Мир (1)» означает дубль из другого лаунчера.
+  // Rename summary: " (n)" in the created paths = name collisions.
+  // The worlds are special: "World (1)" means a duplicate from another launcher.
   let renamed = 0;
   for (const created of Object.values(journalByCat)) {
     for (const f of created) if (/ \(\d+\)/.test(f)) renamed++;
@@ -2971,18 +2999,19 @@ export async function performImport(
   if (renamed > 0) report.warnings.push(`${renamed} file(s) renamed with ' (n)' suffix due to name collisions — check worlds for duplicates`);
   const staleFixed = takeStaleFixed();
   if (staleFixed > 0) report.warnings.push(`${staleFixed} file(s) re-copied: hash cache was stale (content changed with same mtime)`);
-  // Счётчики — после пост-проверок: тик «Checking mods…» обязан нести живые
-  // байты, а не ноль после take. Сами проверки только читают, не пишут.
+  // The counters — after the post-checks: the "Checking mods…" tick must carry
+  // live bytes, not zero after take. The checks themselves only read, they do
+  // not write.
   report.bytesWritten = takeBytesWritten();
   report.totalMs = Date.now() - importStarted;
   report.pausedMs = takePausedMs();
   report.pauses = takePauseCount();
   _copyPairs = null;
 
-  // Кеш хешей пишем после копирования: часть записей появилась во время
-  // дедупликации, и повторный импорт того же источника их переиспользует.
-  // TTL/GC: записям старше 30 дней и хвосту сверх лимита — на выход, иначе
-  // файл кеша растёт бесконечно на живых сборках.
+  // We write the hash cache after the copy: some entries appeared during the
+  // deduplication, and a repeated import of the same source reuses them.
+  // TTL/GC: the entries older than 30 days and the tail beyond the limit are
+  // dropped, otherwise the cache file grows forever on live builds.
   if (hashCache) {
     const CUTOFF = Date.now() - 30 * 24 * 3600 * 1000;
     for (const [k] of hashCache) {
@@ -3022,11 +3051,11 @@ export function detectFromDir(dir: string): DetectedSource | null {
   if (!isBedrock && !hasRealJavaImportContent(cats, installableVersions)) return null;
   const accRoots = isBedrock ? [] : [dir, path.dirname(dir)];
   if (!isBedrock && !cats.includes('accounts') && hasAccountFiles(accRoots)) cats.push('accounts');
-  // Метаданные инстанса (instance.cfg, minecraftinstance.json) лежат уровнем
-  // выше только у MultiMC-семейства, где внутри инстанса есть .minecraft.
-  // Смотреть в родителя всегда нельзя: пользователь может выбрать папку,
-  // рядом с которой оказался чужой instance.cfg — и мы подпишем сборку
-  // чужим именем и чужим -Xmx.
+  // The instance metadata (instance.cfg, minecraftinstance.json) sits one level
+  // higher only in the MultiMC family, where the instance contains .minecraft.
+  // We must never look in the parent unconditionally: the user may pick a folder
+  // that happens to have a foreign instance.cfg next to it — and we would sign
+  // the build with a foreign name and a foreign -Xmx.
   const base = path.basename(dir).toLowerCase();
   const instRoot = (base === '.minecraft' || base === 'minecraft') ? path.dirname(dir) : dir;
   const nice = isBedrock ? null : (readInstanceName(dir) ?? (instRoot !== dir ? readInstanceName(instRoot) : null));
@@ -3044,12 +3073,13 @@ export function detectFromDir(dir: string): DetectedSource | null {
 // ─── Preview / free space ───────────────────────────────────────────────
 
 /**
- * Свободные байты на томе, где лежит (или будет лежать) папка игры.
- * null — статистика тома недоступна (нет statfsSync, экзотическая ФС): тогда
- * проверку места нельзя выдать за успешную, о ней надо честно сообщить.
+ * Free bytes on the volume where the game folder lives (or will live).
+ * null — the volume statistics are unavailable (no statfsSync, an exotic
+ * filesystem): then the space check cannot be reported as successful, and it
+ * has to be reported honestly.
  */
 function freeSpaceFor(dir: string): number | null {
-  // Папки может ещё не быть — поднимаемся к первому существующему родителю.
+  // The folder may not exist yet — we walk up to the first existing parent.
   let probe = path.resolve(dir);
   for (let i = 0; i < 8; i++) {
     if (safeStat(probe)?.isDirectory()) break;
@@ -3065,13 +3095,14 @@ function freeSpaceFor(dir: string): number | null {
 }
 
 /**
- * Предпросмотр плана: сколько файлов и байт поедет по каждой категории и
- * хватит ли места. Раньше пользователь видел только приблизительный размер
- * всего источника, а на нехватку места натыкался посреди копирования (ENOSPC).
+ * Plan preview: how many files and bytes will move for each category and
+ * whether there is enough space. The user used to see only an approximate size
+ * of the whole source and ran into a lack of space in the middle of the copy
+ * (ENOSPC).
  *
- * В отличие от approxSizeOf (быстрая оценка для списка источников) здесь
- * дерево обходится на полную глубину копирования: цифра идёт в проверку
- * свободного места, и занижать её нельзя.
+ * Unlike approxSizeOf (a fast estimate for the source list) the tree is walked
+ * here to the full copy depth: the number goes into the free space check and
+ * must not be underestimated.
  */
 export function previewImport(plan: ImportPlan, source: DetectedSource, gameDir: string): ImportPreview {
   const files: Partial<Record<ImportCategory, number>> = {};
@@ -3080,8 +3111,9 @@ export function previewImport(plan: ImportPlan, source: DetectedSource, gameDir:
   const DIRS = source.kind === 'bedrock' ? BEDROCK_DIRS : CATEGORY_DIRS;
   const allowOverrides = source.kind === 'java';
 
-  // Та же чистка, что и в performImport: иначе превью насчитает assets/skins
-  // дважды (и в assets, и в skin-cache) и напугает нехваткой места.
+  // The same cleanup as in performImport: otherwise the preview counts
+  // assets/skins twice (both in assets and in skin-cache) and scares the user
+  // with a lack of space.
   const categories = dropNestedCategories(plan.categories, source.kind === 'bedrock');
   if (categories.length !== plan.categories.length) {
     const dropped = plan.categories.filter((c) => !categories.includes(c));
@@ -3092,13 +3124,14 @@ export function previewImport(plan: ImportPlan, source: DetectedSource, gameDir:
     if (m.files) files[cat] = (files[cat] ?? 0) + m.files;
     if (m.bytes) bytes[cat] = (bytes[cat] ?? 0) + m.bytes;
   };
-  // Первые файлы для дерева превью + diff-оценка (same-name+size).
-  // Один обход на категорию: scanDir уже считает файлы/байты.
+  // The first files for the preview tree + the diff estimate (same-name+size).
+  // One walk per category: scanDir already counts the files/bytes.
   const tree: Array<{ path: string; bytes: number }> = [];
   let diffFresh = 0; let diffOverwrite = 0; let diffIdentical = 0; let savedEst = 0;
   let scanTruncated = false;
-  // Дерево делим поровну между папками: иначе первая же assets съедает весь
-  // кап в 300, а mods в превью вообще не видно.
+  // We split the tree evenly between the folders: otherwise the first assets
+  // folder eats the whole cap of 300, and mods are not visible in the preview
+  // at all.
   const dirCatCount = Math.max(1, categories.filter((c) => {
     if (c === 'version-install') return false;
     const specs = DIRS[c];
@@ -3113,7 +3146,7 @@ export function previewImport(plan: ImportPlan, source: DetectedSource, gameDir:
       if (tree.filter((x) => x.path.startsWith(`${cat}/`)).length < TREE_PER_CAT) {
         tree.push({ path: `${cat}/${t.rel}`, bytes: t.bytes });
       }
-      // Diff по близнецу в назначении: нет / тот же размер / другой размер.
+      // Diff against the twin in the destination: missing / same size / different size.
       const twin = path.join(destBase, t.rel);
       const dst = safeStat(twin);
       if (!dst) diffFresh++;
@@ -3138,7 +3171,7 @@ export function previewImport(plan: ImportPlan, source: DetectedSource, gameDir:
     }
     const specs = DIRS[cat];
     if (!specs || specs.length === 0) {
-      // Файловые категории (accounts/servers/options/...) — только байты.
+      // File-based categories (accounts/servers/options/...) — bytes only.
       const b = fileSizeInRoot(source.rootDir, cat, Infinity);
       if (b) bytes[cat] = b;
       continue;
@@ -3154,7 +3187,7 @@ export function previewImport(plan: ImportPlan, source: DetectedSource, gameDir:
     ? (source.installableVersions ?? detectInstallableVersions(source.rootDir))
     : [];
   if (versions.length > 0) {
-    // Без ограничения по числу версий: цифра идёт в проверку места.
+    // Without a limit on the number of versions: the number goes into the space check.
     const b = fileSizeInRoot(source.rootDir, 'version-install', Infinity);
     if (b) bytes['version-install'] = b;
     files['version-install'] = versions.length;
@@ -3163,10 +3196,10 @@ export function previewImport(plan: ImportPlan, source: DetectedSource, gameDir:
   const totalFiles = Object.values(files).reduce((a, b2) => a + (b2 ?? 0), 0);
   const totalBytes = Object.values(bytes).reduce((a, b2) => a + (b2 ?? 0), 0);
   const free = freeSpaceFor(gameDir);
-  // Запас 5% (или минимум 200 МБ) на служебные файлы и фрагментацию.
+  // A 5% (or at least 200 MB) reserve for the service files and fragmentation.
   const headroom = Math.max(totalBytes * 0.05, 200 * 1024 * 1024);
-  // Жёсткие ссылки места не занимают, поэтому проверять его бессмысленно.
-  // Но откат на копирование возможен (другой том), так что молчать нельзя.
+  // Hardlinks do not take up any space, so checking it would be pointless.
+  // But a fallback to copying is possible (another volume), so we cannot stay silent.
   const spaceMatters = !plan.useHardlinks;
   const notEnoughSpace = spaceMatters && free !== null && totalBytes + headroom > free;
   if (notEnoughSpace && free !== null) {
@@ -3184,7 +3217,7 @@ export function previewImport(plan: ImportPlan, source: DetectedSource, gameDir:
   if (scanTruncated) warnings.push('preview listing truncated at 200k files per folder — totals are exact, the file list is not');
   for (const n of sourceNotes(source)) warnings.push(n);
   for (const w of secretStoreWarnings(source)) warnings.push(w);
-  // Оценка времени до старта по скорости прошлого импорта в эту папку.
+  // Estimate of the time before the start based on the speed of the last import into this folder.
   let etaSecondsEstimate: number | undefined;
   try {
     const last = readLastImportReport(gameDir);
@@ -3193,7 +3226,7 @@ export function previewImport(plan: ImportPlan, source: DetectedSource, gameDir:
     }
   } catch {}
   const servers = parseServersDat(path.join(source.rootDir, 'servers.dat'));
-  // Оценка совместимости модпака с тем, что уже стоит (по индексу рядом).
+  // Estimate of the modpack compatibility with what is already installed (from the nearby index).
   const packCompat = previewPackCompat(source);
   if (packCompat) warnings.push(packCompat);
   return { files, bytes, totalFiles, totalBytes, freeBytes: free ?? 0, freeSpaceUnknown: free === null, notEnoughSpace, versions, warnings,
@@ -3204,13 +3237,14 @@ export function previewImport(plan: ImportPlan, source: DetectedSource, gameDir:
 }
 
 /**
- * Совместимость модпака источника с уже установленным Trel-стеком.
- * Без сети: сверяем mc/loader из индекса пака с версиями в gameDir/versions.
- * Промах — это предупреждение, а не запрет: пак может ехать как файлы.
+ * Compatibility of the source modpack with the already installed Trel stack.
+ * Without network: we compare the mc/loader from the pack index with the
+ * versions in gameDir/versions. A mismatch is a warning, not a ban: the pack
+ * may still travel as plain files.
  */
 export function previewPackCompat(source: DetectedSource): string | null {
   if (!source.modpack || source.modpack.loader === 'vanilla') return null;
-  // Проверяем индекс рядом с rootDir (overrides/minecraft раскладки).
+  // We check the index next to rootDir (the overrides/minecraft layouts).
   const idxDirs = [source.rootDir, path.dirname(source.rootDir)];
   for (const d of idxDirs) {
     for (const mf of ['modrinth.index.json', 'manifest.json']) {
@@ -3230,12 +3264,12 @@ export function previewPackCompat(source: DetectedSource): string | null {
 }
 
 /**
- * Отчёт о последнем импорте в эту папку игры.
+ * Report about the last import into this game folder.
  *
- * Манифест писался с самого начала, но никто его не читал: пользователь,
- * зайдя на страницу импорта второй раз, видел тот же список источников без
- * следа того, что перенос уже был. Дедупликация спасает от дублей файлов,
- * но не отвечает на вопрос «я это уже делал?».
+ * The manifest was written from the very beginning, but nobody read it: a user
+ * opening the import page a second time saw the same list of sources with no
+ * trace of the transfer having happened. Deduplication saves from duplicate
+ * files, but it does not answer the question "did I already do this?".
  */
 export function readLastImportReport(gameDir: string): LastImportInfo | null {
   const raw = readJson(path.join(gameDir, '.trel_import.json')) as Record<string, unknown> | null;

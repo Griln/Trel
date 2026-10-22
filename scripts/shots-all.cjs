@@ -1,4 +1,4 @@
-/* Скриншоты всех вкладок для сверки с превью */
+/* Screenshots of all tabs for comparison with the previews */
 const { chromium } = require('playwright-core');
 
 (async () => {

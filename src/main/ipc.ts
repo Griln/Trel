@@ -41,8 +41,8 @@ const SYSTEM_DENYLIST = new Set([
   'c:\\programdata', 'c:\\$recycle.bin', 'c:\\system volume information',
   '/etc', '/usr', '/bin', '/sbin', '/var', '/proc', '/sys', '/dev', '/boot',
 ]);
-// Корень дома (/home, C:\Users) в списке намеренно НЕТ: gameDir всегда внутри
-// него. Сам дом и корень диска запрещены отдельно в validateSettings.
+// The home root (/home, C:\Users) is intentionally NOT in the list: gameDir is always
+// inside it. The home directory itself and the filesystem root are forbidden separately in validateSettings.
 
 function validateSettings(s: any): LauncherSettings {
   if (!s || typeof s !== 'object') throw new Error('Invalid settings');
@@ -51,16 +51,16 @@ function validateSettings(s: any): LauncherSettings {
   const resolved = path.resolve(s.gameDir);
   if (resolved.includes('\0')) throw new Error('Invalid gameDir');
   if (resolved.startsWith('\\\\')) throw new Error('Network paths not allowed for gameDir');
-  // Симлинк gameDir -> /etc проходил строковую проверку: сверяем реальный путь.
+  // A gameDir symlink to /etc passed the string check: compare the real path.
   let realResolved = resolved;
-  try { realResolved = fs.realpathSync(resolved); } catch { /* ещё не создана — строкой */ }
+  try { realResolved = fs.realpathSync(resolved); } catch { /* not created yet — string check only */ }
   const checkRoots = [resolved, realResolved];
   for (const cand of checkRoots) {
     const lc = cand.toLowerCase();
     for (const denied of SYSTEM_DENYLIST) {
       if (lc === denied || lc.startsWith(denied + path.sep)) throw new Error('System directory not allowed for gameDir');
     }
-    // Корень диска, дом и tmp — не место для папки игры (снос/запись мимо).
+    // The filesystem root, home and tmp are no place for the game folder (deletion/writes go astray).
     if (cand === path.parse(cand).root) throw new Error('Filesystem root not allowed for gameDir');
   }
   const home = os.homedir();
@@ -70,8 +70,8 @@ function validateSettings(s: any): LauncherSettings {
     if (typeof s.javaPath !== 'string' || s.javaPath.length > 1024 || s.javaPath.includes('\0')) throw new Error('Invalid javaPath');
     const lcJava = s.javaPath.toLowerCase();
     if (!lcJava.includes('java')) throw new Error('javaPath does not look like a Java executable');
-    // Исполняемый чужой бинарь при следующем запуске: файл обязан существовать
-    // и иметь exec-бит. Иначе — либо опечатка, либо подмена на неудаляемый путь.
+    // A foreign executable on the next launch: the file must exist
+    // and have the exec bit. Otherwise — either a typo or a substitution with a non-removable path.
     try {
       const st = fs.statSync(s.javaPath);
       if (!st.isFile()) throw new Error('javaPath is not a file');
@@ -86,7 +86,7 @@ function validateSettings(s: any): LauncherSettings {
     const parts = s.jvmArgs.split(/\s+/).filter(Boolean);
     for (const p of parts) {
       if (DANGEROUS_JVM_ARGS.test(p)) throw new Error('Dangerous JVM argument blocked: ' + p);
-      // Подмена classpath = подмена всего кода игры сторонним jar.
+      // Substituting the classpath = substituting the whole game code with a third-party jar.
       if (p === '-cp' || p === '-classpath' || p.startsWith('-Djava.security.') || p.startsWith('-Djdk.')) {
         throw new Error('Dangerous JVM argument blocked: ' + p);
       }
@@ -96,8 +96,8 @@ function validateSettings(s: any): LauncherSettings {
     if (s.proxyUrl.length > 512) throw new Error('proxyUrl too long');
     if (!parseProxyUrl(s.proxyUrl)) throw new Error('Invalid proxyUrl (need http(s)://host:port)');
   }
-  // preCommand/postCommand — whitelist safe characters only + явный запрет
-  // подстановок, которые whitelist по символам не ловит.
+  // preCommand/postCommand — whitelist safe characters only + an explicit ban
+  // on substitutions that the character whitelist does not catch.
   for (const key of ['preCommand', 'postCommand'] as const) {
     if (typeof s[key] === 'string' && s[key].length > 0) {
       if (s[key].length > 1024) throw new Error(key + ' too long');
@@ -158,7 +158,7 @@ function classifyTrelEmuSource(root: string): 'downloaded' | 'portable' | 'bundl
 export function registerIpc(win: BrowserWindow, launcherDir: string, updater: LauncherUpdater) {
   const store = new SettingsStore(launcherDir);
   const settings = store.loadSettings();
-  // Прокси из настроек (или env) — до любых скачиваний этого процесса.
+  // Proxy from settings (or env) — before any downloads of this process.
   try {
     applyGlobalProxy(settings.proxyUrl || process.env.HTTPS_PROXY || process.env.https_proxy);
   } catch { /* ignore */ }
@@ -166,8 +166,8 @@ export function registerIpc(win: BrowserWindow, launcherDir: string, updater: La
   const worlds = new WorldService(settings.gameDir);
   const snapshots = new SnapshotService(launcherDir, settings.gameDir);
   const webdav = new WebdavSync(launcherDir, settings.gameDir);
-  // SkinServer и AuthlibInjector — общие между клиентом и серверами.
-  // Один mock-сервер обслуживает скины клиента и server-side authlib проверки.
+  // SkinServer and AuthlibInjector are shared between the client and the servers.
+  // A single mock server serves the client skins and the server-side authlib checks.
   const skinServer = new SkinServer();
   const authlib = new AuthlibInjector(launcherDir);
   const mc = new MinecraftService(settings.gameDir, java, worlds, launcherDir, skinServer, authlib);
@@ -180,38 +180,38 @@ export function registerIpc(win: BrowserWindow, launcherDir: string, updater: La
   const nativeShots = new NativeScreenshotService(() => store.loadSettings().gameDir, () => win, () => mc.hasRunningGame);
   const serverPing = new ServerPingService(settings.gameDir);
 
-  // Прокидываем актуальный список аккаунтов в skin-сервер. Без этого
-  // authlib-injector при запуске игры не нашёл бы профиль с текстурой.
+  // Push the current account list to the skin server. Without this
+  // authlib-injector would not find the textured profile when the game starts.
   mc.updateSkinAccounts(store.loadAccounts());
 
-  // Сводим существующие установки к одному folder per loader: для каждого
-  // лоадера с inheritsFrom впитываем родительскую ваниль и удаляем её папку.
-  // Безопасно для тех у кого уже всё «плоское» — flatten идемпотентен.
+  // Reduce existing installs to one folder per loader: for each loader with
+  // inheritsFrom we absorb the parent vanilla and delete its folder.
+  // Safe for those that are already "flat" — flatten is idempotent.
   // NOT called here: consolidateInstalls() is now called from the IPC handler below,
   // so the renderer can be notified about changes. Calling it here caused the
   // renderer to receive stale data (phantom orphan folders) since IPC handlers
   // are registered before the first renderer connects.
 
-  // Удаляем пустые папки контента у ванильных версий — наследие старых сборок,
-  // которые создавали их при установке. В фоне, не блокируя старт.
+  // Remove the empty content folders of vanilla versions — a leftover of old builds
+  // that created them on install. In the background, without blocking the startup.
   setImmediate(() => { try { mc.cleanupVanillaContentFolders(); } catch {} });
 
   // ─── Cold-start prewarm ────────────────────────────────────────────────
-  // Прогреваем Java-кэш в фоне ещё до того как renderer успеет подключиться.
-  // К моменту когда пользователь жмёт «Играть», `findBest` отдаёт результат
-  // мгновенно из persistent-кэша и не запускает scan на горячем пути.
+  // Warm up the Java cache in the background even before the renderer manages to connect.
+  // By the time the user clicks "Play", `findBest` returns the result
+  // instantly from the persistent cache and does not start a scan on the hot path.
   java.prewarm().catch((e) => console.error('[ipc] Java prewarm failed:', e));
 
-  // Параллельно: поднимаем skinServer и authlib, чтобы не ждать их при первом
-  // запуске. Для online-аккаунтов skin-сервер нужен всегда — он обслуживает
-  // всю yggdrasil-аутентификацию, не только скины.
+  // In parallel: bring up skinServer and authlib so we don't wait for them on the first
+  // launch. The skin server is always needed for online accounts — it serves
+  // the whole yggdrasil authentication, not just the skins.
   skinServer.start().catch((e) => console.error('[ipc] Skin server start failed:', e));
   authlib.ensure().catch((e) => console.error('[ipc] Authlib ensure failed:', e));
 
-  // При каждом запуске ОБНОВЛЯЕМ ярлык на рабочем столе
-  // (NSIS может удалить старый при обновлении, а новый не создать).
-  // Для portable версии используем PORTABLE_EXECUTABLE_FILE — иначе
-  // ярлык будет указывать на временный файл, который исчезает при выходе.
+  // On every launch we REFRESH the desktop shortcut
+  // (NSIS may delete the old one on update and fail to create a new one).
+  // For the portable version we use PORTABLE_EXECUTABLE_FILE — otherwise
+  // the shortcut would point to a temporary file that disappears on exit.
   (function ensureShortcut() {
     try {
       if (process.platform === 'linux') {
@@ -227,7 +227,7 @@ export function registerIpc(win: BrowserWindow, launcherDir: string, updater: La
       for (const desktop of [path.join(os.homedir(), 'OneDrive', 'Desktop'), path.join(os.homedir(), 'Desktop')]) {
         if (!fs.existsSync(desktop)) continue;
         const lnk = path.join(desktop, 'Trel.lnk');
-        // Не перезаписываем валидный ярлык — пользователь мог его создать вручную.
+        // Do not overwrite a valid shortcut — the user may have created it manually.
         if (fs.existsSync(lnk)) {
           try {
             const meta = shell.readShortcutLink(lnk);
@@ -246,8 +246,8 @@ export function registerIpc(win: BrowserWindow, launcherDir: string, updater: La
     }
   })();
 
-  // Заодно резолвим Java под последнюю запущенную версию: к моменту клика
-  // resolveJava() уже знает путь и не делает ни одного дискового запроса.
+  // We also resolve Java for the last launched version: by the time of the click
+  // resolveJava() already knows the path and does not make a single disk request.
   if (settings.lastVersionId) {
     (async () => {
       try {
@@ -315,7 +315,7 @@ export function registerIpc(win: BrowserWindow, launcherDir: string, updater: La
     const prev = store.loadSettings();
     const prevDir = prev.gameDir;
     if (clean.gameDir !== prevDir) {
-      // Сохраняем предыдущую папку если её ещё нет (не затираем при повторных сменах без удаления)
+      // Save the previous folder if it is not set yet (do not overwrite it on repeated switches without deletion)
       if (!prev.prevGameDir || prev.prevGameDir !== clean.gameDir) {
         clean.prevGameDir = prevDir;
       }
@@ -348,7 +348,7 @@ export function registerIpc(win: BrowserWindow, launcherDir: string, updater: La
   function desktopPath(): string {
     const home = os.homedir();
     if (process.platform === 'linux') {
-      // XDG_USER_DIRS: используем реально существующий Desktop, fallback на ~/Desktop.
+      // XDG_USER_DIRS: use the actually existing Desktop, fallback to ~/Desktop.
       for (const candidate of [
         process.env.XDG_DESKTOP_DIR,
         path.join(home, 'Desktop'),
@@ -367,7 +367,7 @@ export function registerIpc(win: BrowserWindow, launcherDir: string, updater: La
     return path.join(home, 'Desktop');
   }
 
-  /** Linux: содержимое .desktop-файла для ярлыка Trel. */
+  /** Linux: contents of the .desktop file for the Trel shortcut. */
   function linuxDesktopFileContent(exePath: string, iconPath: string): string {
     return [
       '[Desktop Entry]',
@@ -385,11 +385,11 @@ export function registerIpc(win: BrowserWindow, launcherDir: string, updater: La
     ].join('\n');
   }
 
-  /** Linux: путь к иконке Trel. Prefer shared из /usr/share/pixmaps при системной установке, fallback на bundled icon.png рядом с бинарником. */
+  /** Linux: path to the Trel icon. Prefer the shared one from /usr/share/pixmaps on a system install, fallback to the bundled icon.png next to the binary. */
   function linuxIconPath(): string {
     const exe = process.execPath;
     const exeDir = path.dirname(exe);
-    // AppImage: иконка лежит рядом (resources/build/icon.png) или в /usr/share/pixmaps.
+    // AppImage: the icon sits next to it (resources/build/icon.png) or in /usr/share/pixmaps.
     const candidates = [
       '/usr/share/pixmaps/trel.png',
       '/usr/share/icons/hicolor/256x256/apps/trel.png',
@@ -401,7 +401,7 @@ export function registerIpc(win: BrowserWindow, launcherDir: string, updater: La
     return '/usr/share/pixmaps/trel.png';
   }
 
-  /** Linux: создаёт/обновляет .desktop-ярлык на рабочем столе, если его ещё нет или он битый. */
+  /** Linux: creates/updates the .desktop shortcut on the desktop if it does not exist yet or is broken. */
   function ensureLinuxDesktopShortcut(): void {
     try {
       const desktop = desktopPath();
@@ -409,7 +409,7 @@ export function registerIpc(win: BrowserWindow, launcherDir: string, updater: La
       const exePath = process.execPath;
       const iconPath = linuxIconPath();
       const content = linuxDesktopFileContent(exePath, iconPath);
-      // Если файл существует и валиден (Exec ведёт на существующий бинарник) — не трогаем.
+      // If the file exists and is valid (Exec points to an existing binary) — leave it alone.
       if (fs.existsSync(desktopFile)) {
         try {
           const existing = fs.readFileSync(desktopFile, 'utf-8');
@@ -450,13 +450,13 @@ export function registerIpc(win: BrowserWindow, launcherDir: string, updater: La
       }
       const desktop = desktopPath();
       const linkPath = path.join(desktop, 'Trel.lnk');
-      // Portable: process.execPath — это временный файл (распакованный во время работы).
-      // Оригинальный portable .exe лежит в PORTABLE_EXECUTABLE_FILE.
+      // Portable: process.execPath is a temporary file (unpacked while running).
+      // The original portable .exe lives in PORTABLE_EXECUTABLE_FILE.
       const isPortable = !!process.env.PORTABLE_EXECUTABLE_FILE;
       const exePath = isPortable ? process.env.PORTABLE_EXECUTABLE_FILE! : process.execPath;
       if (!exePath || !fs.existsSync(exePath)) return false;
 
-      // Удаляем старый битый ярлык если есть
+      // Remove the old broken shortcut if there is one
       if (fs.existsSync(linkPath)) {
         try {
           const meta = shell.readShortcutLink(linkPath);
@@ -468,7 +468,7 @@ export function registerIpc(win: BrowserWindow, launcherDir: string, updater: La
         }
       }
 
-      // Icon: для portable ищем рядом с оригинальным exe; для установленного — рядом с execPath (в app dir)
+      // Icon: for portable we look next to the original exe; for an installed app — next to execPath (in the app dir)
       const iconDir = isPortable ? path.dirname(exePath) : path.dirname(process.execPath);
       const iconPath = path.join(iconDir, 'resources', 'build', 'icon.ico');
       const icon = fs.existsSync(iconPath) ? iconPath : exePath;
@@ -499,8 +499,8 @@ export function registerIpc(win: BrowserWindow, launcherDir: string, updater: La
   });
 
   // ─── Auto-launch at system startup ──────────────────────────────────
-  // Linux: .desktop в ~/.config/autostart/, Windows: .lnk в Startup-папке,
-  // macOS: нативный LoginItems через app.setLoginItemSettings. См. autostart.ts.
+  // Linux: .desktop in ~/.config/autostart/, Windows: .lnk in the Startup folder,
+  // macOS: native LoginItems via app.setLoginItemSettings. See autostart.ts.
   ipcMain.handle('settings:autoLaunchGet', () => getAutoLaunch());
   ipcMain.handle('settings:autoLaunchSet', (_e, enabled: boolean) => setAutoLaunch(!!enabled));
 
@@ -553,7 +553,7 @@ export function registerIpc(win: BrowserWindow, launcherDir: string, updater: La
     // Rollback: rename source to backup, delete only after all copies succeed
     const pendingDeletions: string[] = [];
 
-    // Проверяет содержит ли директория файлы (не считая мусор и пустые подпапки)
+    // Checks whether a directory contains files (ignoring junk and empty subfolders)
     const dirHasContent = async (dir: string): Promise<boolean> => {
       try {
         const entries = await fsp.readdir(dir);
@@ -605,7 +605,7 @@ export function registerIpc(win: BrowserWindow, launcherDir: string, updater: La
 
     try { await fsp.mkdir(newDir, { recursive: true }); } catch (e) { console.warn('Ignored error:', e); }
 
-    // Топ-уровневые папки для переноса
+    // Top-level folders to transfer
     const items = ['saves', 'mods', 'resourcepacks', 'shaderpacks', 'texturepacks',
       'config', 'logs', 'crash-reports', 'datapacks', 'screenshots', 'backups',
       'local', 'world_templates', 'resources', 'stats', 'advancements',
@@ -622,7 +622,7 @@ export function registerIpc(win: BrowserWindow, launcherDir: string, updater: La
       } catch (e) { errors.push(`${item}: ${(e as Error).message}`); }
     }
 
-    // versions — копируем только папки с реальным содержимым (jar, json)
+    // versions — copy only the folders with real content (jar, json)
     let versionsBackupDir: string | null = null;
     const versionsSrc = path.join(oldDir, 'versions');
     if (fs.existsSync(versionsSrc)) {
@@ -670,7 +670,7 @@ export function registerIpc(win: BrowserWindow, launcherDir: string, updater: La
       }
     }
 
-    // libraries и assets — копируем как есть
+    // libraries and assets — copy as is
     for (const cache of ['libraries', 'assets']) {
       const src = path.join(oldDir, cache);
       const dst = path.join(newDir, cache);
@@ -682,7 +682,7 @@ export function registerIpc(win: BrowserWindow, launcherDir: string, updater: La
       } catch (e) { errors.push(`${cache}: ${(e as Error).message}`); }
     }
 
-    // Файлы
+    // Files
     const files = ['options.txt', 'servers.dat', 'servers.dat_old', 'usercache.json',
       'usernamecache.json', 'launcher_profiles.json'];
     for (const file of files) {
@@ -709,16 +709,16 @@ export function registerIpc(win: BrowserWindow, launcherDir: string, updater: La
   });
 
   ipcMain.handle('accounts:list', () => store.loadAccounts());
-  // Простой mutex: все мутации accounts.json идут через одну Promise-цепочку.
-  // Без этого параллельные setSkin (drag-drop + клик) могут перезаписать
-  // друг друга — оба читают одинаковый снапшот, второй проигрывает.
+  // Simple mutex: all accounts.json mutations go through a single Promise chain.
+  // Without this, parallel setSkin calls (drag-drop + click) may overwrite
+  // each other — both read the same snapshot, the second one loses.
   let accountsLock: Promise<unknown> = Promise.resolve();
   const withAccountsLock = <T>(fn: () => T | Promise<T>): Promise<T> => {
     const next = accountsLock.then(() => fn(), () => fn());
     accountsLock = next;
     return next as Promise<T>;
   };
-  // Обновляет skin-сервер актуальным списком аккаунтов после любой записи.
+  // Updates the skin server with the current account list after any write.
   const refreshSkinServer = () => {
     try { mc.updateSkinAccounts(store.loadAccounts()); } catch (e) { console.warn('Ignored error:', e); }
   };
@@ -778,17 +778,17 @@ export function registerIpc(win: BrowserWindow, launcherDir: string, updater: La
     return list;
   }));
 
-  // ---- Скины ----
-  // Скин хранится у аккаунта как data-URL (PNG, 64×64 или 64×32).
-  // Чтобы скин был виден ВНУТРИ игры — лаунчер при запуске поднимает
-  // локальный yggdrasil-mock на 127.0.0.1:RANDOM и передаёт игре через
+  // ---- Skins ----
+  // A skin is stored on the account as a data-URL (PNG, 64×64 or 64×32).
+  // To make the skin visible INSIDE the game — the launcher starts a
+  // local yggdrasil-mock on 127.0.0.1:RANDOM at launch and passes it to the game via
   // authlib-injector (-javaagent).
   //
-  // При смене скина мы дополнительно чистим дисковый кэш скинов Minecraft
-  // (assets/skins). Игра кэширует загруженные текстуры по SHA256 от URL,
-  // и хотя URL теперь завязан на хэш PNG (см. SkinServer.profileResponse),
-  // на ОЧЕНЬ старых запусках мог остаться файл со старым URL. Чистка
-  // гарантирует что в игре никогда не покажется прошлый скин из кэша.
+  // When the skin changes we additionally wipe the on-disk Minecraft skin cache
+  // (assets/skins). The game caches downloaded textures by the SHA256 of the URL,
+  // and although the URL is now tied to the PNG hash (see SkinServer.profileResponse),
+  // on VERY old launches a file with the old URL may still be left over. The wipe
+  // guarantees that a previous skin from the cache never shows up in the game.
   const wipeSkinCache = () => {
     try {
       const skinCache = path.join(store.loadSettings().gameDir, 'assets', 'skins');
@@ -802,12 +802,12 @@ export function registerIpc(win: BrowserWindow, launcherDir: string, updater: La
     const list = store.loadAccounts();
     const idx = list.findIndex((a) => a.uuid === uuid);
     if (idx < 0) throw new Error('Account not found');
-    // Базовая валидация: должен быть data:image/png;base64,...
+    // Basic validation: must be data:image/png;base64,...
     if (!/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(dataUrl)) {
       throw new Error('Skin must be PNG. Drag a .png file or select one via the dialog.');
     }
-    // Защита от слишком больших скинов: PNG 64×64 ~5KB, 64×128 ~10KB,
-    // больше 128KB — это явно не скин (либо фото, либо потенциальный DoS).
+    // Protection against too large skins: PNG 64×64 ~5KB, 64×128 ~10KB,
+    // more than 128KB is clearly not a skin (either a photo or a potential DoS).
     const approxBytes = Math.floor(dataUrl.length * 0.75); // base64 → bytes
     if (approxBytes > 128 * 1024) {
       throw new Error('Skin file too large (>128 KB). Must be PNG 64×64 or 64×32.');
@@ -839,7 +839,7 @@ export function registerIpc(win: BrowserWindow, launcherDir: string, updater: La
     const filePath = res.filePaths[0];
     try {
       const buf = fs.readFileSync(filePath);
-      // Проверяем что это реально PNG (магические байты 89 50 4E 47)
+      // Verify that this is really a PNG (magic bytes 89 50 4E 47)
       if (buf.length < 8 || buf[0] !== 0x89 || buf[1] !== 0x50 || buf[2] !== 0x4e || buf[3] !== 0x47) {
         throw new Error('File is not a PNG');
       }
@@ -849,20 +849,20 @@ export function registerIpc(win: BrowserWindow, launcherDir: string, updater: La
     }
   });
 
-  // Сводим существующие установки к одному folder per loader: для каждого
-  // лоадера с inheritsFrom впитываем родительскую ваниль и удаляем её папку.
-  // Безопасно для тех у кого уже всё «плоское» — flatten идемпотентен.
+  // Reduce existing installs to one folder per loader: for each loader with
+  // inheritsFrom we absorb the parent vanilla and delete its folder.
+  // Safe for those that are already "flat" — flatten is idempotent.
   //
-  // Consolate выполняется ЛАЗНО: при первом запросе данных от renderer-а.
-  // Это гарантирует что consolidate отработал ДО того как renderer получит
-  // первый ответ (иначе phantom-папки попадают в данные раньше чем удаляются).
+  // Consolidate runs LAZILY: on the first data request from the renderer.
+  // This guarantees that consolidate has run BEFORE the renderer receives
+  // the first response (otherwise phantom folders reach the data before they are deleted).
   let consolidated = false;
   const ensureConsolidated = () => {
     if (consolidated) return;
     consolidated = true;
     try { mc.consolidateInstalls(); } catch (e) { console.warn('Ignored error:', e); }
-    // После очистки orphan-папок шлём событие чтобы renderer обновил счётчики.
-    // Без этого sidebar/hero показывают неправильные числа пока не перезайдёт.
+    // After cleaning up the orphan folders we send an event so the renderer updates the counters.
+    // Without this the sidebar/hero show wrong numbers until the user re-enters.
     if (!win.isDestroyed()) {
       const details = mc.installedDetailed();
       win.webContents.send('minecraft:manifestUpdated', details);
@@ -890,9 +890,9 @@ export function registerIpc(win: BrowserWindow, launcherDir: string, updater: La
     return true;
   });
 
-  // Принудительный consolidate: запускает flatten для всех лоадеров и чистит
-  // orphan-папки ванили. Вызывается после установки лоадера, чтобы если до этого
-  // криво встали другие лоадеры — их orphaned-ваниль тоже подчистилась.
+  // Forced consolidate: runs flatten for all loaders and cleans up
+  // orphan vanilla folders. Called after installing a loader, so that other loaders
+  // that were installed incorrectly before also get their orphaned vanilla cleaned up.
   ipcMain.handle('minecraft:consolidate', () => {
     try { mc.consolidateInstalls(); } catch (e) { console.warn('Ignored error:', e); }
     if (!win.isDestroyed()) {
@@ -901,9 +901,9 @@ export function registerIpc(win: BrowserWindow, launcherDir: string, updater: La
     }
     return mc.installedDetailed();
   });
-  // Сбрасывает settings.lastVersionId если он указывает на одну из переданных
-  // версий. Это нужно, чтобы после удаления версии главная не показывала
-  // удалённую как активную.
+  // Resets settings.lastVersionId if it points to one of the passed
+  // versions. This is needed so that after deleting a version the home screen does not show
+  // the deleted one as active.
   const clearLastVersionIfDeleted = (deletedIds: string[]) => {
     const s = store.loadSettings();
     if (s.lastVersionId && deletedIds.includes(s.lastVersionId)) {
@@ -933,9 +933,9 @@ export function registerIpc(win: BrowserWindow, launcherDir: string, updater: La
   ipcMain.handle('minecraft:revertToVanilla', async (_e, baseMc: string) => {
     assertSafeVersionId(baseMc, 'baseMc');
     const result = await mc.revertToVanilla(baseMc, win);
-    // Если активной была одна из удалённых модд-версий — переключаем на
-    // базовую ваниль (она же только что переустановлена). Если активной была
-    // не она вовсе — не трогаем.
+    // If one of the deleted mod versions was active — switch to the
+    // base vanilla (it has just been reinstalled). If it was not active
+    // at all — leave it alone.
     const s = store.loadSettings();
     if (s.lastVersionId && result.removed.includes(s.lastVersionId)) {
       s.lastVersionId = baseMc;
@@ -944,7 +944,7 @@ export function registerIpc(win: BrowserWindow, launcherDir: string, updater: La
     if (!win.isDestroyed()) {
       win.webContents.send('minecraft:manifestUpdated', mc.installedDetailed());
     }
-    // Возвращаем актуальные настройки в renderer чтобы он тоже обновил state.
+    // Return the current settings to the renderer so that it updates its state too.
     return { ...result, settings: store.loadSettings() };
   });
   ipcMain.handle('minecraft:openFolder', (_e, kind: 'game' | 'version', versionId?: string) => {
@@ -976,8 +976,8 @@ export function registerIpc(win: BrowserWindow, launcherDir: string, updater: La
   });
   ipcMain.handle('bedrock:launch', async (_e, versionId: string, serial: string) => {
     assertSafeVersionId(versionId);
-    // Пустой serial — это сигнал "запусти через TrelEmu (bundled, auto-start)".
-    // Внешний ADB-серийник (USB/scrcpy) должен соответствовать строгому формату.
+    // An empty serial is the signal "launch via TrelEmu (bundled, auto-start)".
+    // An external ADB serial (USB/scrcpy) must match a strict format.
     if (serial && (typeof serial !== 'string' || serial.length > 256 || !/^[a-zA-Z0-9._:-]+$/.test(serial))) {
       throw new Error('Invalid device serial');
     }
@@ -1005,21 +1005,21 @@ export function registerIpc(win: BrowserWindow, launcherDir: string, updater: La
   ipcMain.handle('bedrock:cancelGenymotionStart', () => false);
 
   // ─── TrelEmu (bundled Android-x86 + QEMU TCG) ─────────────────────────
-  // Приоритетный бэкенд для Bedrock: всегда с собой, ничего не надо ставить.
-  // `info` отдаёт qemuExe/imagePath/port — UI использует чтобы показать
-  // "bundled emulator готов" либо "не входит в бандл этой сборки".
+  // The primary backend for Bedrock: always bundled, nothing to install.
+  // `info` returns qemuExe/imagePath/port — the UI uses it to show either
+  // "bundled emulator is ready" or "not included in the bundle of this build".
   ipcMain.handle('bedrock:trelEmuInfo', () => {
     const i = mc.trelEmu.find();
     if (!i) {
       return {
         found: false,
-        // Скажет UI куда положится TrelEmu после скачивания — чтобы пользователь
-        // понимал куда уйдёт 1 ГБ.
+        // Tells the UI where TrelEmu will be placed after the download — so the user
+        // understands where the 1 GB will go.
         targetDir: mc.trelEmu.downloader.resolveTargetDir(),
         downloaderBusy: mc.trelEmu.downloader.isBusy(),
       };
     }
-    // hasSnapshot — есть ли в overlay готовый snapshot для мгновенной загрузки.
+    // hasSnapshot — whether the overlay has a ready snapshot for instant loading.
     return {
       found: true,
       qemuExe: i.qemuExe,
@@ -1055,8 +1055,8 @@ export function registerIpc(win: BrowserWindow, launcherDir: string, updater: La
     return { running: false };
   });
 
-  // In-app скачивание TrelEmu pack. URL и SHA1 можно переопределить
-  // параметрами (для тестов / зеркал).
+  // In-app download of the TrelEmu pack. The URL and SHA1 can be overridden
+  // via parameters (for tests / mirrors).
   ipcMain.handle('bedrock:trelEmuDownload', async (_e, url?: string, sha1?: string) => {
     if (typeof url === 'string' && url.length > 0) {
       if (url.length > 1024 || !/^https?:\/\//i.test(url)) throw new Error('Invalid download URL');
@@ -1065,7 +1065,7 @@ export function registerIpc(win: BrowserWindow, launcherDir: string, updater: La
       if (sha1.length > 64 || !/^[0-9a-f]+$/i.test(sha1)) throw new Error('Invalid SHA1');
     }
     if (mc.trelEmu.downloader.isBusy()) throw new Error('TrelEmu: загрузка уже выполняется');
-    // Подписываемся один раз — эмитим прогресс в renderer.
+    // Subscribe once — emit the progress to the renderer.
     const onProgress = (p: any) => {
       if (!win.isDestroyed()) win.webContents.send('trelEmu:downloadProgress', p);
     };
@@ -1096,8 +1096,8 @@ export function registerIpc(win: BrowserWindow, launcherDir: string, updater: La
     try {
       const gameDir = store.loadSettings().gameDir;
       const { requiredJavaMajorForVersion } = await import('./loaders');
-      // Локальный json/эвристика — мгновенно и без сети. В манифест ходим
-      // только если версии нет на диске (каталог) и локально версий нет.
+      // Local json/heuristic — instant and without network. We query the manifest
+      // only if the version is not on disk (directory) and there are no local versions.
       let major = requiredJavaMajorForVersion(gameDir, versionId);
       let hasLocal = false;
       try {
@@ -1112,7 +1112,7 @@ export function registerIpc(win: BrowserWindow, launcherDir: string, updater: La
             const { data } = await axios.get((entry as any).url, { timeout: 15000 });
             if (data.javaVersion?.majorVersion) major = data.javaVersion.majorVersion;
           }
-        } catch { /* сеть необязательна — остаётся эвристика */ }
+        } catch { /* the network is optional — the heuristic remains */ }
       }
       const s = store.loadSettings();
       // Validate user override
@@ -1421,7 +1421,7 @@ export function registerIpc(win: BrowserWindow, launcherDir: string, updater: La
   // ---- import from other launchers ----
   let importLock = false;
   let importAbortController: AbortController | null = null;
-  /** Троттлинг прогресса в окно: флуд по каждому мелкому файлу вешал рендер. */
+  /** Throttling of the progress sent to the window: flooding it with every small file hung the renderer. */
   function throttledProgress(intervalMs = 100) {
     let last = 0;
     let pending: unknown[] | null = null;
@@ -1445,15 +1445,15 @@ export function registerIpc(win: BrowserWindow, launcherDir: string, updater: La
     };
   }
   ipcMain.handle('import:detect', () => {
-    // Скан в воркере: обход папок всех лаунчеров синхронными fs-вызовами
-    // подвешивал окно на несколько секунд. При сбое воркера — синхронно.
+    // Scan in a worker: walking the folders of all launchers with synchronous fs calls
+    // hung the window for several seconds. If the worker fails — fall back to synchronous.
     return launcherImport.detectSourcesAsync(store.loadSettings().gameDir);
   });
   ipcMain.handle('import:cancel', () => {
     if (importAbortController) { importAbortController.abort(); }
   });
   ipcMain.handle('import:preview', async (_e, plan: launcherImport.ImportPlan) => {
-    // Только валидация и отчёт — копирование не запускается.
+    // Validation and a report only — the copying is not started.
     if (!plan || typeof plan !== 'object') throw new Error('Invalid import plan');
     if (typeof plan.sourceId !== 'string' || plan.sourceId.length === 0 || plan.sourceId.length > 128) throw new Error('Invalid sourceId');
     if (plan.sourceRootDir !== undefined && (typeof plan.sourceRootDir !== 'string' || plan.sourceRootDir.length > 1024)) throw new Error('Invalid sourceRootDir');
@@ -1473,15 +1473,15 @@ export function registerIpc(win: BrowserWindow, launcherDir: string, updater: La
     if (typeof plan.sourceId !== 'string' || plan.sourceId.length === 0 || plan.sourceId.length > 128) throw new Error('Invalid sourceId');
     if (plan.sourceRootDir !== undefined && (typeof plan.sourceRootDir !== 'string' || plan.sourceRootDir.length > 1024)) throw new Error('Invalid sourceRootDir');
     if (plan.sourceRootDir) {
-      // Источник обязан жить внутри дома юзера или tmp (архивы): корень диска
-      // или системные пути через .. не принимаем даже от своего UI.
+      // The source must live inside the user's home or tmp (archives): the filesystem root
+      // or system paths via .. are not accepted even from our own UI.
       const resolved = path.resolve(plan.sourceRootDir);
       const home = os.homedir();
       const under = (p: string, base: string) => p === base || p.startsWith(base + path.sep);
       if (!under(resolved, home) && !under(resolved, os.tmpdir())) throw new Error('Source directory is outside your home folder');
     }
     if (plan.cleanupDir !== undefined) {
-      // Удаляем только свою распаковку в tmp — и только её.
+      // We delete only our own extraction in tmp — and only that one.
       if (typeof plan.cleanupDir !== 'string') throw new Error('Invalid cleanupDir');
       const resolved = path.resolve(plan.cleanupDir);
       if (!resolved.startsWith(os.tmpdir() + path.sep) || !path.basename(resolved).startsWith('trel-pack-')) {
@@ -1503,8 +1503,8 @@ export function registerIpc(win: BrowserWindow, launcherDir: string, updater: La
       source = launcherImport.detectFromDir(plan.sourceRootDir) ?? undefined;
     }
     if (!source) throw new Error('Source not found: ' + plan.sourceId);
-    // Выгруженный .zip: распаковываем в tmp (zip-slip защита внутри),
-    // дальше — обычный импорт из папки; tmp чистится через cleanupDir.
+    // Uploaded .zip: we extract it into tmp (zip-slip protection inside),
+    // then — a regular import from the folder; tmp is cleaned up via cleanupDir.
     if (source.isArchive) {
       const { extractPackArchive } = await import('./import-ops');
       const pack = await extractPackArchive(source.rootDir);
@@ -1521,9 +1521,9 @@ export function registerIpc(win: BrowserWindow, launcherDir: string, updater: La
     importAbortController = new AbortController();
     try {
     validatePlan(plan);
-    // Запущенная игра держит options.txt/config открытыми и при выходе
-    // перезапишет их своими значениями — перенос молча пропал бы. На Windows
-    // добавились бы ещё и [LOCKED]-ошибки на занятых файлах.
+    // A running game keeps options.txt/config open and overwrites them with
+    // its own values on exit — the transfer would silently be lost. On Windows
+    // [LOCKED] errors on busy files would be added on top of that.
     if (mc.hasRunningGame) throw new Error('Закройте Minecraft перед импортом: запущенная игра перезапишет перенесённые настройки');
 
     const source = await resolveSource(plan);
@@ -1557,19 +1557,19 @@ export function registerIpc(win: BrowserWindow, launcherDir: string, updater: La
     const report = await launcherImport.performImport(plan, source, gameDir, addAccount, installVersion, (curr, total, stage, bytes, bytesPerSecond, etaSeconds, currentFile) => {
       lastTotal = total;
       sendProgress({ current: curr, total, stage, bytes, bytesPerSecond, etaSeconds, currentFile, paused: launcherImport.isImportPaused() });
-      // Прогресс в таскбаре: импорт идёт минутами, окно может быть свёрнуто.
+      // Progress in the taskbar: the import takes minutes, the window may be minimized.
       try { win.setProgressBar(total > 0 ? Math.min(curr / total, 1) : 0); } catch {}
     }, importAbortController.signal, addImportedAccount);
     if (!win.isDestroyed()) {
       win.webContents.send('import:progress', { current: lastTotal, total: lastTotal, stage: 'Done', bytes: report.bytesWritten ?? 0 });
     }
     if (report.newAccounts.length > 0) refreshSkinServer();
-    // Своя распаковка архива больше не нужна: был fromArchive — чистим tmp.
+    // Our own archive extraction is no longer needed: it was fromArchive — clean up tmp.
     if (plan.cleanupDir) {
       try { await fsp.rm(path.resolve(plan.cleanupDir), { recursive: true, force: true }); } catch {}
     }
     try { win.setProgressBar(-1); } catch {}
-    // Готово в фоне: окно может быть свёрнуто — стучимся нотификацией.
+    // Done in the background: the window may be minimized — we knock with a notification.
     try {
       const copied = Object.values(report.copied).reduce((a, b) => a + ((b as number) ?? 0), 0);
       new Notification({
@@ -1592,8 +1592,8 @@ export function registerIpc(win: BrowserWindow, launcherDir: string, updater: La
     shell.openPath(store.loadSettings().gameDir).catch(() => {});
   });
   ipcMain.handle('import:applyTweaks', (_e, tweaks: { maxMemoryMb?: number; jvmArgs?: string }) => {
-    // Кнопка «как у источника»: память и JVM-аргументы едут в настройки Trel.
-    // Валидация та же, что в settings:set (settings.ts режет опасные флаги).
+    // The "same as source" button: memory and JVM arguments go into the Trel settings.
+    // The validation is the same as in settings:set (settings.ts cuts dangerous flags).
     const s = store.loadSettings();
     if (typeof tweaks?.maxMemoryMb === 'number' && tweaks.maxMemoryMb >= 256 && tweaks.maxMemoryMb <= 32768) {
       s.memoryMb = Math.round(tweaks.maxMemoryMb);
@@ -1606,8 +1606,8 @@ export function registerIpc(win: BrowserWindow, launcherDir: string, updater: La
     return { memoryMb: s.memoryMb, jvmArgs: s.jvmArgs };
   });
   ipcMain.handle('import:checkAccount', async (_e, name: string) => {
-    // Проверка токена в фоне: дергаем профиль Mojang, таймаут 8с.
-    // Без refresh-токена проверять нечего — сразу «нужен вход».
+    // Token check in the background: we request the Mojang profile, 8s timeout.
+    // Without a refresh token there is nothing to check — straight to "login required".
     if (typeof name !== 'string' || name.length === 0 || name.length > 64) throw new Error('Invalid name');
     const acc = store.loadAccounts().find((a) => a.name.toLowerCase() === name.toLowerCase()) as (Record<string, unknown> & { name: string }) | undefined;
     if (!acc) return { ok: false, reason: 'not-found' };
@@ -1635,7 +1635,7 @@ export function registerIpc(win: BrowserWindow, launcherDir: string, updater: La
     return res.filePaths[0];
   });
   ipcMain.handle('import:fromArchive', async (_e, archivePath: string) => {
-    // Импорт модпака из zip/mrpack/trelpack: распаковка с zip-slip защитой + detect.
+    // Modpack import from zip/mrpack/trelpack: extraction with zip-slip protection + detect.
     if (typeof archivePath !== 'string' || archivePath.length === 0 || archivePath.length > 1024) throw new Error('Invalid path');
     if (!/\.(zip|mrpack|trelpack)$/i.test(archivePath)) throw new Error('Only .zip / .mrpack / .trelpack archives are supported');
     const { extractPackArchive } = await import('./import-ops');
@@ -1645,8 +1645,8 @@ export function registerIpc(win: BrowserWindow, launcherDir: string, updater: La
     return { ...source, id: 'archive', label: `${pack.packName} (archive)`, tmpDir: pack.tmpDir };
   });
   ipcMain.handle('import:performMany', async (_e, plans: launcherImport.ImportPlan[]) => {
-    // Очередь источников: несколько лаунчеров за один заход, строго по очереди.
-    // Отмена останавливает очередь (остаток помечается cancelled, файлы целы).
+    // Queue of sources: several launchers in one run, strictly one after another.
+    // Cancelling stops the queue (the rest is marked as cancelled, the files stay intact).
     if (importLock) throw new Error('Import already in progress');
     if (!Array.isArray(plans) || plans.length === 0 || plans.length > 5) throw new Error('Provide 1-5 plans');
     for (const p of plans) validatePlan(p);
@@ -1817,7 +1817,7 @@ export function registerIpc(win: BrowserWindow, launcherDir: string, updater: La
     }
     return modpacks.install(version, win);
   });
-  // Установка версии по профилю, распознанному при импорте (DetectedModpack).
+  // Installing a version by the profile recognized during the import (DetectedModpack).
   ipcMain.handle('modpacks:installFromProfile', async (_e, profile: { mc: string; loader: string; loaderVersion?: string; name?: string }) => {
     if (!profile || typeof profile !== 'object') throw new Error('Invalid profile');
     if (typeof profile.mc !== 'string' || profile.mc.length === 0 || profile.mc.length > 64) throw new Error('Invalid mc version');
@@ -1895,9 +1895,9 @@ export function registerIpc(win: BrowserWindow, launcherDir: string, updater: La
       if (!win.isDestroyed()) win.webContents.send('minecraft:manifestUpdated', list);
     } catch (e) { console.warn('Ignored error:', e); }
   };
-  // Smart manifest poller: тикает только когда окно реально видно и в фокусе.
-  // Раньше setInterval работал в фоне постоянно — лишний сетевой запрос
-  // и работа V8 раз в 30 минут даже если окно свернуто часами.
+  // Smart manifest poller: ticks only when the window is really visible and in focus.
+  // Previously setInterval ran in the background all the time — an extra network request
+  // and V8 work every 30 minutes even if the window was minimized for hours.
   let manifestInterval: NodeJS.Timeout | null = null;
   const startManifestPolling = () => {
     if (manifestInterval) return;
@@ -1908,8 +1908,8 @@ export function registerIpc(win: BrowserWindow, launcherDir: string, updater: La
     clearInterval(manifestInterval);
     manifestInterval = null;
   };
-  // Первый запуск чуть отложен — рендерер сам подтянет манифест при mount,
-  // повторный запрос сразу при старте лишний.
+  // The first run is slightly delayed — the renderer pulls the manifest itself on mount,
+  // an immediate repeated request at startup is redundant.
   setTimeout(() => {
     if (!win.isDestroyed() && win.isVisible() && !win.isMinimized()) startManifestPolling();
   }, 5000);
@@ -1920,25 +1920,25 @@ export function registerIpc(win: BrowserWindow, launcherDir: string, updater: La
   win.on('minimize', stopManifestPolling);
   win.on('blur', stopManifestPolling);
 
-  // Грациозная остановка ВСЕХ ресурсов при закрытии окна лаунчера.
-  // Раньше тут был только servers.shutdownAll(), но висели:
-  //   - manifestInterval (засыпал webContents.send в destroyed window)
-  //   - skinServer (HTTP-сокет на 127.0.0.1)
-  // На macOS окна закрываются и переоткрываются, без cleanup ресурсы
-  // накапливались бы между сессиями.
+  // Graceful shutdown of ALL resources when the launcher window is closed.
+  // Previously only servers.shutdownAll() was here, but these kept hanging around:
+  //   - manifestInterval (slept in webContents.send on a destroyed window)
+  //   - skinServer (HTTP socket on 127.0.0.1)
+  // On macOS the windows are closed and reopened, without cleanup the resources
+  // would accumulate between sessions.
   win.on('close', () => {
     stopManifestPolling();
     try { skinServer.stop(); } catch (e) { console.warn('Ignored error:', e); }
   });
 
-  // Экспортируем shutdownAll для app.on('before-quit') в main.ts,
-  // чтобы можно было дождаться завершения серверов перед выходом.
+  // Export shutdownAll for app.on('before-quit') in main.ts,
+  // so that we can wait for the servers to finish before exiting.
   return {
     shutdownAll: async () => {
       await servers.shutdownAll();
-      // TrelEmu — отдельный процесс (QEMU detached), Trel не держит ссылку
-      // на child. Если юзер вышел из лаунчера — VM ему больше не нужна,
-      // иначе она будет висеть в фоне жрёт CPU. Чистим при выходе.
+      // TrelEmu is a separate process (QEMU detached), Trel does not keep a reference
+      // to the child. If the user has quit the launcher — the VM is no longer needed,
+      // otherwise it would hang in the background eating CPU. We clean it up on exit.
       try { mc.trelEmu.stop(); } catch (e) { console.warn('[ipc] TrelEmu stop on shutdown:', e); }
     },
   };

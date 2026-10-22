@@ -286,7 +286,7 @@ export const BrowsePage: React.FC<Props> = ({
     old_alpha: t('browse.typeAlpha'),
     bedrock: "Bedrock",
   };
-  // Английские синоимы типов — чтобы «beta»/«snapshot» находились в любой локали.
+  // English synonyms of the types — so that “beta”/“snapshot” are found in any locale.
   const typeEn: Record<string, string> = {
     release: 'release',
     snapshot: 'snapshot',
@@ -295,7 +295,7 @@ export const BrowsePage: React.FC<Props> = ({
     bedrock: 'bedrock',
   };
   // TrelEmu pack — Windows-only (qemu-system-x86_64.exe, scrcpy.exe, adb.exe).
-  // На Linux/macOS скрываем вкладку Bedrock Edition целиком.
+  // On Linux/macOS we hide the Bedrock Edition tab entirely.
   const isWin = window.api.platform === 'win32';
   const [edition, setEdition] = useState<'java' | 'bedrock'>(isWin ? 'java' : 'java');
   const [versions, setVersions] = useState<VersionInfo[]>([]);
@@ -306,8 +306,8 @@ export const BrowsePage: React.FC<Props> = ({
   const [details, setDetails] = useState<InstalledVersionDetail[]>([]);
   const [selected, setSelected] = useState<string>("");
   const [filters, setFilters] = useState<Filter[]>(["release"]);
-  // Мультивыбор типов: клик по чипу добавляет/убирает тип.
-  // «Все» сбрасывает на всё; пустой выбор не оставляем — откат на «все».
+  // Multi-select of types: a click on a chip adds/removes the type.
+  // “All” resets to everything; we never leave the selection empty — it falls back to “all”.
   const toggleFilter = (id: Filter) => {
     setFilters((prev) => {
       if (id === 'all') return ['all'];
@@ -421,11 +421,11 @@ export const BrowsePage: React.FC<Props> = ({
 
   const cancelDownloadTrelEmu = async () => {
     try { await window.api.bedrock.trelEmuDownloadCancel(); } catch {}
-    // Событие 'cancelled' придёт через onDownloadProgress и сбросит state
+    // The 'cancelled' event will arrive via onDownloadProgress and reset the state
   };
 
   useEffect(() => {
-    // Подписываемся на прогресс скачивания TrelEmu pack. Один раз.
+    // We subscribe to the TrelEmu pack download progress. Once.
     const off = window.api.bedrock.onDownloadProgress((p) => {
       if (p.state === 'downloading' || p.state === 'verifying' || p.state === 'extracting') {
         setTrelEmuStatus((s) => ({
@@ -443,7 +443,7 @@ export const BrowsePage: React.FC<Props> = ({
       } else if (p.state === 'error') {
         { const message = p.error || p.message; setTrelEmuStatus((s) => isTransientTrelEmuTimeout(message) ? ({ ...s, state: 'found', error: undefined }) : ({ ...s, state: 'error', error: shortTrelEmuError(message, t) })); }
       } else if (p.state === 'cancelled') {
-        // Возвращаемся к not-found чтобы дать юзеру ретрай
+        // We go back to not-found so that the user can retry
         setTrelEmuStatus({ state: 'not-found' });
       }
     });
@@ -549,14 +549,14 @@ export const BrowsePage: React.FC<Props> = ({
         if (cancelled) return;
         setUiError(t('browse.loadError', { message: normalizeUiError((e as Error).message, t) }));
       }
-      // Каждый раз при заходе на вкладку Bedrock пересканируем TrelEmu —
-      // быстрая проверка готовности bundled-эмулятора.
+      // Every time the Bedrock tab is opened we rescan TrelEmu —
+      // a quick readiness check of the bundled emulator.
       if (!cancelled) await refreshTrelEmu();
     })();
     return () => { cancelled = true; };
   }, [edition]);
 
-  // Базы, для которых установлен хотя бы один лоадер.
+  // Base versions that have at least one loader installed.
   const loadersByBase = useMemo(() => {
     const map = new Map<string, InstalledVersionDetail[]>();
     for (const d of details) {
@@ -589,9 +589,9 @@ export const BrowsePage: React.FC<Props> = ({
 
 
   const filtered = useMemo(() => {
-    // Поиск v3: числовые (версионные) токены матчатся по границам сегментов id
-    // («1.0» находит только 1.0, а не даты и не 1.10.2), текстовые — по описанию
-    // патча и типу версии. Несколько слов — каждое должно найтись (И).
+    // Search v3: numeric (version) tokens are matched on the id segment boundaries
+    // (“1.0” finds only 1.0, and neither dates nor 1.10.2), text ones — by the patch
+    // description and the version type. Several words — each one has to be found (AND).
     const q = query.trim().toLowerCase();
     const parts = q ? q.split(/\s+/).filter(Boolean) : [];
     const segMatch = (id: string, p: string) =>
@@ -618,9 +618,9 @@ export const BrowsePage: React.FC<Props> = ({
     });
   }, [edition, versions, bedrockVersions, query, filters, t.locale]);
 
-  // Пока пользователь ищет, панель деталей следует за первым результатом —
-  // иначе под списком остаётся «поломанный» блок старой выбранной версии,
-  // которой нет в выдаче.
+  // While the user is searching, the details panel follows the first result —
+  // otherwise a “broken” block of the previously selected version stays below the list,
+  // one that is not in the result set.
   useEffect(() => {
     if (!query.trim()) return;
     if (filtered.length && !filtered.some((v) => v.id === selected)) {
@@ -631,11 +631,11 @@ export const BrowsePage: React.FC<Props> = ({
   const selectedVersion = (edition === 'bedrock'
     ? bedrockVersions.find((v) => v.id === selected)
     : versions.find((v) => v.id === selected)) as VersionInfo | BedrockVersionInfo | undefined;
-  // Лоадеры, установленные для выбранной MC версии
+  // Loaders installed for the selected MC version
   const loadersForSel = selected && edition === 'java' ? (loadersByBase.get(selected) ?? []) : [];
   const primaryLoader = loadersForSel[0] ?? null;
-  // То, что мы реально запустим, если нажать "Играть":
-  // если стоит лоадер — лоадер впитывает ваниль; иначе — голая версия.
+  // What we will actually launch if you press "Play":
+  // if a loader is present — the loader absorbs the vanilla version; otherwise — a plain version.
   const launchId = primaryLoader ? primaryLoader.id : selected;
   const isInstalled = edition === 'bedrock'
     ? !!(selected && bedrockInstalled.has(selected))
@@ -710,15 +710,15 @@ export const BrowsePage: React.FC<Props> = ({
     if (choice !== "ok") return;
     const result = await window.api.minecraft.revertToVanilla(selected);
     await refreshInstalled();
-    // Backend сам обновил lastVersionId если нужно — синхронизируем UI
-    // через возвращённый settings, чтобы не было гонки между слоями.
+    // The backend updated lastVersionId on its own if needed — we sync the UI
+    // through the returned settings, so that there is no race between the layers.
     if (result.settings) {
       onSettingsChange(result.settings);
     } else if (
       settings.lastVersionId &&
       result.removed.includes(settings.lastVersionId)
     ) {
-      // Совместимость со старым форматом ответа
+      // Compatibility with the old response format
       onSettingsChange({ ...settings, lastVersionId: selected, lastVersionEdition: edition });
     }
     setStatus(
@@ -764,8 +764,8 @@ export const BrowsePage: React.FC<Props> = ({
         setStatus(t('browse.installedStatus', { id: selected }));
         setStatusType("success");
       }
-      // Передаём пустой serial — main process сам поднимет TrelEmu.
-      // (Если TrelEmu не входит в бандл, пользователь увидит понятную ошибку.)
+      // We pass an empty serial — the main process will start TrelEmu itself.
+      // (If TrelEmu is not part of the bundle, the user will see a clear error.)
       setStatus(t('browse.launchingStatus'));
       await window.api.bedrock.launch(selected, '');
       onSettingsChange({ ...settings, lastVersionId: selected, lastVersionEdition: edition });

@@ -1,36 +1,36 @@
 #!/usr/bin/env bash
 #
-# Сборка Trel .rpm вручную через rpmbuild.
+# Builds the Trel .rpm manually via rpmbuild.
 #
-# Зачем: electron-builder использует fpm 1.9.3, который генерирует spec-файлы
-# под rpm 4.x. На rolling дистрах (Arch, Fedora 41+, rawhide) ставится rpmbuild 6,
-# который в %install сам удаляет и пересоздаёт %{buildroot}, поэтому spec от fpm
-# падает с "Файл не найден: .../BUILDROOT/opt/Trel/...". Чистого фикса в
-# конфиге electron-builder нет, поэтому rpm собирается отдельно этим скриптом.
+# Why: electron-builder uses fpm 1.9.3, which generates spec files for rpm 4.x.
+# On rolling distros (Arch, Fedora 41+, rawhide) rpmbuild 6 is installed, and it
+# deletes and recreates %{buildroot} in %install, so the spec from fpm fails with
+# "File not found: .../BUILDROOT/opt/Trel/...". There is no clean fix in the
+# electron-builder config, so the rpm is built separately by this script.
 #
-# Что делает:
-#   1) Берёт готовое дерево из release/linux-unpacked/ (должно уже быть собрано).
-#   2) Добавляет .desktop-файл и иконку.
-#   3) Генерирует spec с правильным %install (cp -a rootfs -> buildroot).
-#   4) Вызывает rpmbuild, копирует итоговый .rpm в release/ с именем из package.json.
+# What it does:
+#   1) Takes the ready-made tree from release/linux-unpacked/ (it must already be built).
+#   2) Adds a .desktop file and the icon.
+#   3) Generates a spec with the correct %install (cp -a rootfs -> buildroot).
+#   4) Calls rpmbuild and copies the resulting .rpm to release/ under the name from package.json.
 #
-# Использование:
-#   ./scripts/build-rpm-manual.sh              # версия берётся из package.json
-#   ./scripts/build-rpm-manual.sh 0.5.0        # версия явно
+# Usage:
+#   ./scripts/build-rpm-manual.sh              # the version is taken from package.json
+#   ./scripts/build-rpm-manual.sh 0.5.0        # the version is given explicitly
 #   VERSION=0.5.0 ./scripts/build-rpm-manual.sh
 #
-# Окружение: Linux, rpmbuild, jq (опционально — иначе берём версию из package.json
-# простым grep-ом).
+# Environment: Linux, rpmbuild, jq (optional — otherwise the version is taken from
+# package.json with a simple grep).
 #
-# Скрипт идемпотентный: при повторном запуске пересоздаёт buildroot и spec.
+# The script is idempotent: on a repeated run it recreates the buildroot and the spec.
 set -euo pipefail
 
-# --- Переход в корень репозитория (там, где package.json) ---------------------
+# --- Switch to the repository root (where package.json lives) -------------------
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$REPO_ROOT"
 
-# --- Версия ------------------------------------------------------------------
+# --- Version ------------------------------------------------------------------
 if [[ -n "${1:-}" ]]; then
   VERSION="$1"
 elif [[ -n "${VERSION:-}" ]]; then
@@ -44,7 +44,7 @@ else
 fi
 echo "[rpm] версия: $VERSION"
 
-# --- Проверка обязательных файлов --------------------------------------------
+# --- Check the required files -------------------------------------------------
 if [[ ! -d release/linux-unpacked ]]; then
   echo "ERROR: release/linux-unpacked/ не найден." >&2
   echo "       Сначала соберите: npm run dist:linux (AppImage + deb уже создадут linux-unpacked)." >&2
@@ -62,7 +62,7 @@ if ! command -v rpmbuild >/dev/null 2>&1; then
   exit 1
 fi
 
-# --- Рабочий каталог ---------------------------------------------------------
+# --- Working directory --------------------------------------------------------
 WORK="${TMPDIR:-/tmp}/build-trel-rpm-$$"
 rm -rf "$WORK"
 mkdir -p "$WORK"/{BUILD,RPMS,SOURCES,SPECS,BUILDROOT,tmp}
@@ -70,16 +70,16 @@ mkdir -p "$WORK"/{BUILD,RPMS,SOURCES,SPECS,BUILDROOT,tmp}
 cleanup() { rm -rf "$WORK"; }
 trap cleanup EXIT
 
-# --- 1) Готовим дерево файловой системы --------------------------------------
+# --- 1) Prepare the filesystem tree -------------------------------------------
 echo "[rpm] копируем linux-unpacked -> rootfs/opt/Trel"
 mkdir -p "$WORK/SOURCES/rootfs/opt/Trel"
 cp -a release/linux-unpacked/. "$WORK/SOURCES/rootfs/opt/Trel/"
 
-# Иконка
+# Icon
 mkdir -p "$WORK/SOURCES/rootfs/usr/share/icons/hicolor/256x256/apps"
 cp build/icon.png "$WORK/SOURCES/rootfs/usr/share/icons/hicolor/256x256/apps/trel-launcher.png"
 
-# .desktop-файл
+# .desktop file
 mkdir -p "$WORK/SOURCES/rootfs/usr/share/applications"
 cat > "$WORK/SOURCES/rootfs/usr/share/applications/trel-launcher.desktop" <<'DESK'
 [Desktop Entry]
@@ -92,8 +92,8 @@ Categories=Game;
 Terminal=false
 DESK
 
-# --- 2) Список файлов для %files (только обычные файлы — каталоги rpmbuild
-#        включает автоматически) -----------------------------------------------
+# --- 2) File list for %files (only regular files — rpmbuild includes
+#        directories automatically) -----------------------------------------------
 find "$WORK/SOURCES/rootfs" -type f -o -type l | sort \
   | sed "s|$WORK/SOURCES/rootfs||" > "$WORK/files.list"
 
@@ -162,7 +162,7 @@ rpmbuild -bb \
   --define "buildroot $WORK/BUILDROOT" \
   "$WORK/SPECS/trel-launcher.spec"
 
-# --- 5) Копируем результат в release/ с canonical-именем ----------------------
+# --- 5) Copy the result to release/ under a canonical name ---------------------
 SRC_RPM=$(find "$WORK/RPMS" -name "trel-launcher-$VERSION-*.x86_64.rpm" | head -1)
 if [[ -z "$SRC_RPM" ]]; then
   echo "ERROR: rpm не найден в $WORK/RPMS" >&2
@@ -174,14 +174,14 @@ cp "$SRC_RPM" "$DEST_RPM"
 chmod 644 "$DEST_RPM"
 echo "[rpm] готово: $DEST_RPM ($(du -h "$DEST_RPM" | cut -f1))"
 
-# --- 6) Перегенерируем latest-linux.yml --------------------------------------
-# electron-builder НЕ создаёт latest-linux.yml автоматически (мы вынуждены собирать
-# rpm вручную, см. шапку), поэтомугенерим его здесь, чтобы electron-updater на
-# установленных deb/rpm мог находить апдейты. SHA512 — base64 (нужен electron-updater).
+# --- 6) Regenerate latest-linux.yml --------------------------------------------
+# electron-builder does NOT create latest-linux.yml automatically (we have to build
+# the rpm manually, see the header), so we generate it here to let electron-updater
+# find updates on installed deb/rpm packages. SHA512 — base64 (electron-updater needs it).
 APPIMG="release/Trel-$VERSION-x86_64.AppImage"
 DEB="release/Trel-$VERSION-amd64.deb"
 
-# blockmap для AppImage electron-builder тоже не создаётся →干细胞ную не указываем.
+# electron-builder does not create a blockmap for AppImage either → we do not reference one.
 
 sha512_b64() { sha512sum "$1" | awk '{print $1}' | xxd -r -p | base64 -w0; echo; }
 

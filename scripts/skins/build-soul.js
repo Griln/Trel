@@ -1,6 +1,6 @@
 'use strict';
-// build-soul.js — собирает РУЧНЫЕ скины из scripts/skins/soul/NNN-*.js
-// прямо в src/renderer/data/skin-presets.ts (схема, которую реально использует UI).
+// build-soul.js — collects the MANUAL skins from scripts/skins/soul/NNN-*.js
+// straight into src/renderer/data/skin-presets.ts (the schema the UI really uses).
 const fs = require('fs'), path = require('path');
 const { execFileSync } = require('child_process');
 

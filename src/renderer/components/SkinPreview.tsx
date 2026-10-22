@@ -1,21 +1,21 @@
 import React, { useEffect, useRef } from 'react';
 
 interface FaceProps {
-  /** PNG data-URL скина или null. Если null — рисуется placeholder. */
+  /** PNG data-URL of the skin or null. If null — a placeholder is drawn. */
   skin: string | null;
-  /** Размер аватара в css-пикселях. Каждый пиксель скина увеличивается до size/8. */
+  /** Avatar size in css pixels. Every skin pixel is scaled up to size/8. */
   size?: number;
-  /** Имя для placeholder-инициала, если скин не загружен. */
+  /** Name used for the placeholder initial, if no skin is loaded. */
   fallbackName?: string;
-  /** Дополнительный класс. */
+  /** Extra class name. */
   className?: string;
 }
 
 /**
- * Рисует ЛИЦО игрока (8×8 пикселей с базового слоя + 8×8 шапки) на canvas.
- * Совместим с современным форматом 64×64 и legacy 64×32.
+ * Draws the player FACE (8×8 pixels from the base layer + 8×8 hat) on a canvas.
+ * Compatible with the modern 64×64 format and the legacy 64×32 one.
  *
- * Используется в шапке/сайдбаре/карточке аккаунта вместо буквы-инициала.
+ * Used in the header/sidebar/account card instead of a letter initial.
  */
 export const SkinFace: React.FC<FaceProps> = ({ skin, size = 32, fallbackName = '?', className }) => {
   const ref = useRef<HTMLCanvasElement>(null);
@@ -30,16 +30,16 @@ export const SkinFace: React.FC<FaceProps> = ({ skin, size = 32, fallbackName = 
     img.onload = () => {
       ctx.imageSmoothingEnabled = false;
       ctx.clearRect(0, 0, size, size);
-      // База лица: src (8,8) → (16,16)
+      // Face base: src (8,8) → (16,16)
       ctx.drawImage(img, 8, 8, 8, 8, 0, 0, size, size);
-      // Слой шапки/Hat: src (40,8) → (48,16)
+      // Hat layer: src (40,8) → (48,16)
       ctx.drawImage(img, 40, 8, 8, 8, 0, 0, size, size);
     };
     img.src = skin;
   }, [skin, size]);
 
   if (!skin) {
-    // Fallback: цветной квадрат с первой буквой имени.
+    // Fallback: a colored square with the first letter of the name.
     return (
       <div
         className={'skin-face-fallback ' + (className ?? '')}
@@ -63,22 +63,22 @@ export const SkinFace: React.FC<FaceProps> = ({ skin, size = 32, fallbackName = 
 
 interface BodyProps {
   skin: string;
-  /** Стиль модели: 4-пиксельные руки (Steve) или 3-пиксельные (Alex). */
+  /** Model style: 4-pixel arms (Steve) or 3-pixel arms (Alex). */
   model?: 'classic' | 'slim';
-  /** Высота превью в css-пикселях; ширина рассчитывается пропорционально. */
+  /** Preview height in css pixels; the width is computed proportionally. */
   height?: number;
   className?: string;
 }
 
 /**
- * Рисует 2D-разворот персонажа в полный рост (вид спереди):
- * голова + тело + руки + ноги, со вторыми слоями. 16×32 «скиновых» пикселей
- * соответствуют размеру кадра: высота 32 → ширина 16.
+ * Draws a 2D full-body character layout (front view):
+ * head + body + arms + legs, with the second layers. 16×32 “skin” pixels
+ * match the frame size: height 32 → width 16.
  */
 export const SkinBody: React.FC<BodyProps> = ({ skin, model = 'classic', height = 192, className }) => {
   const ref = useRef<HTMLCanvasElement>(null);
   const armW = model === 'slim' ? 3 : 4;
-  // Кадр: 16 «скиновых» пикселей в ширину. Высота 32. Соотношение 1:2.
+  // Frame: 16 “skin” pixels wide. Height 32. Aspect ratio 1:2.
   const w = (height * 16) / 32;
 
   useEffect(() => {
@@ -92,21 +92,21 @@ export const SkinBody: React.FC<BodyProps> = ({ skin, model = 'classic', height 
       ctx.clearRect(0, 0, w, height);
       const px = height / 32;
 
-      // Все координаты — в пикселях скина (UV).
-      // Базовые слои:
-      // Голова   src (8,8)  8×8     → dst (4,0) 8×8
-      // Тело     src (20,20) 8×12   → dst (4,8) 8×12
-      // Правая рука  src (44,20) 4×12 → dst (12,8) armW×12
-      // Левая рука   (mirror or 64×64)
-      // Правая нога  src (4,20) 4×12 → dst (4,20) 4×12
-      // Левая нога   (mirror or 64×64)
+      // All coordinates — in skin pixels (UV).
+      // Base layers:
+      // Head     src (8,8)  8×8     → dst (4,0) 8×8
+      // Body     src (20,20) 8×12   → dst (4,8) 8×12
+      // Right arm  src (44,20) 4×12 → dst (12,8) armW×12
+      // Left arm   (mirror or 64×64)
+      // Right leg  src (4,20) 4×12 → dst (4,20) 4×12
+      // Left leg   (mirror or 64×64)
 
       const draw = (sx: number, sy: number, sw: number, sh: number, dx: number, dy: number, dw: number, dh: number) => {
         ctx.drawImage(img, sx, sy, sw, sh, dx * px, dy * px, dw * px, dh * px);
       };
 
       const drawMirror = (sx: number, sy: number, sw: number, sh: number, dx: number, dy: number, dw: number, dh: number) => {
-        // Зеркалим горизонтально через временный canvas
+        // Mirror horizontally through a temporary canvas
         const tmp = document.createElement('canvas');
         tmp.width = sw;
         tmp.height = sh;
@@ -120,33 +120,33 @@ export const SkinBody: React.FC<BodyProps> = ({ skin, model = 'classic', height 
 
       const is64x64 = img.height >= 64;
 
-      // === Голова ===
+      // === Head ===
       draw(8, 8, 8, 8, 4, 0, 8, 8);
       draw(40, 8, 8, 8, 4, 0, 8, 8); // hat
 
-      // === Тело ===
+      // === Body ===
       draw(20, 20, 8, 12, 4, 8, 8, 12);
       if (is64x64) draw(20, 36, 8, 12, 4, 8, 8, 12); // body 2nd layer
 
-      // === Правая рука (с точки зрения игрока — наша левая на экране) ===
+      // === Right arm (from the player's point of view — our left on screen) ===
       draw(44, 20, armW, 12, 12, 8, armW, 12);
       if (is64x64) draw(44, 36, armW, 12, 12, 8, armW, 12); // 2nd layer
 
-      // === Левая рука ===
+      // === Left arm ===
       if (is64x64) {
-        // 64×64: отдельная UV (36,52)
+        // 64×64: its own UV (36,52)
         draw(36, 52, armW, 12, 4 - armW, 8, armW, 12);
         draw(52, 52, armW, 12, 4 - armW, 8, armW, 12); // 2nd layer
       } else {
-        // 64×32 legacy: зеркалим правую
+        // 64×32 legacy: mirror the right one
         drawMirror(44, 20, armW, 12, 4 - armW, 8, armW, 12);
       }
 
-      // === Правая нога ===
+      // === Right leg ===
       draw(4, 20, 4, 12, 8, 20, 4, 12);
       if (is64x64) draw(4, 36, 4, 12, 8, 20, 4, 12); // 2nd layer
 
-      // === Левая нога ===
+      // === Left leg ===
       if (is64x64) {
         draw(20, 52, 4, 12, 4, 20, 4, 12);
         draw(4, 52, 4, 12, 4, 20, 4, 12); // 2nd layer

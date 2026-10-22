@@ -65,11 +65,11 @@ export const ContentPage: React.FC<Props> = ({ lastVersionId, onPickVersion }) =
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState('');
   const [error, setError] = useState<string | null>(null);
-  // Обновления модов (Modrinth): файл -> свежая версия.
+  // Mod updates (Modrinth): file -> a newer version.
   const [modUpdates, setModUpdates] = useState<Record<string, { latest: string; current?: string; url?: string }>>({});
   const [checkingUpdates, setCheckingUpdates] = useState(false);
   const [updatingFile, setUpdatingFile] = useState<string | null>(null);
-  // Профили модов: именованные наборы включённых jar.
+  // Mod profiles: named sets of enabled jar files.
   const [profiles, setProfiles] = useState<Record<string, string[]>>({});
   const [activeProfile, setActiveProfile] = useState<string>('');
   const [newProfile, setNewProfile] = useState('');
@@ -180,8 +180,8 @@ export const ContentPage: React.FC<Props> = ({ lastVersionId, onPickVersion }) =
           filtered[0] ??
           list[0] ??
           null;
-        // Если среди установленных версий нет текущей (в т.ч. список пуст) —
-        // сбрасываем выбор, чтобы не показывать фантомную версию из настроек.
+        // If the current version is not among the installed ones (the list may be empty) —
+        // we reset the selection, so that no phantom version from the settings is shown.
         setVersionId(pick ? pick.id : '');
       }
     });

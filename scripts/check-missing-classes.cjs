@@ -1,4 +1,4 @@
-// Находит классы, используемые в TSX рендерера, но не определённые в styles.css
+// Finds classes used in the renderer TSX but not defined in styles.css
 const fs = require('fs');
 const path = require('path');
 

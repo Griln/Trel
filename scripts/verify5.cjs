@@ -1,4 +1,4 @@
-/* Комплексная проверка 5 фиксов на живом билде через CDP */
+/* Comprehensive check of 5 fixes on the live build via CDP */
 const { chromium } = require('playwright');
 (async () => {
   const browser = await chromium.connectOverCDP('http://127.0.0.1:9333');
@@ -7,10 +7,10 @@ const { chromium } = require('playwright');
   const sleep = (ms) => page.waitForTimeout(ms);
   const shot = (n) => page.screenshot({ path: `/tmp/trel-${n}.png` }).then(() => console.log('shot ->', `/tmp/trel-${n}.png`));
 
-  // ── A. интро + welcome (новый профиль xdg3): прокликиваем ──
+  // ── A. intro + welcome (new xdg3 profile): click through ──
   for (let i = 0; i < 20; i++) {
     const done = await page.evaluate(() => {
-      // если есть интро-оверлей без формы ника — кликаем его кнопки
+      // if there is an intro overlay without any form — click its buttons
       const inp = document.querySelector('input');
       if (inp && !inp.value) {
         const set = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
@@ -25,7 +25,7 @@ const { chromium } = require('playwright');
   }
   await sleep(3000);
 
-  // ── B. тур должен автооткрыться ПОСЛЕ создания аккаунта ──
+  // ── B. the tour must open automatically AFTER the account is created ──
   const onb1 = await page.evaluate(() => ({
     onb: !!document.querySelector('.onboarding-backdrop'),
     closeBtn: !!document.querySelector('.onboarding-close'),
@@ -35,7 +35,7 @@ const { chromium } = require('playwright');
   console.log('B onboarding:', JSON.stringify(onb1));
   await shot('onboarding');
 
-  // клик по кнопке-навигации шага — теперь должна реально вести на страницу
+  // click on the step navigation button — it must now really lead to the page
   await page.evaluate(() => {
     const btns = [...document.querySelectorAll('.onboarding-action-buttons .btn')];
     const nav = btns.find(b => !/Дальше|Назад|Назад/.test(b.textContent) && b.classList.contains('ghost'));
@@ -48,7 +48,7 @@ const { chromium } = require('playwright');
   }));
   console.log('B2 after nav click:', JSON.stringify(onb2));
 
-  // ── C. каталог: цветные чипы + мультивыбор ──
+  // ── C. browse: colored chips + multi-select ──
   await page.evaluate(() => {
     const b = [...document.querySelectorAll('.sidebar button, .sidebar a, .side-item, button')].find(x => /Каталог/.test(x.textContent));
     if (b) b.click();
@@ -59,7 +59,7 @@ const { chromium } = require('playwright');
     vcount: document.querySelector('.vcount')?.textContent ?? null,
   }));
   console.log('C1 chips:', JSON.stringify(cat1.chips));
-  // мультивыбор: добавляем snapshot к release
+  // multi-select: add a snapshot to the release
   await page.evaluate(() => {
     const f = [...document.querySelectorAll('.ftype')].find(x => /Снапшот|snapshot/i.test(x.textContent));
     if (f) f.click();
@@ -75,7 +75,7 @@ const { chromium } = require('playwright');
   console.log('C2 colors:', JSON.stringify(cat2.colors));
   await shot('catalog-filters');
 
-  // ── D. аккаунты: узкое окно, нет переполнения, нормальный текст скина ──
+  // ── D. accounts: narrow window, no overflow, normal skin text ──
   await page.evaluate(() => {
     const b = [...document.querySelectorAll('button')].find(x => /Аккаунты/.test(x.textContent));
     if (b) b.click();
@@ -99,7 +99,7 @@ const { chromium } = require('playwright');
   console.log('D accounts narrow:', JSON.stringify(acc));
   await shot('accounts-narrow');
 
-  // ── E. серверы: модалка создания ──
+  // ── E. servers: create modal ──
   await page.evaluate(() => {
     const b = [...document.querySelectorAll('button')].find(x => /Серверы/.test(x.textContent));
     if (b) b.click();
@@ -120,17 +120,17 @@ const { chromium } = require('playwright');
   }));
   console.log('E server modal:', JSON.stringify(srv));
   await shot('server-modal');
-  // откроем пикер версий для кадра
+  // open the version picker for the shot
   await page.evaluate(() => { const b = document.querySelector('.srv-create .vpick-btn'); if (b) b.click(); });
   await sleep(500);
   await shot('server-modal-open');
-  // закрыть по Esc
+  // close with Esc
   await page.keyboard.press('Escape');
   await sleep(500);
   const srv2 = await page.evaluate(() => ({ backdrop: !!document.querySelector('.srv-create-backdrop') }));
   console.log('E2 after Esc:', JSON.stringify(srv2));
 
-  // ── F. диагностика: vpick вместо select ──
+  // ── F. diagnostics: vpick instead of select ──
   await page.evaluate(() => {
     const b = [...document.querySelectorAll('button')].find(x => /Диагностика/.test(x.textContent));
     if (b) b.click();

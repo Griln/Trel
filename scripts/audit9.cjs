@@ -1,4 +1,4 @@
-/* Аудит раунда 5: консольные ошибки + поиск в каталоге + автоскрытие панели */
+/* Round 5 audit: console errors + browse search + panel auto-hide */
 const { chromium } = require('playwright-core');
 
 (async () => {
@@ -12,12 +12,12 @@ const { chromium } = require('playwright-core');
 
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-  // Дождаться конца интро/загрузки
+  // Wait for the intro/loading to finish
   await sleep(6000);
 
-  // ---- 1. Поиск в каталоге ----
+  // ---- 1. Search in browse ----
   await page.evaluate(() => {
-    // переключение страницы через sidebar
+    // switch page via the sidebar
     const btns = Array.from(document.querySelectorAll('.nav-item, .nav-hero'));
     const b = btns.find((el) => /Каталог|Browse/i.test(el.textContent));
     if (b) b.click();
@@ -50,8 +50,8 @@ const { chromium } = require('playwright-core');
     console.log('SEARCH: input NOT FOUND');
   }
 
-  // ---- 2. Автоскрытие панели через 5с ----
-  // курсор уведём в правый край, чтобы не триггерить панель
+  // ---- 2. Panel auto-hide after 5s ----
+  // move the cursor to the right edge so it does not trigger the panel
   await page.mouse.move(900, 400);
   const clsBefore = await page.$eval('.main', (el) => el.className);
   console.log('AUTOHIDE before 6s wait:', clsBefore);
@@ -60,7 +60,7 @@ const { chromium } = require('playwright-core');
   console.log('AUTOHIDE after 6s wait:', clsAfter);
   const hidden = clsAfter.includes('side-hidden');
 
-  // наведение на полоску возвращает панель
+  // hovering over the strip restores the panel
   if (hidden) {
     await page.mouse.move(3, 300);
     await sleep(800);
@@ -69,7 +69,7 @@ const { chromium } = require('playwright-core');
     await page.screenshot({ path: '/tmp/audit9-hidden.png' });
   }
 
-  // ---- 3. Обход всех страниц, сбор ошибок ----
+  // ---- 3. Sweep all pages, collect errors ----
   const pages = ['home','browse','installed','worlds','content','modpacks','screenshots','stats','servers','accounts','skin','settings','import','diagnostics'];
   for (const name of pages) {
     await page.evaluate((p) => {
@@ -77,7 +77,7 @@ const { chromium } = require('playwright-core');
     }, name);
     await sleep(200);
   }
-  // навигация кликами по sidebar
+  // navigation by clicking through the sidebar
   const navCount = await page.$$eval('.nav-item, .nav-hero', (els) => els.length);
   for (let i = 0; i < navCount; i++) {
     const ok = await page.evaluate((idx) => {
@@ -88,7 +88,7 @@ const { chromium } = require('playwright-core');
     }, i);
     if (!ok) break;
     await sleep(700);
-    // увести курсор и подождать чуть-чуть, панель не должна мешать кликам
+    // move the cursor away and wait a bit, the panel must not block clicks
     await page.mouse.move(900, 400);
   }
   await sleep(1000);
