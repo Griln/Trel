@@ -11,9 +11,9 @@ export interface UpdateState {
   percent?: number;
   bytesPerSecond?: number;
   error?: string;
-  /** Если true — это portable fallback (нет автоустановки, только ссылка). */
+  /** If true — this is the portable fallback (no auto-install, only a link). */
   isPortableHint?: boolean;
-  /** Куда скачан файл обновления (portable). */
+  /** Where the update file was downloaded (portable). */
   downloadedPath?: string;
 }
 
@@ -29,16 +29,16 @@ export class LauncherUpdater {
   private downloading = false;
 
   constructor() {
-    // Portable: Windows NSIS-portable (.exe) или Linux AppImage.
-    // Для них нет встроенного авто-обновления — ведём пользователя в GitHub Releases.
+    // Portable: Windows NSIS-portable (.exe) or Linux AppImage.
+    // They have no built-in auto-update — we send the user to GitHub Releases.
     this._isPortable =
       !!process.env.PORTABLE_EXECUTABLE_FILE ||
       !!process.env.APPIMAGE ||
       process.platform === 'linux' && app.getAppPath().includes('/tmp/.mount_');
     this.state = { status: 'idle', current: app.getVersion() };
 
-    // Не качаем автоматически — ждём подтверждения пользователя.
-    // Это уважает лимитный трафик и даёт контроль.
+    // We do not download automatically — we wait for the user's confirmation.
+    // This respects limited traffic and gives control.
     autoUpdater.autoDownload = false;
     autoUpdater.autoInstallOnAppQuit = true;
     autoUpdater.allowPrerelease = false;
@@ -85,7 +85,7 @@ export class LauncherUpdater {
     }
   }
 
-  /** Для portable: сравниваем с GitHub latest release через API. */
+  /** For portable: compare with the latest GitHub release via the API. */
   private async checkPortableGitHub(): Promise<UpdateState> {
     try {
       this.push({ status: 'checking' });
@@ -97,7 +97,7 @@ export class LauncherUpdater {
         return this.state;
       }
       const current = app.getVersion();
-      // semver compare: просто lexicographic с разбиением на части.
+      // semver compare: simply lexicographic with a split into parts.
       if (this.isNewer(latest, current)) {
         this.push({ status: 'available', latest, isPortableHint: true });
       } else {
@@ -109,9 +109,9 @@ export class LauncherUpdater {
     return this.state;
   }
 
-  /** Свежий release с GitHub: официальный API, а при отказе — HTML-редирект
-      /releases/latest (не упирается в rate-limit). Три попытки с backoff и
-      кэш на 5 минут: повторные проверки мгновенные и не жгут лимиты. */
+  /** Fresh release from GitHub: the official API, and on failure — an HTML redirect
+      /releases/latest (not subject to the rate limit). Three attempts with backoff
+      and a 5 minute cache: repeated checks are instant and do not burn the limits. */
   private async fetchLatestRelease(force = false): Promise<{ tag: string; assets: any[] }> {
     if (!force && this.releaseCache && Date.now() - this.releaseCache.at < 5 * 60_000) {
       return this.releaseCache;
@@ -149,7 +149,7 @@ export class LauncherUpdater {
     throw lastErr instanceof Error ? lastErr : new Error('GitHub недоступен');
   }
 
-  /** Выбрать нужный ассет релиза под текущую платформу. */
+  /** Pick the release asset for the current platform. */
   private pickAsset(assets: any[]): any {
     const name = (a: any) => String(a?.name ?? '');
     if (process.platform === 'win32') {
@@ -158,8 +158,8 @@ export class LauncherUpdater {
     return assets.find((a) => name(a).endsWith('.AppImage'));
   }
 
-  /** Быстрая и надёжная загрузка: 8 параллельных кусков при поддержке Range,
-      иначе одиночный поток; при отказе прямой ссылки — зеркала-прокси. */
+  /** Fast and reliable download: 8 parallel chunks when Range is supported,
+      otherwise a single stream; if the direct link fails — proxy mirrors. */
   private async downloadFast(url: string, dest: string, expectedSize: number, onProgress: (loaded: number, total: number) => void): Promise<void> {
     const mirrors = [url, 'https://mirror.ghproxy.com/' + url, 'https://gh-proxy.com/' + url];
     let lastErr: unknown = null;
@@ -184,7 +184,7 @@ export class LauncherUpdater {
       const head = await axios.head(url, { timeout: 15000, maxRedirects: 5 });
       total = Number(head.headers['content-length']) || 0;
       ranges = String(head.headers['accept-ranges'] || '').toLowerCase().includes('bytes');
-    } catch { /* одиночным потоком */ }
+    } catch { /* single stream */ }
 
     if (total > 8 * 1024 * 1024 && ranges) {
       const CHUNKS = 8;
@@ -208,7 +208,7 @@ export class LauncherUpdater {
             let pos = start;
             await new Promise<void>((res, rej) => {
               resp.data.on('data', (c: Buffer) => {
-                // Сервер без 206 отдал бы всё с нуля — пишем только свой диапазон.
+                // A server without 206 would send everything from scratch — we write only our range.
                 const room = end - pos + 1;
                 if (room <= 0) return;
                 const slice = c.length > room ? c.subarray(0, room) : c;
@@ -248,8 +248,8 @@ export class LauncherUpdater {
     }
   }
 
-  /** In-app загрузка ассета релиза (portable): прогресс в карточке обновления,
-      файл кладётся в «Загрузки», кнопка установки открывает его в папке. */
+  /** In-app download of a release asset (portable): the progress shows up in the
+      update card, the file goes to "Downloads", the install button reveals it. */
   private async downloadPortableAsset(): Promise<void> {
     if (this.downloading) return;
     this.downloading = true;
@@ -262,7 +262,7 @@ export class LauncherUpdater {
       const release = rel;
       const asset = release.assets.length ? this.pickAsset(release.assets) : null;
       if (!asset?.browser_download_url) {
-        // Не получили список ассетов (API был недоступен) — ведём на страницу релиза.
+        // We did not get the asset list (the API was unavailable) — send the user to the release page.
         this.openManualUpdate();
         return;
       }
@@ -294,20 +294,20 @@ export class LauncherUpdater {
   }
 
   async check(): Promise<UpdateState> {
-    // В dev-режиме updater отключён — нет релизных assets.
+    // In dev mode the updater is disabled — there are no release assets.
     if (!app.isPackaged) {
       this.push({ status: 'disabled' });
       return this.state;
     }
 
-    // Portable: нет NSIS-установщика для автообновления,
-    // поэтому проверяем GitHub API и подсказываем пользователю скачать вручную.
+    // Portable: there is no NSIS installer for auto-update,
+    // so we check the GitHub API and suggest that the user downloads manually.
     if (this._isPortable) {
       return this.checkPortableGitHub();
     }
 
-    // NSIS установленная версия: стандартный electron-updater через latest.yml на GitHub.
-    // Одна повторная попытка через секунду — сеть на старте бывает нестабильна.
+    // NSIS installed version: the standard electron-updater via latest.yml on GitHub.
+    // One retry after a second — the network at startup is often unstable.
     const attempt = async (): Promise<boolean> => {
       try {
         await autoUpdater.checkForUpdates();
@@ -322,18 +322,18 @@ export class LauncherUpdater {
       await new Promise((r) => setTimeout(r, 1200));
       const retry = await attempt();
       if (!retry) {
-        // Событие 'error' от autoUpdater уже могло прийти; если нет — выставим сами.
+        // The 'error' event from autoUpdater may have already arrived; if not — we set it ourselves.
         if (this.state.status === 'checking') this.push({ status: 'error', error: 'Не удалось проверить обновления' });
       }
     }
-    // Статус обновится через события update-available / update-not-available / error.
+    // The status is updated via the update-available / update-not-available / error events.
     return this.state;
   }
 
-  /** Запустить скачивание (после того как пользователь увидел 'available'). */
+  /** Start the download (after the user has seen 'available'). */
   async download(): Promise<void> {
     if (this._isPortable) {
-      // Portable: качаем ассет прямо в приложении (быстро, параллельно, с зеркалами).
+      // Portable: we download the asset right in the app (fast, parallel, with mirrors).
       await this.downloadPortableAsset();
       return;
     }
@@ -350,7 +350,7 @@ export class LauncherUpdater {
 
   quitAndInstall() {
     if (this._isPortable) {
-      // Если ассет уже скачан — показываем его в папке, иначе ведём на Releases.
+      // If the asset is already downloaded — show it in the folder, otherwise send the user to Releases.
       const p = this.state.downloadedPath;
       if (p && fs.existsSync(p)) shell.showItemInFolder(p);
       else this.openManualUpdate();

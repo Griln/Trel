@@ -143,8 +143,8 @@ describe('hardening: worlds restore zip-slip', () => {
     fs.mkdirSync(saves, { recursive: true });
     fs.mkdirSync(backups, { recursive: true });
     const evil = path.join(backups, 'evil.zip');
-    // adm-zip чистит имена при записи — злой zip клепаем питоном (zipfile
-    // пишет имена дословно, как любой сторонний архиватор).
+    // adm-zip sanitizes names while writing — we forge the evil zip with python
+    // (zipfile writes names verbatim, like any third-party archiver).
     const mk = path.join(backups, 'mkzip.py');
     fs.writeFileSync(mk, "import zipfile,sys\nz=zipfile.ZipFile(sys.argv[1],'w')\nz.writestr('GoodWorld/level.dat','x')\nz.writestr('../../pwned.txt','evil')\nz.close()\n");
     const { execFileSync } = await import('node:child_process');

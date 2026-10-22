@@ -55,8 +55,9 @@ function openAuthWindow(): Promise<string> {
       width: 480, height: 640, title: 'Microsoft Login',
       webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true },
     });
-    // Фишинг через редирект: дальше login.live.com / microsoftonline не пускаем,
-    // внешние ссылки — в системный браузер, а не внутрь окна с сессией.
+    // Phishing via redirect: we do not allow login.live.com / microsoftonline
+    // to go any further; external links go to the system browser, not into
+    // the window that holds the session.
     const MS_HOSTS = new Set(['login.live.com', 'login.microsoftonline.com']);
     win.webContents.setWindowOpenHandler(({ url }) => {
       try {
@@ -241,11 +242,12 @@ async function doAuth(msAccessToken: string, cfg: AxiosRequestConfig): Promise<M
 }
 
 /**
- * Первичный вход: открыть окно → получить профиль.
+ * Primary login: open the window → fetch the profile.
  */
 /**
- * Вычищает токены из текста ошибки: axios тащит access/refresh-токены в
- * message/config, а текст уходит в UI и логи. Токен в логе = угон аккаунта.
+ * Scrubs tokens out of the error text: axios drags access/refresh tokens into
+ * message/config, and that text ends up in the UI and the logs. A token in
+ * a log equals an account takeover.
  */
 export function scrubTokens(text: string): string {
   return text
@@ -296,8 +298,8 @@ export async function authenticateMicrosoft(): Promise<MicrosoftProfile> {
 }
 
 /**
- * Обновление: по сохранённому refresh_token переполучить профиль.
- * Вызывается когда юзер купил лицензию и хочет обновить аккаунт.
+ * Refresh: use the saved refresh_token to fetch the profile again.
+ * Called when the user bought a licence and wants to update the account.
  */
 export async function refreshMicrosoftToken(refreshToken: string): Promise<MicrosoftProfile> {
   const cfg = axiosConfig();
@@ -313,8 +315,8 @@ export async function refreshMicrosoftToken(refreshToken: string): Promise<Micro
 
   const mc = await xstsToMcProfile(xsts.xstsToken, xsts.uhs, cfg);
 
-  // Если лицензии нет — сохраняем профиль как есть, чтобы пользователь
-  // мог обновить статус позже без повторного входа.
+  // No licence — save the profile as is, so that the user can
+  // refresh the status later without logging in again.
   let name = mc.owned ? mc.name : '';
   if (!name) name = xbl.gamertag || '';
   if (!name) name = `User-${xbl.uhs.slice(0, 8)}`;

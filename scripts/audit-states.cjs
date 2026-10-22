@@ -1,4 +1,4 @@
-/* Аудит граничных состояний: пустые поиски, диалоги, панели */
+/* Edge-case audit: empty searches, dialogs, panels */
 const { chromium } = require('playwright-core');
 
 (async () => {
@@ -18,7 +18,7 @@ const { chromium } = require('playwright-core');
   };
   const shot = (n) => page.screenshot({ path: `/tmp/st-${n}.png` });
 
-  // Каталог: поиск без результатов
+  // Browse: search with no results
   await nav(/Каталог|Browse/);
   const input = await page.$('input[placeholder*="оиск"], input[placeholder*="earch"]');
   await input.fill('xyzxyz'); await sleep(500);
@@ -27,25 +27,25 @@ const { chromium } = require('playwright-core');
   await shot('browse-10');
   await input.fill(''); await sleep(300);
 
-  // Скриншоты: пустой поиск
+  // Screenshots: empty search
   await nav(/Скриншоты|Screenshots/);
   const s2 = await page.$('input[placeholder*="оиск"], input[placeholder*="earch"]');
   if (s2) { await s2.fill('xyzxyz'); await sleep(400); }
   await shot('shots-nomatch');
 
-  // Миры: пустой поиск
+  // Worlds: empty search
   await nav(/Миры|Worlds/);
   const w = await page.$('input[placeholder*="оиск"], input[placeholder*="мира"]');
   if (w) { await w.fill('xyzxyz'); await sleep(400); }
   await shot('worlds-nomatch');
 
-  // Контент: открыть пикер
+  // Content: open the picker
   await nav(/Контент|Content/);
   await page.evaluate(() => { const b = document.querySelector('.vpick-btn'); if (b) b.click(); });
   await sleep(400);
   await shot('content-vpick');
 
-  // Серверы: диалог создания
+  // Servers: create dialog
   await nav(/Серверы|Servers/);
   await page.evaluate(() => {
     const b = Array.from(document.querySelectorAll('button')).find((x) => /Новый сервер|Создать/.test(x.textContent));
@@ -55,13 +55,13 @@ const { chromium } = require('playwright-core');
   await shot('servers-create');
   await page.keyboard.press('Escape'); await sleep(300);
 
-  // Импорт: открыть выбор категорий
+  // Import: open the category picker
   await nav(/Импорт|Import/);
   await page.evaluate(() => { const b = document.querySelector('.src-go'); if (b) b.click(); });
   await sleep(500);
   await shot('import-select');
 
-  // Настройки: опасная зона
+  // Settings: danger zone
   await nav(/Настройки|Settings/);
   await page.evaluate(() => {
     const b = Array.from(document.querySelectorAll('.tab')).find((x) => /Опасная|Danger/i.test(x.textContent));
@@ -70,7 +70,7 @@ const { chromium } = require('playwright-core');
   await sleep(400);
   await shot('settings-danger');
 
-  // Главная: стрелки карусели
+  // Home: carousel arrows
   await nav(/Главная|Home/);
   await page.evaluate(() => { const b = document.querySelector('.home-carousel-nav.next'); if (b) b.click(); });
   await sleep(600);

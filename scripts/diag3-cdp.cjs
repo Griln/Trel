@@ -1,5 +1,5 @@
-/* Живая проверка каталога: широкое и узкое окно, текст кнопки, переполнения.
-   Все клики — через JS (обход actionability), ресайз — window.resizeTo. */
+/* Live browse check: wide and narrow window, button text, overflows.
+   All clicks go through JS (bypassing actionability), resize via window.resizeTo. */
 const { chromium } = require('playwright');
 
 const measure = `(() => {
@@ -24,7 +24,7 @@ const measure = `(() => {
   const browser = await chromium.connectOverCDP('http://127.0.0.1:9333');
   const page = browser.contexts().flatMap(c => c.pages()).find(p => /app:/.test(p.url()));
 
-  // Интро (если есть) и переход в Каталог — кликами через JS
+  // Intro (if present) and transition to Browse — clicks via JS
   for (let i = 0; i < 8; i++) {
     const hasIntro = await page.evaluate(() => document.body.innerText.includes('Добро пожаловать'));
     if (!hasIntro) break;

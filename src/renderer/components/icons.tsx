@@ -104,29 +104,29 @@ export const IconImport: React.FC<P> = (p) => (
 );
 
 /**
- * Иконка «Скин» — стилизованный персонаж в стиле Minecraft (квадратные пропорции).
- * Голова, тело, руки, ноги — собраны из прямоугольников, без сглаживания.
+ * “Skin” icon — a stylized Minecraft-like character (square proportions).
+ * Head, body, arms, legs — assembled from rectangles, without anti-aliasing.
  */
 export const IconSkin: React.FC<P> = (p) => (
   <svg {...p} viewBox="0 0 24 24" width={p.width ?? 24} height={p.height ?? 24} fill="currentColor" stroke="none">
-    {/* Голова */}
+    {/* Head */}
     <rect x="8" y="2" width="8" height="6" rx="0.5" />
-    {/* Тело */}
+    {/* Body */}
     <rect x="9" y="9" width="6" height="7" rx="0.5" />
-    {/* Левая рука */}
+    {/* Left arm */}
     <rect x="5" y="9" width="3" height="6" rx="0.5" />
-    {/* Правая рука */}
+    {/* Right arm */}
     <rect x="16" y="9" width="3" height="6" rx="0.5" />
-    {/* Левая нога */}
+    {/* Left leg */}
     <rect x="9" y="17" width="2.5" height="5" rx="0.5" />
-    {/* Правая нога */}
+    {/* Right leg */}
     <rect x="12.5" y="17" width="2.5" height="5" rx="0.5" />
   </svg>
 );
 
 /**
- * Иконка «Скин не поддерживается» — стилизованный персонаж с диагональной чертой.
- * Показывается у pre-1.6 версий, где authlib-injector неприменим.
+ * “Skin not supported” icon — a stylized character with a diagonal strike-through.
+ * Shown for pre-1.6 versions, where authlib-injector does not apply.
  */
 export const IconSkinOff: React.FC<P> = (p) => (
   <svg {...p} viewBox="0 0 24 24" width={p.width ?? 24} height={p.height ?? 24} fill="currentColor" stroke="none">
@@ -136,13 +136,13 @@ export const IconSkinOff: React.FC<P> = (p) => (
     <rect x="16" y="9" width="3" height="6" rx="0.5" />
     <rect x="9" y="17" width="2.5" height="5" rx="0.5" />
     <rect x="12.5" y="17" width="2.5" height="5" rx="0.5" />
-    {/* Перечёркивающая линия */}
+    {/* Strike-through line */}
     <line x1="3" y1="3" x2="21" y2="21" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
   </svg>
 );
 
 /**
- * Иконка «Сервер» — стилизованный rack-сервер с двумя секциями и индикатором.
+ * “Server” icon — a stylized rack server with two sections and an indicator.
  */
 export const IconServer: React.FC<P> = (p) => (
   <svg {...base} {...p} viewBox="0 0 24 24" width={p.width ?? 24} height={p.height ?? 24}>
@@ -156,7 +156,7 @@ export const IconServer: React.FC<P> = (p) => (
 );
 
 /**
- * Иконка «Стоп» — квадратная заливка для кнопки остановки сервера.
+ * “Stop” icon — a filled square for the server stop button.
  */
 export const IconStop: React.FC<P> = (p) => (
   <svg {...p} viewBox="0 0 24 24" width={p.width ?? 24} height={p.height ?? 24} fill="currentColor" stroke="none">
@@ -165,7 +165,7 @@ export const IconStop: React.FC<P> = (p) => (
 );
 
 /**
- * Иконка «Терминал» — для секции консоли сервера.
+ * “Terminal” icon — for the server console section.
  */
 export const IconTerminal: React.FC<P> = (p) => (
   <svg {...base} {...p} viewBox="0 0 24 24" width={p.width ?? 24} height={p.height ?? 24}>
@@ -182,8 +182,8 @@ export const IconPlus: React.FC<P> = (p) => (
 );
 
 /**
- * Иконка «Скопировать» — две перекрывающиеся карточки. Используется на кнопках
- * «Скопировать адрес сервера», ник, и т.п.
+ * “Copy” icon — two overlapping cards. Used on the “Copy server address”,
+ * nickname, and similar buttons.
  */
 export const IconCopy: React.FC<P> = (p) => (
   <svg {...base} {...p} viewBox="0 0 24 24" width={p.width ?? 24} height={p.height ?? 24}>
@@ -193,7 +193,7 @@ export const IconCopy: React.FC<P> = (p) => (
 );
 
 /**
- * Иконка «Камера» — для пункта «Скриншоты» в панели навигации.
+ * “Camera” icon — for the “Screenshots” item in the navigation panel.
  */
 export const IconCamera: React.FC<P> = (p) => (
   <svg {...base} {...p} viewBox="0 0 24 24" width={p.width ?? 24} height={p.height ?? 24}>
@@ -203,7 +203,7 @@ export const IconCamera: React.FC<P> = (p) => (
 );
 
 /**
- * Иконка «График» — для пункта «Статистика» в панели навигации.
+ * “Chart” icon — for the “Statistics” item in the navigation panel.
  */
 export const IconChart: React.FC<P> = (p) => (
   <svg {...base} {...p} viewBox="0 0 24 24" width={p.width ?? 24} height={p.height ?? 24}>

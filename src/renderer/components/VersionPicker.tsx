@@ -2,15 +2,15 @@ import React, { useEffect, useRef, useState } from 'react';
 import { IconCube } from './icons';
 import { useT } from '../i18n';
 
-// Единый красивый пикер версий в стиле .vpick (как на странице «Контент»).
-// Заменяет старые <select> в форме создания сервера, диалоге лоадеров
-// и диагностике. Классы .vpick* — глобальные из styles-pages.css.
+// A single nice version picker in the .vpick style (like on the “Content” page).
+// Replaces the old <select> in the server creation form, the loaders dialog
+// and diagnostics. The .vpick* classes are global ones from styles-pages.css.
 
 export interface VersionPickerOption {
   id: string;
   title: string;
   sub?: string;
-  /** Доп. класс пункта: 'modded' | 'bedrock' — красит кубик. */
+  /** Extra item class: 'modded' | 'bedrock' — paints the cube. */
   tone?: string;
 }
 
@@ -20,7 +20,7 @@ interface Props {
   options: VersionPickerOption[];
   placeholder?: string;
   disabled?: boolean;
-  /** Ограничение числа пунктов в списке (как раньше slice(0, 100)). */
+  /** Limit on the number of items in the list (like the old slice(0, 100)). */
   maxItems?: number;
   maxHeight?: number;
 }

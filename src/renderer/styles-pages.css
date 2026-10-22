@@ -27,13 +27,13 @@
 .page-sub { color: var(--fg-muted); font-size: 14.5px; margin-top: 10px; max-width: 560px; line-height: 1.6; }
 .page-head-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
 
-/* Рамка страницы: растягивается на всю ширину .content.
-   ВАЖНО: не использовать margin:auto + max-width — внутри .content.flush
-   (flex-column) auto-поля отключают stretch, и ширина резолвится в
-   max-content (обрезание в узком окне, дыры по бокам в широком). */
+/* The page frame: stretches to the full width of .content.
+   IMPORTANT: do not use margin:auto + max-width — inside .content.flush
+   (flex-column) auto margins disable stretch, and the width resolves to
+   max-content (cut off in a narrow window, gaps on the sides in a wide one). */
 .page-frame { position: relative; width: 100%; }
 
-/* Чипы-счётчики в шапке страницы: держатся вместе справа */
+/* The counter chips in the page header: they stay together on the right */
 .head-chips { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 
 
@@ -368,7 +368,7 @@
 .ftype:hover { border-color: var(--border-bright); color: var(--fg); transform: translateY(-1px); }
 .ftype.on { border-color: var(--accent); color: var(--accent-fg); background: var(--accent); font-weight: 700; }
 .ftype.on .cnt { color: var(--accent-fg); opacity: .7; }
-/* Цветные фильтры по типу версии (палитра как у чипов в списке) */
+/* The colored filters by version type (the same palette as the chips in the list) */
 .ftype.k-release { color: rgb(94,203,111); border-color: rgba(94,203,111,.28); background: rgba(94,203,111,.07); }
 .ftype.k-snapshot { color: rgb(245,168,60); border-color: rgba(245,168,60,.3); background: rgba(245,168,60,.07); }
 .ftype.k-beta { color: rgb(155,122,212); border-color: rgba(155,122,212,.32); background: rgba(155,122,212,.08); }
@@ -387,7 +387,7 @@
 .vcount { font-family: var(--font-mono); font-size: 12px; color: var(--fg-subtle); margin-bottom: 14px; }
 .vcount b { color: var(--fg); }
 
-/* Узкое окно: прячем дату, чтобы кнопка действия всегда оставалась в строке */
+/* A narrow window: we hide the date, so that the action button always stays in the row */
 @media (max-width: 1100px) {
   .v-date { display: none; }
 }
@@ -821,7 +821,7 @@ input[type=range].slider::-webkit-slider-thumb:hover { transform: scale(1.2) rot
 
 /* ===== from preview-content.html ===== */
 
-  /* ===== кастомный пикер версий ===== */
+  /* ===== custom version picker ===== */
   .vpick{position:relative;margin-bottom:20px;animation:cardIn .5s var(--ease) backwards}
   .vpick-btn{display:flex;align-items:center;gap:14px;width:100%;padding:15px 18px;border-radius:15px;cursor:pointer;
     background:var(--surface-2);border:1px solid var(--border);transition:.2s;text-align:left}
@@ -853,11 +853,11 @@ input[type=range].slider::-webkit-slider-thumb:hover { transform: scale(1.2) rot
   .vpick-item .vi-body span{font-family:var(--mono);font-size:10px;color:var(--fg-subtle)}
   .vpick-item .vi-check{width:18px;height:18px;color:var(--accent);opacity:0;flex-shrink:0}
   .vpick-item.sel .vi-check{opacity:1}
-  /* compact-вариант: внутри форм/диалогов (VersionPicker) */
+  /* The compact variant: inside forms/dialogs (VersionPicker) */
   .vpick.compact{margin-bottom:0;animation:none}
   .vpick-empty{padding:14px 17px;font-size:12.5px;color:var(--fg-subtle)}
 
-  /* ===== фильтры контента ===== */
+  /* ===== content filters ===== */
   .cfilters{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:18px}
   .cf{font-family:var(--mono);font-size:11.5px;font-weight:600;padding:8px 15px;border-radius:99px;cursor:pointer;
     border:1px solid var(--border);background:var(--surface-2);color:var(--fg-muted);transition:.18s;
@@ -868,7 +868,7 @@ input[type=range].slider::-webkit-slider-thumb:hover { transform: scale(1.2) rot
   .cf.on .cnt{background:rgba(127,127,127,.28);color:var(--accent-fg)}
   .cf-hint{margin-left:auto;font-family:var(--mono);font-size:10.5px;color:var(--fg-subtle)}
 
-  /* ===== единая лента контента ===== */
+  /* ===== unified content strip ===== */
   .c-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:13px}
   .ccard{padding:17px 18px;border-radius:15px;background:var(--surface-2);border:1px solid var(--border);
     transition:transform .22s var(--ease),border-color .22s,background .22s,box-shadow .22s,opacity .25s;
@@ -970,7 +970,7 @@ input[type=range].slider::-webkit-slider-thumb:hover { transform: scale(1.2) rot
   .src-cats{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
   .src-go{flex-shrink:0}
 
-  /* выбор категорий */
+  /* the category selection */
   .cats-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:9px;margin:16px 0}
   .cat{display:flex;align-items:center;gap:11px;padding:11px 13px;border-radius:11px;background:var(--surface-2);
     border:1px solid var(--border);cursor:pointer;transition:.15s;font-size:13px;color:var(--fg)}
@@ -999,7 +999,7 @@ input[type=range].slider::-webkit-slider-thumb:hover { transform: scale(1.2) rot
   .shell-note b{color:var(--fg-muted)}
 
 /* ===== from preview-skins.html ===== */
-  /* псевдо-3D Стив из CSS-кубов */
+  /* a pseudo-3D Steve made of CSS cubes */
   .steve{position:relative;width:96px;height:230px;transform-style:preserve-3d;
     animation:spin 9s linear infinite}
   .steve .part{position:absolute;image-rendering:pixelated;border:1px solid rgba(0,0,0,.25)}
@@ -1064,7 +1064,7 @@ input[type=range].slider::-webkit-slider-thumb:hover { transform: scale(1.2) rot
 
 /* ===== from preview-welcome.html ===== */
 
-  /* ===== интро ===== */
+  /* ===== intro ===== */
   .intro{position:fixed;inset:0;z-index:400;background:#050505;display:flex;align-items:center;justify-content:center;overflow:hidden}
   .intro-track{position:absolute;left:-120%;white-space:nowrap;animation:mono-slide 2.4s cubic-bezier(.22,1,.36,1) forwards}
   .intro-word{font-family:var(--display);font-size:52px;font-weight:800;letter-spacing:26px;color:#fff;text-transform:uppercase}
@@ -1139,7 +1139,7 @@ input[type=range].slider::-webkit-slider-thumb:hover { transform: scale(1.2) rot
 .settings-grid .danger-zone { border-color: rgba(212,87,78,.25); background: linear-gradient(140deg, rgba(212,87,78,.05), var(--surface-2) 50%); }
 @media (max-width: 760px) { .settings-grid > .settings-update-card, .settings-grid > .card:has(.themes), .settings-grid > .settings-game-dir, .settings-grid .danger-zone { grid-column: auto; } .themes { grid-template-columns: 1fr; } .settings-dimensions { grid-template-columns: 1fr; } }
 
-/* ===== Модалка создания сервера ===== */
+/* ===== the server creation modal ===== */
 .srv-create-backdrop {
   position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; padding: 24px;
   background: rgba(5,5,7,.72); backdrop-filter: blur(6px);
@@ -1171,7 +1171,7 @@ input[type=range].slider::-webkit-slider-thumb:hover { transform: scale(1.2) rot
 .mchip.on { border-color: var(--accent); color: var(--accent-fg); background: var(--accent); }
 .srv-create-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
 
-/* ===== Кнопка закрытия (обучение / модалки) ===== */
+/* ===== the close button (onboarding / modals) ===== */
 .onboarding-close {
   width: 38px; height: 38px; border-radius: 12px; display: grid; place-items: center; flex-shrink: 0; cursor: pointer;
   border: 1px solid var(--border); background: var(--surface-3); color: var(--fg-muted); transition: .22s var(--ease);

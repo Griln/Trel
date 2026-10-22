@@ -9,9 +9,9 @@ interface Props {
   onNavigate: (page: 'settings' | 'content') => void;
 }
 
-// Crash Doctor — всплывающая карточка с диагнозом краша и кнопками починки.
-// Кнопки реально чинят: память применяется сразу, драйвер открывается
-// у вендора, Java пересканируется перед переходом в настройки.
+// Crash Doctor — a popup card with the crash diagnosis and repair buttons.
+// The buttons really repair: memory is applied right away, the driver is opened
+// at the vendor, Java is rescanned before navigating to the settings.
 export const CrashDoctor: React.FC<Props> = ({ settings, onSettingsChange, onNavigate }) => {
   const t = useT();
   const [crash, setCrash] = useState<CrashDiagnosis | null>(null);
@@ -36,17 +36,17 @@ export const CrashDoctor: React.FC<Props> = ({ settings, onSettingsChange, onNav
           const next = Math.max(settings.memoryMb || 0, want);
           onSettingsChange({ ...settings, memoryMb: next });
           try {
-            // Дожимаем persist напрямую: onSettingsChange у родителя может
-            // быть локальным (без записи), а память должна вырасти точно.
+            // We push persist directly: the parent's onSettingsChange may
+            // be local (without a write), while the memory has to grow for sure.
             const cur = await window.api.settings.get();
             await window.api.settings.set({ ...cur, memoryMb: next });
             setApplied(t('crash.appliedMemory', { mb: next }));
-          } catch { /* родитель уже обновил локально */ }
+          } catch { /* the parent already updated it locally */ }
         }
         break;
       }
       case 'switch-java':
-        // Список Java мог протухнуть — пересканируем перед переходом.
+        // The Java list may have gone stale — we rescan before navigating.
         try { await window.api.java.scan(); } catch { /* ignore */ }
         onNavigate('settings');
         close();
@@ -64,7 +64,7 @@ export const CrashDoctor: React.FC<Props> = ({ settings, onSettingsChange, onNav
         break;
       }
       case 'update-gpu-driver':
-        // Ссылка от бэкенда (вендор детекчен); без неё — молча ничего.
+        // A link from the backend (the vendor was detected); without it — silently nothing.
         if (a.url) {
           try { await window.api.tools.openUrl(a.url); } catch {}
         }

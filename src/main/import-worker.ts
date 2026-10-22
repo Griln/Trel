@@ -1,14 +1,14 @@
 /**
- * Воркер сканирования источников импорта.
+ * Worker that scans the import sources.
  *
- * detectSources() обходит десятки папок лаунчеров синхронными fs-вызовами и на
- * медленных/сетевых дисках занимает секунды. В main-процессе это замораживает
- * весь UI (Electron обрабатывает IPC и отрисовку в одном event loop), поэтому
- * скан вынесен в отдельный поток. Если поток не удалось запустить (например,
- * файл воркера не распакован из asar), вызывающая сторона молча откатывается
- * на синхронный путь — см. detectSourcesAsync в import.ts.
+ * detectSources() walks dozens of launcher folders with synchronous fs calls and
+ * takes seconds on slow/network disks. In the main process that freezes the
+ * whole UI (Electron handles IPC and rendering in a single event loop), so the
+ * scan was moved into a separate thread. If the thread cannot be started (for
+ * example, the worker file was not unpacked from asar), the caller silently
+ * falls back to the synchronous path — see detectSourcesAsync in import.ts.
  *
- * Модуль import.ts не тянет electron, поэтому его можно грузить в воркере.
+ * The import.ts module does not pull in electron, so it can be loaded in the worker.
  */
 import { parentPort, workerData } from 'node:worker_threads';
 import { detectSources } from './import';

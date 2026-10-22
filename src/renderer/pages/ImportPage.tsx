@@ -20,7 +20,7 @@ type ImportSource = {
   mojangOnlyBedrock?: boolean;
   modpack?: ImportModpack;
   launcherTweaks?: LauncherTweaks;
-  /** Временная распаковка архива: удалить после импорта (cleanupDir). */
+  /** Temporary archive extraction: remove after the import (cleanupDir). */
   tmpDir?: string;
 };
 type ImportReport = {
@@ -121,10 +121,10 @@ function importCategoryLabel(t: (k: string) => string, cat: string): string {
 }
 
 /**
- * Порядок категорий в диалоге выбора. Кэш (assets/libraries/skin-cache) идёт
- * последним: он крупный, но переносить его не обязательно — Trel докачает
- * ассеты сам. Раньше эти категории детектились, но в списке отсутствовали:
- * карточка источника показывала их объём, а перенести было нельзя.
+ * The order of the categories in the selection dialog. The cache (assets/libraries/skin-cache) goes
+ * last: it is large, but there is no need to transfer it — Trel will download
+ * the assets itself. These categories used to be detected but were missing from the list:
+ * the source card showed their size, but they could not be transferred.
  */
 const LAUNCHER_CATS = ['accounts', 'worlds', 'mods', 'coremods', 'shaderpacks', 'resourcepacks', 'texturepacks',
   'servers', 'screenshots', 'options', 'config', 'datapacks', 'stats', 'advancements',
@@ -134,9 +134,9 @@ const LAUNCHER_CATS = ['accounts', 'worlds', 'mods', 'coremods', 'shaderpacks', 
   'assets', 'libraries', 'skin-cache'];
 
 /**
- * Кэш по умолчанию не отмечаем: это десятки тысяч файлов и гигабайты, которые
- * лаунчер умеет скачать сам. Пользователь включит осознанно, если хочет
- * сэкономить трафик.
+ * The cache is not checked by default: it is tens of thousands of files and gigabytes
+ * that the launcher is able to download on its own. The user will enable it deliberately
+ * if they want to save traffic.
  */
 const CACHE_CATS = new Set(['assets', 'libraries', 'skin-cache']);
 
@@ -188,8 +188,8 @@ export const ImportPage: React.FC = () => {
       .then((list) => { if (!cancelled) setImportSources(list as ImportSource[]); })
       .catch(() => {})
       .finally(() => { if (!cancelled) setImportChecked(true); });
-    // Манифест прошлого импорта: без него пользователь не помнит, переносил
-    // он уже эту сборку или нет, и делает второй заход «на всякий случай».
+    // The manifest of a previous import: without it the user does not remember whether they
+    // have already transferred this build, and runs a second pass “just in case”.
     window.api.importer.lastReport()
       .then((r) => { if (!cancelled) setLastImport(r as LastImportInfo | null); })
       .catch(() => {});
@@ -229,12 +229,12 @@ export const ImportPage: React.FC = () => {
 
   const openImportSelection = (source: ImportSource) => {
     const sel: Record<string, boolean> = {};
-    // Кэш не отмечаем по умолчанию — см. CACHE_CATS.
+    // The cache is not checked by default — see CACHE_CATS.
     for (const cat of source.available) sel[cat] = !CACHE_CATS.has(cat);
     setSelectionCats(sel);
     setSelectionSource(source);
-    // Предпросмотр относится к конкретному набору категорий — при смене
-    // источника старые цифры показывать нельзя.
+    // The preview refers to a specific set of categories — when the
+    // source changes, the old numbers must not be shown.
     setPreview(null);
   };
 
@@ -285,8 +285,8 @@ export const ImportPage: React.FC = () => {
   };
 
   /**
-   * Ставит распознанную сборку штатным механизмом Trel вместо копирования
-   * файлов: полученная версия остаётся обновляемой из лаунчера.
+   * Installs the detected build through the standard Trel mechanism instead of copying
+   * the files: the resulting version stays updatable from the launcher.
    */
   const installDetectedModpack = async (source: ImportSource) => {
     const mp = source.modpack;
@@ -320,8 +320,8 @@ export const ImportPage: React.FC = () => {
     if (selCats.length === 0) return;
     const source = selectionSource;
 
-    // Считаем объём заранее: нехватку места лучше увидеть до старта, а не
-    // получить ENOSPC посреди копирования десятков гигабайт.
+    // We calculate the size upfront: running out of space is better seen before the start, and not
+    // after hitting ENOSPC in the middle of copying dozens of gigabytes.
     let pre = preview;
     if (!pre) {
       try {
@@ -489,7 +489,7 @@ export const ImportPage: React.FC = () => {
       await refreshImportSources();
       try { setLastImport((await window.api.importer.lastReport()) as LastImportInfo | null); } catch {}
     } catch (e) {
-      // Импорт мог не начаться вовсе: запущенная игра, занятый лок и т.п.
+      // The import may not have started at all: a running game, a busy lock, etc.
       setImportProgress(null);
       setVersionProgress(null);
       await dlg.show({
@@ -506,7 +506,7 @@ export const ImportPage: React.FC = () => {
   const addToQueue = () => {
     if (!selectionSource || selectedCats.length === 0) return;
     if (queue.length >= 5 || queue.some((q) => q.source.id === selectionSource.id)) return;
-    // Снапшот категорий на момент добавления: у каждого источника свой набор.
+    // A snapshot of the categories at the moment of adding: every source has its own set.
     setQueue((q) => [...q, { source: selectionSource, categories: [...selectedCats] }]);
     setSelectionSource(null);
     setPreview(null);
@@ -547,7 +547,7 @@ export const ImportPage: React.FC = () => {
     try {
       const file = (await window.api.importer.pickArchive()) as string | null;
       if (!file) return;
-      // .trelpack — наш формат: импорт сразу в версию, без детекта лаунчеров.
+      // .trelpack — our own format: the import goes straight into a version, without detecting launchers.
       if (file.toLowerCase().endsWith('.trelpack')) {
         const base = file.split(/[\\/]/).pop()!.replace(/\.trelpack$/i, '').replace(/[^a-zA-Z0-9._-]+/g, '_').slice(0, 64) || 'imported-pack';
         const target = base;
@@ -653,7 +653,7 @@ export const ImportPage: React.FC = () => {
             <h3 style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 18, color: 'var(--fg-bright)', marginTop: 10 }}>{selectionSource?.label || ''}</h3>
             <div className="imp-stage">{versionProgress || t('import.importing')}… {importProgress.current} / {importProgress.total}</div>
             <div className="progress"><i style={{ width: `${Math.min((importProgress.current / importProgress.total) * 100, 100)}%` }} /></div>
-            {/* Байты и скорость: по счётчику файлов не видно, идёт перенос или подвис. */}
+            {/* Bytes and speed: from the file counter it is not visible whether the transfer is running or stuck. */}
             {!!importProgress.bytes && (
               <div className="imp-stage" style={{ opacity: 0.75 }}>
                 {formatImportSize(importProgress.bytes)}
@@ -663,7 +663,7 @@ export const ImportPage: React.FC = () => {
                   ' · ' + t('import.eta', { seconds: importProgress.etaSeconds })}
               </div>
             )}
-            {/* Текущий файл: видно, что процесс живой, а не завис на процентах. */}
+            {/* The current file: you can see that the process is alive and not stuck on percentages. */}
             {!!importProgress.currentFile && (
               <div className="imp-stage" style={{ opacity: 0.55, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }}>
                 {importProgress.currentFile}
@@ -705,7 +705,7 @@ export const ImportPage: React.FC = () => {
                     checked={!!selectionCats[cat]}
                     onChange={(e) => {
                       setSelectionCats((prev) => ({ ...prev, [cat]: e.target.checked }));
-                      setPreview(null);  // цифры относятся к прежнему набору
+                      setPreview(null);  // the numbers refer to the previous set
                     }}
                   />
                   <span className="box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3.5}><path d="m5 12 5 5 9-11" /></svg></span>

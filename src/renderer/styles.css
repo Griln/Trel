@@ -1,7 +1,7 @@
 /* ============================================================
    Trel — UI v3
-   Чистая, без дублей версия. Все классы из существующего JSX
-   сохранены — компоненты не правятся.
+   A clean version, without duplicates. All the classes from the existing JSX
+   are preserved — the components are not touched.
    ============================================================ */
 
 /* Local production typography: no network dependency. */
@@ -104,15 +104,15 @@ button {
 /* ============================================================
    Design tokens
    ============================================================
-   Тема выбирается через <html data-theme="mono|eclipse|voxel">
-   Дефолт в :root — Mono. Каждая тема дальше переопределяет нужные
-   токены. Для всех акцентов есть RGB-варианты `--accent-rgb`, чтобы
-   можно было `rgba(var(--accent-rgb), 0.15)` и менять прозрачные
-   подсветки от темы.
+   The theme is selected via <html data-theme="mono|eclipse|voxel">
+   The default in :root is Mono. Every theme then overrides the tokens it
+   needs. All the accents have RGB variants `--accent-rgb`, so that you can
+   write `rgba(var(--accent-rgb), 0.15)` and change the transparent
+   highlights per theme.
    ============================================================ */
 :root,
 [data-theme="mono"] {
-    /* ===== MONO (default): чёрный + белый акцент ===== */
+    /* ===== MONO (default): black + white accent ===== */
 
     --bg: #0a0a0a;
     --surface: #131313;
@@ -129,11 +129,11 @@ button {
     --fg-bright: #ffffff;
     --fg: #ededed;
     --fg-muted: #8a8a8a;
-    /* #5a5a5a давал контраст 2.87 (провал) при 115 использованиях, включая
-       настоящий текст — поднято до 4.81. Faint только для декора. */
+    /* #5a5a5a gave a contrast of 2.87 (a fail) in 115 usages, including
+       real text — raised to 4.81. Faint is only for decoration. */
     --fg-subtle: #7d7d7d;
 
-    /* Акцент — белый. Текст на primary-кнопках всегда тёмный. */
+    /* Accent — white. The text on primary buttons is always dark. */
     --accent: #ffffff;
     --accent-rgb: 255, 255, 255;
     --accent-bright: #ffffff;
@@ -141,7 +141,7 @@ button {
     --accent-soft: rgba(255, 255, 255, 0.06);
     --accent-soft-strong: rgba(255, 255, 255, 0.14);
     --accent-border: rgba(255, 255, 255, 0.3);
-    /* Цвет текста, который ставится поверх accent (на primary-кнопках). */
+    /* The color of the text that is placed on top of the accent (on primary buttons). */
     --accent-fg: #0a0a0a;
 
     --accent-2: #b8b8b8;
@@ -162,7 +162,7 @@ button {
     --info-rgb: 184, 184, 184;
     --info-soft: rgba(255, 255, 255, 0.06);
 
-    /* В Mono нет ауры на фоне — чисто чёрный, без декора. */
+    /* Mono has no aura on the background — pure black, no decoration. */
     --bg-aura-1: transparent;
     --bg-aura-2: transparent;
     --bg-aura-3: transparent;
@@ -175,22 +175,22 @@ button {
     --r-xl: 18px;
     --r-2xl: 22px;
 
-    /* Shadows — без неона, только реальные глубины. */
+    /* Shadows — no neon, only real depth. */
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
     --shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
     --shadow-lg: 0 28px 64px -16px rgba(0, 0, 0, 0.7);
     --shadow-accent: 0 8px 28px -12px rgba(0, 0, 0, 0.8);
     --shadow-inner: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 
-    /* Sidebar background — может быть градиентом или сплошным цветом. */
+    /* Sidebar background — may be a gradient or a solid color. */
     --sidebar-bg: linear-gradient(
         180deg,
         rgba(0, 0, 0, 0.45),
         rgba(0, 0, 0, 0.25)
     );
 
-    /* Стиль кнопок: 'glow' (Aurora-style) или 'solid' (Mono/Eclipse).
-     Используется в правилах ниже чтобы не плодить per-theme ветки. */
+    /* Button style: 'glow' (Aurora-style) or 'solid' (Mono/Eclipse).
+     Used in the rules below to avoid spawning per-theme branches. */
     --primary-shadow: none;
     --primary-shadow-hover: 0 0 0 1px rgba(255, 255, 255, 0.4) inset;
     --primary-bg: var(--accent);
@@ -200,10 +200,10 @@ button {
     --t-fast: 0.12s cubic-bezier(0.2, 0.8, 0.2, 1);
     --t: 0.18s cubic-bezier(0.2, 0.8, 0.2, 1);
     --t-slow: 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
-    /* Универсальный easing для styles-pages.css (там var(--ease)). */
+    /* The universal easing for styles-pages.css (var(--ease) there). */
     --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
 
-    /* Доп. цвета и шрифты (используются в home-карточках и пр.) */
+    /* Extra colors and fonts (used in the home cards, etc.) */
     --green: #5ecb6f;
     --amber: #f5a83c;
     --cyan: #4aedd9;
@@ -219,9 +219,9 @@ button {
 }
 
 /* ============================================================
-   ECLIPSE — светлая тема в стиле Linear/Vercel: ЧИСТЫЙ нейтральный
-   контраст, графитовый акцент. Без фиолета — это «зеркало» Mono:
-   белый фон с тёмным акцентом, как Mono наоборот.
+   ECLIPSE — a light theme in the Linear/Vercel style: CLEAN neutral
+   contrast, a graphite accent. No violet — it is the "mirror" of Mono:
+   a white background with a dark accent, the opposite of Mono.
    ============================================================ */
 [data-theme="eclipse"] {
     --bg: #f4f5f8;
@@ -239,11 +239,11 @@ button {
     --fg-bright: #050608;
     --fg: #1a1c20;
     --fg-muted: #54585f;
-    /* #80858f давал 3.40 (провал для текста 12px) — поднято до 5.45. */
+    /* #80858f gave 3.40 (a fail for 12px text) — raised to 5.45. */
     --fg-subtle: #60646c;
 
-    /* Акцент — графит/уголь. Зеркало Mono (там белый акцент на чёрном —
-     здесь чёрный акцент на белом). Никакой фиолетовой/индиговой ноты. */
+    /* Accent — graphite/charcoal. The mirror of Mono (there it is a white accent on black —
+     here it is a black accent on white). Not a hint of violet/indigo. */
     --accent: #1a1a1a;
     --accent-rgb: 26, 26, 26;
     --accent-bright: #3a3a3a;
@@ -253,15 +253,15 @@ button {
     --accent-border: rgba(0, 0, 0, 0.2);
     --accent-fg: #ffffff;
 
-    /* Вторичный — мягкий тёплый серый, для нейтральных меток */
+    /* Secondary — a soft warm gray, for neutral labels */
     --accent-2: #54585f;
     --accent-2-rgb: 84, 88, 95;
     --accent-2-soft: rgba(84, 88, 95, 0.08);
 
-    /* Семантические — стандартные цвета статусов: success/warn/danger/info.
-      Они рисуют только маленькие чипы и точки, не доминируют визуально.
-      Значения затемнены под белый фон: #16a34a давал 3.02, #d97706 — 2.92
-      (провал для мелкого текста чипов). Проверено расчётом контраста. */
+    /* Semantic — the standard status colors: success/warn/danger/info.
+      They only paint small chips and dots, they do not dominate visually.
+      The values are darkened for a white background: #16a34a gave 3.02, #d97706 — 2.92
+      (a fail for the small text of the chips). Verified by calculating the contrast. */
     --success: #15803d;
     --success-rgb: 21, 128, 61;
     --success-soft: rgba(21, 128, 61, 0.1);
@@ -276,7 +276,7 @@ button {
     --info-rgb: 37, 99, 235;
     --info-soft: rgba(37, 99, 235, 0.08);
 
-    /* Яркие акценты для чипов/графиков на светлом — те же семейства. */
+    /* Bright accents for chips/charts on a light background — the same families. */
     --green: #15803d;
     --amber: #b45309;
     --cyan: #0e7490;
@@ -284,8 +284,8 @@ button {
     --blue: #2563eb;
     --purple: #7c3aed;
 
-    /* Шрифты/радиусы/переходы — те же, что в mono (наследования нет,
-       каждая тема — полный набор токенов). */
+    /* Fonts/radii/transitions — the same as in mono (there is no inheritance,
+       every theme has a full set of tokens). */
     --r-xs: 4px;
     --r-sm: 6px;
     --r: 10px;
@@ -303,22 +303,22 @@ button {
     --font-display: var(--display);
     --font-mono: var(--mono);
 
-    /* Аура — еле заметная нейтральная дымка, не цветная. */
+    /* Aura — a barely noticeable neutral haze, not a colored one. */
     --bg-aura-1: rgba(0, 0, 0, 0.025);
     --bg-aura-2: transparent;
     --bg-aura-3: transparent;
 
-    /* Реальные тени-падения, не свечения */
+    /* Real drop shadows, not glows */
     --shadow-sm: 0 1px 2px rgba(20, 25, 50, 0.05);
     --shadow: 0 4px 12px rgba(20, 25, 50, 0.06);
     --shadow-lg: 0 20px 40px -16px rgba(20, 25, 50, 0.15);
     --shadow-accent: 0 4px 14px -4px rgba(0, 0, 0, 0.18);
     --shadow-inner: inset 0 1px 0 rgba(255, 255, 255, 0.5);
 
-    /* Sidebar — заметно затонированный, чтобы не сливался с .surface. */
+    /* Sidebar — noticeably toned down, so that it does not blend into .surface. */
     --sidebar-bg: linear-gradient(180deg, #e9ebef, #dfe2e8);
 
-    /* Кнопки — solid чёрный с тонкой тенью, без градиента */
+    /* Buttons — solid black with a thin shadow, no gradient */
     --primary-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
     --primary-shadow-hover: 0 4px 12px rgba(0, 0, 0, 0.2);
     --primary-bg: var(--accent);
@@ -326,7 +326,7 @@ button {
 }
 
 /* ============================================================
-   VOXEL — изумруд + золото на тёмно-зелёном.
+   VOXEL — emerald + gold on a dark green.
    ============================================================ */
 [data-theme="voxel"] {
     --bg: #0d1612;
@@ -344,7 +344,7 @@ button {
     --fg-bright: #ffffff;
     --fg: #e3ebe5;
     --fg-muted: #8a9c92;
-    /* #5a6a62 давал 3.22 — поднято до 5.11, используется в настоящем тексте. */
+    /* #5a6a62 gave 3.22 — raised to 5.11, used in real text. */
     --fg-subtle: #7a8b80;
 
     --accent: #50c878;
@@ -366,7 +366,7 @@ button {
     --warning: #ffaa00;
     --warning-rgb: 255, 170, 0;
     --warning-soft: rgba(255, 170, 0, 0.12);
-    /* #d44f4f давал 4.41 на мелком тексте чипов — поднято до 5.45. */
+    /* #d44f4f gave 4.41 on the small text of the chips — raised to 5.45. */
     --danger: #e06565;
     --danger-rgb: 224, 101, 101;
     --danger-border: rgba(224, 101, 101, 0.38);
@@ -375,7 +375,7 @@ button {
     --info-rgb: 79, 195, 247;
     --info-soft: rgba(79, 195, 247, 0.12);
 
-    /* Яркие акценты для чипов/графиков на тёмно-зелёном. */
+    /* Bright accents for chips/charts on a dark green. */
     --green: #6fce85;
     --amber: #ffaa00;
     --cyan: #4fc3f7;
@@ -383,7 +383,7 @@ button {
     --blue: #4fc3f7;
     --purple: #b49ae0;
 
-    /* Шрифты/переходы/тени — полный набор, как в mono. */
+    /* Fonts/transitions/shadows — a full set, the same as in mono. */
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
     --shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
     --shadow-lg: 0 28px 64px -16px rgba(0, 0, 0, 0.7);
@@ -403,7 +403,7 @@ button {
     --bg-aura-2: rgba(255, 217, 61, 0.04);
     --bg-aura-3: rgba(79, 195, 247, 0.02);
 
-    /* Чуть менее закруглённые углы — voxel-эстетика без зубчатости */
+    /* Slightly less rounded corners — the voxel aesthetic without the jaggedness */
     --r-xs: 3px;
     --r-sm: 5px;
     --r: 7px;
@@ -413,14 +413,14 @@ button {
 
     --shadow-accent: 0 10px 32px -10px rgba(80, 200, 120, 0.55);
 
-    /* Sidebar — глубже зелёного фона, лёгкая дымка */
+    /* Sidebar — deeper than the green background, a light haze */
     --sidebar-bg: linear-gradient(
         180deg,
         rgba(8, 16, 12, 0.55),
         rgba(8, 16, 12, 0.35)
     );
 
-    /* Кнопки — изумрудный градиент с лёгким glow (зелёный, не фиолетовый) */
+    /* Buttons — an emerald gradient with a light glow (green, not violet) */
     --primary-shadow: var(--shadow-sm);
     --primary-shadow-hover:
         0 14px 40px -10px rgba(80, 200, 120, 0.55),
@@ -798,7 +798,7 @@ button {
     transition: grid-template-columns 0.35s cubic-bezier(0.3, 0.8, 0.3, 1);
 }
 
-/* Автоскрытие левой панели: колонка схлопывается в 0, контент занимает всё место */
+/* Auto-hide of the left panel: the column collapses to 0, the content takes all the space */
 .main.side-hidden {
     grid-template-columns: 0px minmax(0, 1fr);
 }
@@ -810,15 +810,15 @@ button {
     position: relative;
 }
 
-/* Фиксированная ширина панели, чтобы она не «сжималась» при анимации колонки.
-   height:100% — панель привязана к высоте обёртки, иначе она растёт за окно
-   и колесо не крутит (scrollHeight == clientHeight). */
+/* A fixed panel width, so that it does not "shrink" during the column animation.
+   height:100% — the panel is bound to the height of the wrapper, otherwise it grows past the window
+   and the wheel does not scroll (scrollHeight == clientHeight). */
 .side-wrap .sidebar {
     width: 208px;
     height: 100%;
 }
 
-/* Невидимая полоска-триггер у левого края: наведение возвращает панель */
+/* An invisible trigger strip at the left edge: hovering brings the panel back */
 .side-reveal {
     position: absolute;
     left: 0;
@@ -869,8 +869,8 @@ button {
 }
 
 .nav-group-label {
-    /* Маленький capslock-заголовок секции — даёт scan-структуру:
-     ИГРАТЬ / БИБЛИОТЕКА / ИНСТРУМЕНТЫ / ПРОФИЛЬ. Не отвлекает, помогает быстро найти. */
+    /* A small capslock section heading — it gives a scan structure:
+     PLAY / LIBRARY / TOOLS / PROFILE. It does not distract, it helps to find things fast. */
     font-size: 10px;
     font-weight: 700;
     letter-spacing: 0.14em;
@@ -881,14 +881,14 @@ button {
     user-select: none;
 }
 
-/* Бейдж справа от пункта: число (счётчик) или цветная точка (статус). */
+/* The badge on the right of the item: a number (counter) or a colored dot (status). */
 .nav-item-label {
     flex: 1;
 }
 
-/* Hero-пункт «Главная»: стоит самым первым в панели, крупнее и ярче
-   остальных пунктов — главный экран лаунчера. Неактивное состояние —
-   полупрозрачный акцент; активное — залито акцентным градиентом. */
+/* The hero item "Home": it is the first in the panel, larger and brighter
+   than the other items — the main screen of the launcher. The inactive state is
+   a translucent accent; the active one is filled with the accent gradient. */
 .nav-hero {
     position: relative;
     display: flex;
@@ -1080,7 +1080,7 @@ button {
     transition:
         border-color var(--t-fast),
         background var(--t-fast);
-    /* Кнопка-сброс: была <div>, стала <button> чтобы вёл в Аккаунты при клике. */
+    /* The reset button: it was a <div>, it became a <button> so that it leads to Accounts on click. */
     cursor: pointer;
     font: inherit;
     color: inherit;
@@ -1092,7 +1092,7 @@ button {
     background: var(--surface-hover);
 }
 .account-chip .avatar-sm {
-    /* Акцентное кольцо вокруг аватара — чип визуально «новый стиль». */
+    /* The accent ring around the avatar — the chip looks like a "new style". */
     box-shadow:
         0 0 0 2px var(--surface),
         0 0 0 3.5px var(--accent-border);
@@ -1161,8 +1161,8 @@ button {
 .content.flush {
     display: flex;
     flex-direction: column;
-    /* раньше overflow:hidden — колесо не листало каталог; оставляем
-       скрытым только по X, по Y скроллим как обычные страницы */
+    /* it used to be overflow:hidden — the wheel did not scroll the catalogue; we keep
+       it hidden on X only, on Y we scroll like on regular pages */
     overflow-y: auto;
     overflow-x: hidden;
     padding: 16px;
@@ -1597,8 +1597,8 @@ input[type="range"]::-webkit-slider-thumb:hover {
     background: var(--surface-2);
     border-color: var(--border);
 }
-/* Типы версий в каталоге: релиз/снапшот/бета/альфа/bedrock.
-   Цвета соответствуют чипам из styles-pages.css (green/amber/purple/blue/cyan) */
+/* Version types in the catalogue: release/snapshot/beta/alpha/bedrock.
+   The colors match the chips from styles-pages.css (green/amber/purple/blue/cyan) */
 .chip.release {
     color: var(--green);
     background: rgba(94, 203, 111, 0.1);
@@ -3334,8 +3334,8 @@ input[type="range"]::-webkit-slider-thumb:hover {
 
 /* ============================================================
    Catalog (Browse) — improved layout
-   Структура: header + grid(list / detail). Внутри списка
-   используются старые .lib-side-tabs / .side-tab (2x2 фильтры).
+   Structure: header + grid(list / detail). Inside the list
+   the old .lib-side-tabs / .side-tab are used (2x2 filters).
    ============================================================ */
 
 .catalog {
@@ -3913,7 +3913,7 @@ input[type="range"]::-webkit-slider-thumb:hover {
 
 /* ============================================================
    SKIN PREVIEW (face / body) + skin card
-   Pixel-art rendering: запрещаем сглаживание; canvas сам делает nearest-neighbor.
+   Pixel-art rendering: anti-aliasing is disabled; the canvas itself does nearest-neighbor.
    ============================================================ */
 
 .skin-face,
@@ -3947,14 +3947,14 @@ input[type="range"]::-webkit-slider-thumb:hover {
         inset 0 1px 0 rgba(255, 255, 255, 0.18);
 }
 
-/* Когда SkinFace вставлен на место .avatar-sm — берём скруглённость от родителя
-   и убираем градиент-фон, чтобы скин показывался как есть. */
+/* When SkinFace replaces .avatar-sm — we take the rounding from the parent
+   and remove the gradient background, so that the skin is shown as is. */
 .avatar-sm.skin-face {
     border-radius: 9px;
     background: transparent;
 }
 
-/* На карточках аккаунтов — побольше скругление */
+/* On the account cards — a bit more rounding */
 .account-tile .account-avatar.skin-face,
 .account-tile .account-avatar.skin-face-fallback {
     width: 40px;
@@ -4226,8 +4226,8 @@ input[type="range"]::-webkit-slider-thumb:hover {
 }
 
 /* ============================================================
-   "Без скинов" — отметки в каталоге/установленных и сводный
-   список на странице "Скин".
+   "No skins" — the marks in the catalogue/installed lists and the summary
+   list on the "Skin" page.
    ============================================================ */
 
 .row-noskin {
@@ -4288,7 +4288,7 @@ input[type="range"]::-webkit-slider-thumb:hover {
 }
 
 /* ============================================================
-   SERVERS — список + детальная панель + консоль + настройки
+   SERVERS — the list + the detail panel + the console + the settings
    ============================================================ */
 
 .server-shell {
@@ -4564,7 +4564,7 @@ input[type="range"]::-webkit-slider-thumb:hover {
 }
 
 /* ============================================================
-   SERVERS — блок «Как подключиться»
+   SERVERS — the "How to connect" block
    ============================================================ */
 
 .server-connect-card {
@@ -4645,7 +4645,7 @@ input[type="range"]::-webkit-slider-thumb:hover {
 }
 
 /* ============================================================
-   Theme picker (Settings → "Тема оформления")
+   Theme picker (Settings → "Appearance theme")
    ============================================================ */
 
 .theme-grid {
@@ -4728,7 +4728,7 @@ input[type="range"]::-webkit-slider-thumb:hover {
 }
 
 /* ============================================================
-   Settings page — сетка карточек как в previews/preview-settings.html
+   Settings page — a card grid like in previews/preview-settings.html
    ============================================================ */
 
 .sets-grid {
@@ -4746,7 +4746,7 @@ input[type="range"]::-webkit-slider-thumb:hover {
     }
 }
 
-/* Темы: три карточки в ряд с цветными свотчами */
+/* Themes: three cards in a row with colored swatches */
 .themes {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
@@ -4788,7 +4788,7 @@ input[type="range"]::-webkit-slider-thumb:hover {
     color: var(--fg-subtle);
 }
 
-/* Память: крупное значение + шкала под слайдером */
+/* Memory: a large value + a scale under the slider */
 .mem-readout {
     font-family: var(--display);
     font-weight: 900;
@@ -4810,7 +4810,7 @@ input[type="range"]::-webkit-slider-thumb:hover {
     margin-top: 6px;
 }
 
-/* Окно игры: карточки режимов + поля размеров */
+/* Game window: the mode cards + the size fields */
 .settings-window-mode {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -4857,14 +4857,14 @@ input[type="range"]::-webkit-slider-thumb:hover {
     color: var(--fg-muted);
 }
 
-/* Список найденных Java */
+/* The list of the found Java installations */
 .settings-java-list {
     display: flex;
     flex-direction: column;
     gap: 8px;
 }
 
-/* Опасная зона: карточки с красным акцентом */
+/* Danger zone: the cards with a red accent */
 .card.danger-card {
     border-color: rgba(var(--danger-rgb), 0.25);
     background: linear-gradient(
@@ -4880,10 +4880,10 @@ input[type="range"]::-webkit-slider-thumb:hover {
 /* ============================================================
    Home page — quick actions row + section hint
    ============================================================
-   Раньше под hero «Продолжить» лежали две большие плитки «Каталог» /
-   «Установленные» — но они дублировали sidebar и забирали много места.
-   Теперь даём компактный ряд именно тех ярлыков, которые НЕ доступны
-   через sidebar напрямую: «Папка игры», «Папка версии», «Все версии».
+   Earlier there were two large tiles "Catalogue" /
+   "Installed" under the hero "Continue" — but they duplicated the sidebar and took up a lot of space.
+   Now we give a compact row with exactly those labels that are NOT available
+   directly through the sidebar: "Game folder", "Version folder", "All versions".
 */
 
 .home-quick {
@@ -5178,7 +5178,7 @@ input[type="range"]::-webkit-slider-thumb:hover {
 
 /* ============================================================
    REDESIGN v4 — Cinematic Home + Screenshots search/info
-   Все цвета через токены → работает в mono / eclipse / voxel.
+   All the colors go through tokens → it works in mono / eclipse / voxel.
    ============================================================ */
 
 /* ---- Home: Cinematic poster ---- */
@@ -5210,7 +5210,7 @@ input[type="range"]::-webkit-slider-thumb:hover {
 .home-cinematic .home-hero-row { justify-content: center; }
 .home-cinematic .home-hero-meta { justify-content: center; }
 .home-cinematic.has-bg .home-hero-title { text-shadow: 0 2px 24px rgba(0,0,0,0.45); }
-/* Крупная Play-кнопка в кинорежиме */
+/* A large Play button in the cinematic mode */
 .home-cinematic .home-hero .btn-play,
 .home-cinematic .home-hero .play-btn,
 .home-cinematic .home-hero .btn.primary.lg {
@@ -5384,17 +5384,17 @@ input[type="range"]::-webkit-slider-thumb:hover {
    FIX v4.1 — scroll, screenshots hotkey, cinematic poster
    ============================================================ */
 
-/* 1. Левая панель — прокрутка при нехватке высоты */
+/* 1. The left panel — it scrolls when there is not enough height */
 .sidebar { overflow-y: auto; overflow-x: hidden; min-height: 0; }
 .sidebar::-webkit-scrollbar { width: 8px; }
 .sidebar::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 8px; }
 
-/* 2. Контент и модпаки — докручиваются до конца */
+/* 2. Content and modpacks — they scroll to the end */
 .content { padding-bottom: 32px; }
 .modpacks-page { padding-bottom: 40px; }
 .modpacks-grid { padding-bottom: 12px; }
 
-/* 4. Скриншоты — подпись о горячей клавише в игре */
+/* 4. Screenshots — a caption about the in-game hotkey */
 .shots-ingame-hint {
   margin: -2px 0 14px; padding: 8px 12px;
   font-size: 13px; color: var(--fg-muted);
@@ -5402,14 +5402,14 @@ input[type="range"]::-webkit-slider-thumb:hover {
   border-radius: var(--r); display: inline-flex; align-items: center; gap: 8px;
 }
 
-/* 5. Главная — настоящий кинопостер: центрированная колонка */
+/* 5. Home — a real cinematic poster: a centered column */
 .home-cinematic .home-hero-row { flex-direction: column; align-items: center; gap: 22px; }
 .home-cinematic .home-hero-info { display: flex; flex-direction: column; align-items: center; text-align: center; max-width: 640px; }
 .home-cinematic .home-hero-meta { justify-content: center; flex-wrap: wrap; }
 .home-cinematic .home-hero-desc { text-align: center; }
 .home-cinematic .play-btn.home-play { min-width: 260px; transform: scale(1.04); }
 .home-cinematic .play-btn.home-play:hover:not(:disabled) { transform: scale(1.07); }
-/* Фолбэк-фон, когда скриншотов нет — всё равно кинематографично */
+/* The fallback background, when there are no screenshots — still cinematic */
 .home-cinematic:not(.has-bg) .home-bg {
   opacity: 1; filter: none; transform: none;
   background:
@@ -5661,7 +5661,7 @@ input[type="range"]::-webkit-slider-thumb:hover {
     .home-player .home-play { width: 100%; }
 }
 
-/* ─── Свёрнутый сайдбар: рейка 64px ────────────────────────────────────── */
+/* ─── Collapsed sidebar: a 64px rail ────────────────────────────────────── */
 .side-wrap.rail-collapsed .sidebar,
 .sidebar.rail-collapsed {
     width: 64px;
@@ -5715,11 +5715,11 @@ input[type="range"]::-webkit-slider-thumb:hover {
 }
 
 /* ============================================================
-   ONBOARDING v5 — интерактивное обучение по живому интерфейсу.
-   Аппаратный SVG-спотлайт с маской (.onb-overlay), синхронное
-   светящееся кольцо (.onb-ring), маячок (.onb-beacon), стеклянная
-   карточка (.onb-tip) и полноэкранные сцены (.onb-stage > .onb-card)
-   для приветствия и финала.
+   ONBOARDING v5 — an interactive tour over the live UI.
+   A hardware SVG spotlight with a mask (.onb-overlay), a synchronized
+   glowing ring (.onb-ring), a beacon (.onb-beacon), a glass
+   card (.onb-tip) and the fullscreen scenes (.onb-stage > .onb-card)
+   for the welcome and the finale.
    ============================================================ */
 .onb-overlay {
     position: fixed;
@@ -5999,7 +5999,7 @@ input[type="range"]::-webkit-slider-thumb:hover {
 }
 .onb-linkish:hover { color: var(--fg-bright); text-decoration: underline; }
 
-/* Сцены: приветствие и финал */
+/* Scenes: welcome and finale */
 .onb-stage {
     position: fixed;
     inset: 0;
@@ -6179,7 +6179,7 @@ input[type="range"]::-webkit-slider-thumb:hover {
     }
 }
 
-/* Onboarding v4.1 — блокировка прогресса на шагах с заданием */
+/* Onboarding v4.1 — blocking the progress on the steps with a task */
 .onb-seg:disabled { opacity: 0.35; cursor: default; }
 .onb-seg:disabled .onb-seg-bar { background: var(--surface-4); }
 .onb-task-skip {

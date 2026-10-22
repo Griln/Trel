@@ -1,23 +1,23 @@
 /**
- * Bundled "legacy" Minecraft versions — те, которых нет в манифесте Mojang
- * (Cave Game Tech Test, ранний pre-Classic). Лежат в resources/legacy/<id>/
- * рядом с приложением (в dev — в исходниках, в продакшене — в process.resourcesPath/legacy).
+ * Bundled "legacy" Minecraft versions — the ones missing from the Mojang manifest
+ * (Cave Game Tech Test, early pre-Classic). They live in resources/legacy/<id>/
+ * next to the app (in dev — in the sources, in production — in process.resourcesPath/legacy).
  *
- * Структура для каждой версии:
+ * Layout for each version:
  *   <id>/<id>.jar
- *   <id>/natives/*    — нативные библиотеки LWJGL/OpenAL для всех платформ
+ *   <id>/natives/*    — native LWJGL/OpenAL libraries for all platforms
  *
- * При первом запуске install() копирует jar в gameDir/versions/<id>/<id>.jar
- * и распаковывает natives в gameDir/versions/<id>/natives/.
+ * On the first launch install() copies the jar to gameDir/versions/<id>/<id>.jar
+ * and unpacks the natives into gameDir/versions/<id>/natives/.
  *
- * Запуск этих версий обходит @xmcl/core: у них нет ни ванильного формата
- * version.json, ни записей в манифесте — мы просто стартуем
+ * Launching these versions bypasses @xmcl/core: they have neither a vanilla-format
+ * version.json nor entries in the manifest — we simply start
  *   java -cp <jar> -Djava.library.path=<natives> <mainClass>
  *
- * Добавить новую legacy-версию:
- *   1) Положить jar + natives в resources/legacy/<new-id>/
- *   2) Добавить запись в LEGACY_VERSIONS ниже
- *   3) Прописать ключи в src/renderer/i18n/{ru,en}.ts:
+ * Adding a new legacy version:
+ *   1) Put the jar + natives into resources/legacy/<new-id>/
+ *   2) Add an entry to LEGACY_VERSIONS below
+ *   3) Define the keys in src/renderer/i18n/{ru,en}.ts:
  *      legacy.<id>.name, legacy.<id>.desc
  */
 import { app } from 'electron';
@@ -27,18 +27,18 @@ import { spawn, ChildProcess } from 'node:child_process';
 
 export interface LegacyVersion {
   id: string;
-  /** Type в стиле Mojang manifest — чтобы UI красил пилюлю «alpha» и т.п. */
+  /** Type in the Mojang manifest style — so that the UI paints the "alpha" pill etc. */
   type: 'old_alpha';
-  /** ISO date — для сортировки и отображения. */
+  /** ISO date — for sorting and display. */
   releaseTime: string;
-  /** Main-Class для java -cp. */
+  /** Main-Class for java -cp. */
   mainClass: string;
-  /** Описание-плашка — это будет ключ i18n; renderer сам подставит локаль. */
+  /** Description badge — this will be an i18n key; the renderer substitutes the locale itself. */
   i18nName: string;
   i18nDesc: string;
 }
 
-/** Каталог legacy-версий, поставляемых вместе с лаунчером. */
+/** Catalog of legacy versions shipped with the launcher. */
 export const LEGACY_VERSIONS: LegacyVersion[] = [
   {
     id: 'rd-131655',
@@ -51,14 +51,14 @@ export const LEGACY_VERSIONS: LegacyVersion[] = [
 ];
 
 /**
- * Путь к bundled-ресурсам. В dev — относительно cwd (исходники), в продакшене —
- * рядом с .exe (process.resourcesPath/legacy).
+ * Path to the bundled resources. In dev — relative to cwd (the sources), in production —
+ * next to the .exe (process.resourcesPath/legacy).
  */
 function bundledRoot(): string {
   if (app.isPackaged) {
     return path.join(process.resourcesPath, 'legacy');
   }
-  // dev: запускаем `electron .` из корня проекта
+  // dev: we run `electron .` from the project root
   return path.join(app.getAppPath(), 'resources', 'legacy');
 }
 
@@ -71,9 +71,9 @@ export function getLegacyVersion(id: string): LegacyVersion | undefined {
 }
 
 /**
- * Установить bundled-версию в gameDir/versions/<id>/.
- * Идемпотентно: если jar уже на месте — ничего не делает.
- * Возвращает путь к каталогу версии.
+ * Install a bundled version into gameDir/versions/<id>/.
+ * Idempotent: if the jar is already in place — it does nothing.
+ * Returns the path to the version directory.
  */
 export function installLegacy(gameDir: string, id: string): string {
   const v = getLegacyVersion(id);
@@ -99,8 +99,8 @@ export function installLegacy(gameDir: string, id: string): string {
     fs.copyFileSync(path.join(srcDir, `${id}.jar`), targetJar);
   }
 
-  // natives (мульти-платформенный набор) — общие для всех legacy-сборок
-  // (LWJGL 2.x + OpenAL для win/lin/mac). Лежат в resources/legacy/_shared-natives/.
+  // natives (multi-platform set) — shared by all legacy builds
+  // (LWJGL 2.x + OpenAL for win/lin/mac). They live in resources/legacy/_shared-natives/.
   if (!fs.existsSync(targetNatives)) {
     fs.mkdirSync(targetNatives, { recursive: true });
     const srcNatives = path.join(srcDir, '../_shared-natives');
@@ -119,9 +119,9 @@ export function installLegacy(gameDir: string, id: string): string {
     }
   }
 
-  // Минимальный «маркерный» version.json — чтобы installedVersionIds()
-  // нашёл версию (он сейчас смотрит только на наличие jar, но иметь json
-  // на случай будущих фильтров не повредит).
+  // Minimal "marker" version.json — so that installedVersionIds()
+  // finds the version (it currently only looks for the jar, but having a json
+  // does no harm in case of future filters).
   const jsonPath = path.join(versionDir, `${id}.json`);
   if (!fs.existsSync(jsonPath)) {
     fs.writeFileSync(jsonPath, JSON.stringify({
@@ -137,17 +137,17 @@ export function installLegacy(gameDir: string, id: string): string {
 }
 
 /**
- * Запустить bundled-версию. Возвращает ChildProcess — caller сам подцепит
- * обработчики stdout/stderr/exit, как и для обычного `launch()`.
+ * Launch a bundled version. Returns a ChildProcess — the caller hooks up the
+ * stdout/stderr/exit handlers itself, just like for a regular `launch()`.
  *
- * Параметры окна и память берутся из общих настроек лаунчера.
+ * Window and memory parameters come from the common launcher settings.
  */
 export function launchLegacy(opts: {
   gameDir: string;
   id: string;
   javaPath: string;
   maxRamMb: number;
-  /** Резерв — не используется текущими legacy-сборками. */
+  /** Reserved — not used by the current legacy builds. */
   width: number;
   height: number;
   fullscreen: boolean;
@@ -156,8 +156,8 @@ export function launchLegacy(opts: {
   const v = getLegacyVersion(opts.id);
   if (!v) throw new Error(`Legacy version not found: ${opts.id}`);
   if (!opts.javaPath || opts.javaPath.includes('\0')) throw new Error('Invalid javaPath');
-  // Бинарь обязан существовать: иначе spawn кидает ENOENT асинхронно и роняет
-  // процесс без диагноза. exec-бит — против подмены на текстовый файл.
+  // The binary must exist: otherwise spawn throws ENOENT asynchronously and kills
+  // the process without a diagnosis. The exec bit — against being replaced by a text file.
   try {
     const st = fs.statSync(opts.javaPath);
     if (!st.isFile()) throw new Error('Invalid javaPath');
@@ -172,11 +172,11 @@ export function launchLegacy(opts: {
   const jar = path.join(versionDir, `${opts.id}.jar`);
   const natives = path.join(versionDir, 'natives');
 
-  // Эти ранние сборки — applet-like, без официальных аргументов.
-  // Им достаточно classpath + library.path. Имя игрока, размер окна и
-  // fullscreen у Cave Game Tech Test не поддерживаются на уровне JVM-args —
-  // окно всегда стартует фиксированным, но мы оставляем поля в API на
-  // случай будущих legacy-версий (Indev, Classic 0.30) которые их читают.
+  // These early builds are applet-like, without official arguments.
+  // They only need classpath + library.path. The player name, window size and
+  // fullscreen are not supported at the JVM-args level in Cave Game Tech Test —
+  // the window always starts fixed, but we keep the fields in the API in case
+  // of future legacy versions (Indev, Classic 0.30) that do read them.
   const safeRam = Number.isFinite(opts.maxRamMb) && opts.maxRamMb > 0 && opts.maxRamMb <= 65536
     ? opts.maxRamMb : 1024;
   const args: string[] = [
@@ -191,13 +191,13 @@ export function launchLegacy(opts: {
     stdio: ['ignore', 'pipe', 'pipe'],
     detached: false,
   });
-  // Без error-хендлера падение спавна (удалённая Java между проверкой и
-  // стартом) кидало необработанное исключение. Фиксируем на объекте.
+  // Without an error handler a spawn failure (Java removed between the check and
+  // the start) threw an unhandled exception. We record it on the object.
   child.on('error', (e) => {
     (child as unknown as { spawnError?: Error }).spawnError = e;
     console.error('[legacy] spawn failed:', e.message);
   });
-  // Осиротевшие legacy-процессы после выхода из лаунчера: убиваем следом.
+  // Orphaned legacy processes after the launcher exits: we kill them right after.
   const killOnExit = () => { try { child.kill(); } catch {} };
   process.once('exit', killOnExit);
   child.on('close', () => { process.removeListener('exit', killOnExit); });

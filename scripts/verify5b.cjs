@@ -1,4 +1,4 @@
-/* Вторая волна проверки: тур (перезапуск), аккаунты, серверы, диагностика, скин */
+/* Second verification wave: tour (restart), accounts, servers, diagnostics, skin */
 const { chromium } = require('playwright');
 (async () => {
   const browser = await chromium.connectOverCDP('http://127.0.0.1:9333');
@@ -11,10 +11,10 @@ const { chromium } = require('playwright');
     return !!el;
   }, re.source);
 
-  // ── B. тур: сброс seen и перезагрузка — тур должен автооткрыться ──
+  // ── B. tour: reset seen and reload — the tour must open automatically ──
   await page.evaluate(() => { localStorage.removeItem('trel:onboarding-seen:v2'); });
   await page.reload({ waitUntil: 'load' });
-  // ждём автопоказ тура до 20s (интро + минимальная загрузка)
+  // wait up to 20s for the tour to show up on its own (intro + minimal loading)
   let onb = null;
   for (let i = 0; i < 20; i++) {
     await sleep(1000);
@@ -28,7 +28,7 @@ const { chromium } = require('playwright');
   }
   console.log('B tour after reload:', JSON.stringify(onb));
   await shot('tour-v2');
-  // закрываем красивым крестиком
+  // close it with the nice little cross
   await page.evaluate(() => { const x = document.querySelector('.onboarding-close'); if (x) x.click(); });
   await sleep(600);
   console.log('B2 closed:', JSON.stringify(await page.evaluate(() => ({
@@ -36,7 +36,7 @@ const { chromium } = require('playwright');
     seen: localStorage.getItem('trel:onboarding-seen:v2'),
   }))));
 
-  // ── D. аккаунты в узком окне ──
+  // ── D. accounts in a narrow window ──
   await nav(/Аккаунты/);
   await sleep(1000);
   await page.evaluate(() => window.resizeTo(900, 700));
@@ -56,7 +56,7 @@ const { chromium } = require('playwright');
   console.log('D accounts narrow:', JSON.stringify(acc));
   await shot('accounts-narrow');
 
-  // ── E. серверы: модалка ──
+  // ── E. servers: modal ──
   await page.evaluate(() => window.resizeTo(1280, 800));
   await sleep(400);
   console.log('E nav servers:', await nav(/Серверы/));
@@ -84,7 +84,7 @@ const { chromium } = require('playwright');
   await sleep(500);
   console.log('E2 after Esc:', JSON.stringify(await page.evaluate(() => ({ backdrop: !!document.querySelector('.srv-create-backdrop') }))));
 
-  // ── F. диагностика ──
+  // ── F. diagnostics ──
   console.log('F nav diag:', await nav(/Диагностика/));
   await sleep(1000);
   const diag = await page.evaluate(() => ({
@@ -94,7 +94,7 @@ const { chromium } = require('playwright');
   console.log('F diagnostics:', JSON.stringify(diag));
   await shot('diagnostics');
 
-  // ── G. скин: пикер аккаунта ──
+  // ── G. skin: account picker ──
   console.log('G nav skin:', await nav(/Скин/));
   await sleep(1200);
   const skin = await page.evaluate(() => ({

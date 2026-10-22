@@ -39,7 +39,7 @@ function desktopCandidates(): string[] {
 }
 
 export interface ResetOptions {
-  /** Если true — оставить миры (saves), настройки (settings.json), аккаунты (accounts.json). */
+  /** If true — keep the worlds (saves), settings (settings.json), accounts (accounts.json). */
   keepUserData: boolean;
 }
 
@@ -49,10 +49,10 @@ export interface ResetResult {
 }
 
 /**
- * Полный сброс лаунчера: удаление кеша Java, скачанных версий, ассетов, библиотек.
- * Если keepUserData=false — также удаляются настройки, аккаунты, миры и бэкапы.
+ * Full launcher reset: removal of the Java cache, downloaded versions, assets, libraries.
+ * If keepUserData=false — settings, accounts, worlds and backups are removed as well.
  *
- * После выполнения приложение перезапускается (или закрывается, если перезапуск невозможен).
+ * After execution the app restarts (or quits, if a restart is impossible).
  */
 export class ResetService {
   constructor(
@@ -84,15 +84,15 @@ export class ResetService {
     remove(path.join(this.gameDir, 'logs'));
     remove(path.join(this.gameDir, 'crash-reports'));
 
-    // Также чистим предыдущую папку игры (если папку меняли)
+    // Also clean the previous game folder (if the folder was changed)
     try {
       const settingsRaw = fs.readFileSync(path.join(this.launcherDir, 'settings.json'), 'utf-8');
       const settings = JSON.parse(settingsRaw);
       const prevGameDir = typeof settings.prevGameDir === 'string' && settings.prevGameDir.length > 0
         ? settings.prevGameDir : '';
-      // prevGameDir приходит из правимого settings.json: доверяем только после
-      // строгой проверки (realpath от симлинков, запрет дома/корня/системы),
-      // иначе отравленный путь превращает сброс в удаление чужих данных.
+      // prevGameDir comes from the user's own settings.json: we trust it only after
+      // a strict check (realpath of symlinks, ban on home/root/system),
+      // otherwise a poisoned path turns the reset into deletion of foreign data.
       const prevOk = (() => {
         if (!prevGameDir || prevGameDir === this.gameDir || !isPathAllowed(prevGameDir)) return false;
         const resolved = path.resolve(prevGameDir);
@@ -100,8 +100,8 @@ export class ResetService {
         if (resolved === os.homedir()) return false;
         try {
           const real = fs.realpathSync(resolved);
-          if (real !== resolved) return false; // симлинк — не трогаем
-        } catch { return false; } // нет папки — нечего чистить
+          if (real !== resolved) return false; // symlink — do not touch
+        } catch { return false; } // no folder — nothing to clean
         return true;
       })();
       if (prevOk) {
@@ -120,7 +120,7 @@ export class ResetService {
           remove(path.join(prevGameDir, 'screenshots'));
           remove(path.join(prevGameDir, 'options.txt'));
         }
-        // Удаляем саму папку если пуста
+        // Delete the folder itself if it is empty
         try {
           if (fs.existsSync(prevGameDir)) {
             const remaining = fs.readdirSync(prevGameDir).filter((n) => !['.git', 'Thumbs.db', 'desktop.ini', '.DS_Store'].includes(n));
@@ -148,25 +148,25 @@ export class ResetService {
       remove(path.join(this.gameDir, 'usercache.json'));
       remove(path.join(this.gameDir, 'launcher_profiles.json'));
       remove(path.join(this.gameDir, '.trel_import.json'));
-      // Кеш хешей дедупликации: он описывает файлы, которых после сброса уже
-      // нет, и держать его бессмысленно (пересоберётся на первом импорте).
+      // Deduplication hash cache: it describes files that no longer exist after the reset,
+      // and keeping it makes no sense (it is rebuilt on the first import).
       remove(path.join(this.gameDir, '.trel_hash_cache.json'));
-      // Журнал и лог импорта относятся к тем же удалённым файлам.
+      // The import journal and log refer to the very same deleted files.
       remove(path.join(this.gameDir, '.trel_import_journal.json'));
       remove(path.join(this.gameDir, '.trel_import.log'));
 
-      // Pre-Classic (rd-*, c0.*, in-*, inf-*, ранний alpha) хранит мир как
-      // одинокий `level.dat` прямо в корне APPDATA/.minecraft (или, при
-      // нашей подмене APPDATA→gameDir, прямо в gameDir). Папок saves/ у этих
-      // версий нет, поэтому remove(.../saves) не помогает — нужно отдельно
-      // прибить именно файлы level.dat*. wipeAllLooseLevelDat теперь тоже
-      // ходит только по нашим путям (см. WorldService).
+      // Pre-Classic (rd-*, c0.*, in-*, inf-*, early alpha) stores the world as a
+      // lone `level.dat` right in the APPDATA/.minecraft root (or, with
+      // our APPDATA→gameDir substitution, right in gameDir). These versions have
+      // no saves/ folder, so remove(.../saves) does not help — we have to kill
+      // the level.dat* files separately. wipeAllLooseLevelDat now also
+      // only walks our own paths (see WorldService).
       try {
         for (const file of this.worlds.wipeAllLooseLevelDat()) removed.push(file);
       } catch {}
 
-      // Удаляем сами папки launcherDir и gameDir, если они пусты
-      // или содержат только мусор (.git, Thumbs.db и т.п.)
+      // Delete the launcherDir and gameDir folders themselves if they are empty
+      // or contain only junk (.git, Thumbs.db, etc.)
       const removeDirIfEmpty = (dir: string) => {
         try {
           if (!fs.existsSync(dir)) return;
@@ -188,41 +188,41 @@ export class ResetService {
   }
 
   /**
-   * Полное удаление лаунчера через NSIS-uninstaller.
-   * Если keepUserData=false — сначала чистим всё, потом запускаем uninstaller.
-   * Возвращает false если uninstaller не найден (например, portable-сборка).
+   * Full removal of the launcher via the NSIS-uninstaller.
+   * If keepUserData=false — we first clean everything, then start the uninstaller.
+   * Returns false if the uninstaller is not found (e.g. a portable build).
    */
   uninstallLauncher(opts: ResetOptions): { ok: boolean; reason?: string } {
-    // Сначала чистим данные
+    // First we clean the data
     this.perform(opts);
 
-    // Удаляем ярлыки с рабочего стола (во всех возможных локациях)
+    // Delete the desktop shortcuts (in all possible locations)
     for (const d of desktopCandidates()) {
       const linkPath = path.join(d, 'Trel.lnk');
       try { if (fs.existsSync(linkPath)) fs.unlinkSync(linkPath); } catch {}
-      // Linux .desktop-ярлык
+      // Linux .desktop shortcut
       const desktopFile = path.join(d, 'trel.desktop');
       try { if (fs.existsSync(desktopFile)) fs.unlinkSync(desktopFile); } catch {}
     }
 
-    // Linux/macOS: NSIS-uninstaller'а нет — удалять бинарник вручную
-    // (AppImage / deb / rpm удаляются системным пакетным менеджером).
+    // Linux/macOS: there is no NSIS-uninstaller — delete the binary manually
+    // (AppImage / deb / rpm are removed by the system package manager).
     if (process.platform !== 'win32') {
-      // Подскажем пользователю, что дальше делать отдельно.
+      // We tell the user what to do separately.
       return {
         ok: false,
         reason: 'Удалите лаунчер системным пакетным менеджером (apt/rpm) или удалите AppImage вручную.',
       };
     }
 
-    // Ищем NSIS uninstaller
+    // Look for the NSIS uninstaller
     const exePath = process.execPath;            // ...\AppData\Local\Programs\Trel\Trel.exe
     const exeDir = path.dirname(exePath);
     const candidates = [
       path.join(exeDir, 'Uninstall Trel.exe'),
       path.join(exeDir, 'Uninstall.exe'),
       path.join(exeDir, '..', 'Uninstall Trel.exe'),
-      // Legacy: пользователи, которые ставили старую версию под именем AuroraLauncher
+      // Legacy: users who installed an old version under the name AuroraLauncher
       path.join(exeDir, 'Uninstall AuroraLauncher.exe'),
       path.join(exeDir, 'Uninstall Aurora Launcher.exe'),
       path.join(exeDir, '..', 'Uninstall AuroraLauncher.exe'),
@@ -232,7 +232,7 @@ export class ResetService {
       return { ok: false, reason: 'NSIS uninstaller не найден. Возможно, это portable-сборка — удалите .exe вручную.' };
     }
 
-    // Запускаем uninstaller отвязанно от родителя и сразу выходим из лаунчера
+    // Start the uninstaller detached from the parent and immediately exit the launcher
     const child = spawn(uninstaller, ['/allusers', '_?=' + exeDir], {
       detached: true,
       stdio: 'ignore',

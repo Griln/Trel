@@ -9,10 +9,10 @@ interface Props {
   page: Page;
   onChange: (p: Page) => void;
   activeAccount: MinecraftAccount | null;
-  /** Рейка 64px: только иконки, подписи в title. */
+  /** A 64px rail: icons only, captions live in the title attribute. */
   collapsed?: boolean;
   onToggleCollapse?: () => void;
-  /** Дополнительные счётчики/индикаторы для пунктов меню. */
+  /** Extra counters/indicators for the menu items. */
   installedCount?: number;
   hasRunningServer?: boolean;
   hasUpdate?: boolean;
@@ -22,12 +22,12 @@ interface NavItem {
   id: Page;
   label: string;
   Icon: React.FC<any>;
-  /** Бейдж справа: число (счётчик) или 'dot' (точка-индикатор). */
+  /** Badge on the right: a number (counter) or 'dot' (a status dot). */
   badge?: number | 'dot' | null;
 }
 
 interface NavGroup {
-  /** Заголовок секции. Не показывается если пустой. */
+  /** Section heading. Not shown when empty. */
   label: string;
   items: NavItem[];
 }
@@ -38,11 +38,11 @@ const SidebarBase: React.FC<Props> = ({
   collapsed, onToggleCollapse,
 }) => {
   const t = useT();
-  // Группируем пункты по логическим разделам:
-  //   ИГРАТЬ — что сделать прямо сейчас (запуск, выбор версии, серверы)
-  //   БИБЛИОТЕКА — то, что уже есть в игре (миры, моды, паки, снимки, статистика)
-  //   ИНСТРУМЕНТЫ — служебное (импорт, диагностика)
-  //   ПРОФИЛЬ — кто я (аккаунт, скин) и настройки лаунчера
+  // We group the items into logical sections:
+  //   PLAY — what to do right now (launch, version picker, servers)
+  //   LIBRARY — what already exists in the game (worlds, mods, packs, snapshots, statistics)
+  //   TOOLS — service stuff (import, diagnostics)
+  //   PROFILE — who I am (account, skin) and the launcher settings
   const groups: NavGroup[] = [
     {
       label: t('nav.play'),
@@ -105,8 +105,8 @@ const SidebarBase: React.FC<Props> = ({
 
   return (
     <aside className={'sidebar' + (collapsed ? ' rail-collapsed' : '')}>
-      {/* «Главная» — отдельный hero-пункт: самый верх панели, крупнее и
-          заметнее остальных, активное состояние залито акцентом. */}
+      {/* “Home” — a separate hero item: at the very top of the panel, larger and
+          more prominent than the rest, the active state is filled with the accent. */}
       <div
         className={'nav-hero' + (page === 'home' ? ' active' : '')}
         onClick={() => onChange('home')}

@@ -29,7 +29,7 @@ export const ServersPage: React.FC = () => {
   const [showCreate, setShowCreate] = useState(false);
   const [status, setStatus] = useState('');
   const logRef = useRef<HTMLDivElement>(null);
-  // Сохранённые удалённые серверы (servers.dat) + их живой статус.
+  // Saved remote servers (servers.dat) + their live status.
   const [saved, setSaved] = useState<Array<{ name: string; ip: string }>>([]);
   const [savedPing, setSavedPing] = useState<Record<string, { online: boolean; players?: string; motd?: string; latencyMs?: number }>>({});
   const [pinging, setPinging] = useState(false);
@@ -42,7 +42,7 @@ export const ServersPage: React.FC = () => {
       const list = await window.api.servers.saved();
       if (pingRun.current !== run) return;
       setSaved(list);
-      // Пингуем пачками по 4, иначе сотни серверов положат сеть.
+      // We ping in batches of 4, otherwise hundreds of servers would take the network down.
       const out: Record<string, { online: boolean; players?: string; motd?: string; latencyMs?: number }> = {};
       for (let i = 0; i < list.length; i += 4) {
         if (pingRun.current !== run) return;
@@ -58,7 +58,7 @@ export const ServersPage: React.FC = () => {
         if (pingRun.current !== run) return;
         setSavedPing({ ...out });
       }
-    } catch { /* servers.dat может отсутствовать — секция просто пустая */ }
+    } catch { /* servers.dat may be missing — the section is simply empty */ }
     finally { if (pingRun.current === run) setPinging(false); }
   };
 
@@ -111,7 +111,7 @@ export const ServersPage: React.FC = () => {
     return () => { cancelled = true; offLog(); offStatus(); };
   }, []);
 
-  // Подгружаем буфер логов для активного сервера, если ещё не было
+  // We load the log buffer of the active server, if it was not loaded yet
   useEffect(() => {
     if (!activeId) return;
     if (logs[activeId] !== undefined) return;
@@ -122,7 +122,7 @@ export const ServersPage: React.FC = () => {
     return () => { cancelled = true; };
   }, [activeId]);
 
-  // Автоскролл консоли
+  // Console auto-scroll
   useEffect(() => {
     if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
   }, [activeId, logs[activeId ?? '']?.length]);
@@ -130,7 +130,7 @@ export const ServersPage: React.FC = () => {
   const active = list.find((s) => s.id === activeId) ?? null;
   const activeStatus: ServerStatus = active ? statuses[active.id] ?? 'stopped' : 'stopped';
 
-  // Занятость по серверам: дабл-старт плодил процессы, дабл-стоп гонял state.
+  // Busy state per server: a double start spawned processes, a double stop hammered the state.
   const [busyIds, setBusyIds] = useState<Record<string, boolean>>({});
   const onStart = async (id: string) => {
     if (busyIds[id]) return;
@@ -334,8 +334,8 @@ const ActiveServer: React.FC<{
 
   useEffect(() => { setName(server.name); }, [server.name]);
 
-  // Адреса для подключения (localhost + IP в LAN). Пересчитываем при смене
-  // сервера и при смене порта в настройках.
+  // The addresses to connect to (localhost + IP in the LAN). We recalculate them when the
+  // server changes and when the port in the settings changes.
   useEffect(() => {
     let cancelled = false;
     window.api.servers.connectAddresses(server.id).then((arr) => {
@@ -345,7 +345,7 @@ const ActiveServer: React.FC<{
   }, [server.id, server.properties.serverPort]);
 
   const isRunning = status === 'running' || status === 'starting';
-  const isReady = status === 'running'; // именно «Done» — можно подключаться
+  const isReady = status === 'running'; // exactly "Done" — you can connect
 
   const onSendCommand = async () => {
     if (!cmd.trim() || !isReady) return;
@@ -353,7 +353,7 @@ const ActiveServer: React.FC<{
       await window.api.servers.sendCommand(server.id, cmd);
       setCmd('');
     } catch {
-      // Если сервер не запущен — просто игнорируем (UI кнопка сама блокирует, но на всякий)
+      // If the server is not running — we simply ignore it (the UI button blocks it by itself, but just in case)
     }
   };
 
@@ -418,7 +418,7 @@ const ActiveServer: React.FC<{
               {status === 'starting' ? t('servers.consoleStarting') : isRunning ? t('servers.consoleWaiting') : t('servers.consoleStopped')}
             </div>
           ) : (
-            // Тысячи строк в DOM вешали вкладку: рисуем хвост в 300 строк.
+            // Thousands of lines in the DOM hung the tab: we render a tail of 300 lines.
             logs.slice(-300).map((line, i) => {
               const cls = /ERROR|FATAL|Exception|SEVERE/i.test(line) ? 'err' : /WARN/i.test(line) ? 'warn' : /INFO/i.test(line) ? 'info' : '';
               return <span key={i} className={'log-ln ' + cls}>{line}</span>;
@@ -452,7 +452,7 @@ const Field: React.FC<{ label: string; children: React.ReactNode }> = ({ label, 
   </label>
 );
 
-// ─── Create form (красивая модалка поверх страницы) ──────────────────────────────
+// ─── Create form (a nice modal on top of the page) ──────────────────────────────
 
 const CreateServerForm: React.FC<{
   onCancel: () => void;
@@ -471,7 +471,7 @@ const CreateServerForm: React.FC<{
     let cancelled = false;
     window.api.minecraft.versions().then((list) => {
       if (cancelled) return;
-      // Берём только релизы — для них Mojang всегда отдаёт server.jar
+      // We take only the releases — for those Mojang always serves server.jar
       const releases = list.filter((v) => v.type === 'release');
       setVersions(releases);
       if (releases[0]) setVersionId(releases[0].id);
@@ -480,7 +480,7 @@ const CreateServerForm: React.FC<{
     return () => { cancelled = true; off(); };
   }, []);
 
-  // Esc закрывает модалку (пока не идёт создание)
+  // Esc closes the modal (as long as the creation is not running)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && !busy) onCancel();

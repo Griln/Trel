@@ -17,7 +17,7 @@ export function formatProgressBytes(p: DownloadProgress, t: Translator): string 
   const done = Math.max(0, p.bytesDownloaded ?? 0);
 
   // Pick the unit for each value independently, so that small `done` values
-  // don't round to "0.0 МБ" when `total` is large (e.g. 30 КБ / 185 МБ → 0.0).
+  // don't round to "0.0 MB" when `total` is large (e.g. 30 KB / 185 MB → 0.0).
   const pickUnit = (b: number): { div: number; key: string; digits: number } => {
     if (b < 1024) return { div: 1, key: 'size.b', digits: 0 };
     if (b < 1024 * 1024) return { div: 1024, key: 'size.kb', digits: 1 };

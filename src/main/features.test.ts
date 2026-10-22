@@ -36,7 +36,7 @@ describe('features: snapshots', () => {
     expect(s.versionId).toBe('1.20.1');
     expect(svc.list('1.20.1')).toHaveLength(1);
     expect(svc.list('1.20.1')[0].label).toBe('before mods');
-    // Ломаем версию и откатываемся
+    // Break the version and roll back
     fs.writeFileSync(path.join(game, 'versions', '1.20.1', 'mods', 'evil.jar'), 'evil');
     expect(svc.restore(s.file)).toBe('1.20.1');
     expect(fs.existsSync(path.join(game, 'versions', '1.20.1', 'mods', 'a.jar'))).toBe(true);
@@ -61,7 +61,7 @@ describe('features: snapshots', () => {
     const out = path.join(tmpDir('trel-feat-out-'), 'pack.trelpack');
     const exp = svc.exportPack('1.20.1', out);
     expect(exp.size).toBeGreaterThan(0);
-    // Импорт в другую версию
+    // Import into another version
     const r = await svc.importPack(out, '1.20.1-copy');
     expect(r.versionId).toBe('1.20.1-copy');
     expect(fs.existsSync(path.join(game, 'versions', '1.20.1-copy', 'mods', 'a.jar'))).toBe(true);

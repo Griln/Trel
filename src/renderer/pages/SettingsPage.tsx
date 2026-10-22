@@ -39,7 +39,7 @@ const LOCALE_OPTIONS: { id: NonNullable<LauncherSettings['locale']>; label: stri
   { id: 'en', label: 'English' },
 ];
 
-/** Строка настройки как в превью: заголовок + подпись слева, тумблер справа. */
+/** A settings row like in the preview: a heading + a caption on the left, a toggle on the right. */
 const SetToggle: React.FC<{
   title: string;
   sub?: string;
@@ -88,7 +88,7 @@ export const SettingsPage: React.FC<Props> = ({ settings, onChange }) => {
       cancelValue: 'ok',
     });
   };
-  // TrelEmu pack — Windows-only, на Linux/macOS секцию «Сбросить TrelEmu» прячем.
+  // TrelEmu pack — Windows-only, on Linux/macOS we hide the “Reset TrelEmu” section.
   const isWin = window.api.platform === 'win32';
   type DiskEntry = { name: string; bytes: number; files: number };
   const fmtSize = (b: number): string => {
@@ -174,7 +174,7 @@ export const SettingsPage: React.FC<Props> = ({ settings, onChange }) => {
     window.api.java.list().then((v) => { if (!cancelled) setJavaList(v); }).catch((e) => console.warn('[settings] java list failed', e));
     window.api.updater.state().then((v) => { if (!cancelled) setUpdater(v); }).catch((e) => console.warn('[settings] updater state failed', e));
     window.api.settings.desktopShortcutExists().then((v) => { if (!cancelled) setShortcutExists(v); }).catch((e) => console.warn('[settings] shortcut check failed', e));
-    // Автозапуск: тянем состояние из ОС (файл/ярлык/LoginItems).
+    // Autostart: we pull the state from the OS (file/shortcut/LoginItems).
     window.api.settings.autoLaunchGet().then((v) => {
       if (cancelled) return;
       setAutolaunchEnabled(!!v.enabled);
@@ -184,8 +184,8 @@ export const SettingsPage: React.FC<Props> = ({ settings, onChange }) => {
     return () => { cancelled = true; off(); };
   }, []);
 
-  // Тур обучения может попросить конкретную вкладку (шаг «Темы» всегда
-  // работает на «Общих»), чтобы подсветка не ложилась мимо.
+  // The onboarding tour may ask for a specific tab (the “Themes” step always
+  // works on “General”), so that the highlight does not land off target.
   useEffect(() => {
     const onSetTab = (e: Event) => {
       const next = (e as CustomEvent<unknown>).detail;

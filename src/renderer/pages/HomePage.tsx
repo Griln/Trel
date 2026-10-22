@@ -53,7 +53,7 @@ export const HomePage: React.FC<Props> = ({
   const scrollCarousel = (dir: -1 | 1) => {
     const el = carouselRef.current;
     if (!el) return;
-    // Листаем ровно на одну карточку, чтобы не оставалось «обрезков» между шагами.
+    // We scroll exactly by one card, so that no “leftovers” remain between the steps.
     const card = el.querySelector<HTMLElement>('.home-carousel-card');
     const step = card ? card.offsetWidth + 16 : 360;
     const target = Math.max(0, Math.round(el.scrollLeft / step) * step + dir * step);
@@ -108,8 +108,8 @@ export const HomePage: React.FC<Props> = ({
       setJavaTick((n) => n + 1);
     });
     const offLaunchStart = window.api.minecraft.onLaunchStart(() => {
-      // Ref отпускаем вместе с busy: защита нужна только от даблклика
-      // до старта, а не от второго запуска при живой игре.
+      // We release the Ref together with busy: the guard is only needed against a double click
+      // before the start, not against a second launch while the game is running.
       setTimeout(() => { setBusy(false); playRef.current = false; }, 3000);
     });
     const offManifest = window.api.minecraft.onManifestUpdated((d) => {
@@ -170,7 +170,7 @@ export const HomePage: React.FC<Props> = ({
     return () => { cancelled = true; };
   }, [activeId, activeDetail?.edition, javaTick]);
 
-  // Кинопостер: случайный скриншот как фон hero
+  // Cinematic poster: a random screenshot as the hero background
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -180,7 +180,7 @@ export const HomePage: React.FC<Props> = ({
         const pick = shots[Math.floor(Math.random() * shots.length)];
         const data = await window.api.screenshots.read(pick.path);
         if (alive) setHeroBg(data);
-      } catch { /* нет скринов — останется градиентный фон */ }
+      } catch { /* no screenshots — the gradient background stays */ }
     })();
     return () => { alive = false; };
   }, []);
@@ -191,8 +191,8 @@ export const HomePage: React.FC<Props> = ({
   const [dlPaused, setDlPaused] = useState(false);
   const onPlay = async (selected: InstalledVersionDetail | null = activeDetail) => {
     if (!account || !selected) return;
-    // Даблклик до ререндера disabled: оба вызова видели бы busy=false.
-    // Ref срабатывает синхронно — второй запуск не стартует.
+    // Double click before the re-render with disabled: both calls would see busy=false.
+    // The Ref fires synchronously — the second launch does not start.
     if (playRef.current) return;
     playRef.current = true;
     const selectedId = selected.id;

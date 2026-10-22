@@ -1,4 +1,4 @@
-/* Финальная проверка: reveal-полоска возвращает панель; поиск снапшотов */
+/* Final check: the reveal strip restores the panel; snapshot search */
 const { chromium } = require('playwright-core');
 
 (async () => {
@@ -7,7 +7,7 @@ const { chromium } = require('playwright-core');
   const page = ctx.pages().find((p) => p.url().includes('index.html')) || ctx.pages()[0];
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-  // дождаться скрытия
+  // wait for the panel to hide
   await page.mouse.move(1100, 500);
   for (let i = 0; i < 8; i++) {
     await sleep(1000);
@@ -16,14 +16,14 @@ const { chromium } = require('playwright-core');
   console.log('hidden:', (await page.$eval('.main', (el) => el.className)).includes('side-hidden'));
   await page.screenshot({ path: '/tmp/audit9-hidden.png' });
 
-  // наведение на полоску
+  // hover over the strip
   await page.mouse.move(3, 300);
   await sleep(900);
   const after = await page.$eval('.main', (el) => el.className);
   console.log('after hover left edge:', after);
   await page.screenshot({ path: '/tmp/audit9-reveal.png' });
 
-  // поиск снапшотов
+  // snapshot search
   await page.evaluate(() => {
     const els = Array.from(document.querySelectorAll('.nav-item, .nav-hero'));
     const b = els.find((el) => /Каталог|Browse/i.test(el.textContent));

@@ -14,18 +14,18 @@ import { isUrlAllowed, scanDownloadedFileAsync, verifyDownloadSource } from './d
 const MANIFEST_URL = 'https://launchermeta.mojang.com/mc/game/version_manifest_v2.json';
 const RESOURCES_HOST = 'https://resources.download.minecraft.net';
 
-// Keep-alive агенты для пула соединений. Ассеты Minecraft — тысячи мелких
-// файлов с одного CDN-хоста; без переиспользований каждый запрос делал бы
-// полный TCP+TLS handshake. Держим maxSockets с запасом под конкуренцию,
-// maxFreeSockets — чтобы idle-соединения не закрывались между запросами.
-// Работает одинаково на Windows и Linux (чистый HTTP-уровень).
-// Агенты — через agentsForDownload(): при включённом прокси keepalive-агенты
-// отдавать нельзя, они игнорят proxy-конфиг axios (туннеля нет).
+// Keep-alive agents for the connection pool. Minecraft assets are thousands of
+// small files from one CDN host; without reuse every request would do a full
+// TCP+TLS handshake. We keep maxSockets with headroom for concurrency,
+// maxFreeSockets — so idle connections are not closed between requests.
+// Works the same on Windows and Linux (pure HTTP level).
+// The agents come from agentsForDownload(): with a proxy enabled the keep-alive
+// agents must not be used, they ignore the axios proxy config (there is no tunnel).
 import { agentsForDownload } from './http-proxy';
 const S3_LEGACY_HOST = 'https://s3.amazonaws.com/Minecraft.Download';
 
-// Временный отладочный лог установки (в обход stdout — пишем прямо в файл,
-// чтобы видеть реальные ошибки независимо от того, как запущен AppImage).
+// Temporary installation debug log (bypassing stdout — we write straight to
+// a file, so real errors are visible no matter how the AppImage was launched).
 const DBG_LOG = path.join(os.tmpdir(), 'trel-installer-debug.log');
 function dbg(msg: string): void {
   try { fs.appendFileSync(DBG_LOG, `[${new Date().toISOString()}] ${msg}\n`); } catch {}
@@ -151,7 +151,7 @@ export async function downloadWithRetry(
   // auto-confirmed; unknown hosts stay blocked.
   const initialTrust = verifyDownloadSource(url);
   if (!initialTrust.allowed) throw new Error(`${initialTrust.reason}: ${url}`);
-  // Глобальный слот очереди: весь лаунчер качает максимум в 3 потока.
+  // Global queue slot: the whole launcher downloads at most 3 streams in parallel.
   const { acquireDownloadSlot } = await import('./http-proxy');
   const releaseSlot = await acquireDownloadSlot();
   try {
@@ -186,7 +186,7 @@ export async function downloadWithRetry(
           ...agentsForDownload(),
         });
       }
-      // Докачка: .part с прошлой попытки продолжаем Range-запросом.
+      // Resume: the .part from the previous attempt continues with a Range request.
       let resumeFrom = 0;
       try {
         const pst = fs.statSync(tmp);
@@ -200,7 +200,7 @@ export async function downloadWithRetry(
           ...agentsForDownload(),
         }).catch(() => null);
         if (r) resp = r;
-        else resumeFrom = 0; // сервер без Range — качаем заново
+        else resumeFrom = 0; // server without Range — download from scratch
       }
       let currentFileBytes = resumeFrom;
       await new Promise<void>((resolve, reject) => {
@@ -215,8 +215,8 @@ export async function downloadWithRetry(
         out.on('error', reject);
         out.on('finish', () => resolve());
         resp.data.pipe(out);
-        // Внешняя пауза: стрим на hold (файл цел), снятие — resume.
-        // Проверка флага раз в 200мс: дешевле некуда, висит только пока качаем.
+        // External pause: the stream is held (the file stays intact), unpausing — resume.
+        // The flag is checked every 200ms: it cannot get cheaper, it lives only while downloading.
         const pauseWatcher = setInterval(() => {
           import('./http-proxy').then(({ isDownloadsPaused }) => {
             try {
@@ -243,8 +243,8 @@ export async function downloadWithRetry(
       return;
     } catch (e) {
       lastErr = e;
-      // .part НЕ удаляем: следующая попытка и следующий запуск докачают.
-      // Удаляем только при расхождении хеша (битый кусок).
+      // We do NOT delete the .part: the next attempt and the next launch will
+      // resume it. It is deleted only on a checksum mismatch (a broken chunk).
       if ((e as Error)?.message?.startsWith('sha1 mismatch')) {
         try { fs.unlinkSync(dest + '.part'); } catch {}
       }
@@ -280,8 +280,8 @@ export function getDynamicConcurrency(): number {
   }
 }
 
-/** Конкурентность для ассетов: их тысячи и они мелкие, упор в latency,
- *  поэтому потоков даём больше чем для библиотек. */
+/** Concurrency for assets: there are thousands of them and they are small,
+ *  latency is what matters, so we use more streams than for libraries. */
 export function getAssetConcurrency(): number {
   try {
     const cores = os.cpus().length;
@@ -592,8 +592,8 @@ export class MinecraftInstaller {
     const nativeArtifacts: MojangLibraryArtifact[] = [];
     const nativeExcludes: Record<string, string[]> = {};
 
-    // Путь назначения обязан лежать внутри libraries: `..` в art.path или
-    // groupId из чужого json иначе даёт запись за пределы gameDir.
+    // The destination path must lie inside libraries: otherwise `..` in
+    // art.path or a groupId from a foreign json writes outside gameDir.
     const insideLibs = (dest: string): string | null => {
       const norm = path.resolve(dest);
       return norm === librariesRoot || norm.startsWith(librariesRoot + path.sep) ? norm : null;
@@ -608,7 +608,7 @@ export class MinecraftInstaller {
       } else if (lib.name && lib.url) {
         if (!isUrlAllowed(lib.url)) continue;
         const [group, artifact, version] = lib.name.split(':');
-        // Maven-координаты — строгий алфавит, иначе `..` уезжает из libraries.
+        // Maven coordinates — a strict alphabet, otherwise `..` escapes libraries.
         if (!group || !artifact || !version || !/^[a-zA-Z0-9._-]+$/.test(group) || !/^[a-zA-Z0-9._-]+$/.test(artifact) || !/^[a-zA-Z0-9._-]+$/.test(version)) continue;
         const rel = `${group.replace(/\./g, '/')}/${artifact}/${version}/${artifact}-${version}.jar`;
         const url = lib.url.replace(/\/$/, '') + '/' + rel;
@@ -690,13 +690,13 @@ export class MinecraftInstaller {
           for (const entry of zip.getEntries()) {
             if (entry.isDirectory) continue;
             if (excludes.some((ex) => entry.entryName.startsWith(ex))) continue;
-            // Симлинк внутри natives-архива: распаковка создала бы ссылку наружу.
-            // Unix file type из external attributes: 0120000 = symlink.
+            // A symlink inside the natives archive: extraction would create a link
+            // pointing outside. Unix file type from the external attributes: 0120000 = symlink.
             if (((entry.header.attr >>> 16) & 0o170000) === 0o120000) {
               console.warn(`[installer] Zip Slip: symlink blocked: ${entry.entryName}`);
               continue;
             }
-            // Zip-бомба: кап на суммарный и единичный размер.
+            // Zip bomb: a cap on the total and the individual size.
             if (entry.header.size > 100 * 1024 * 1024 || extractedBytes > 500 * 1024 * 1024) {
               console.warn(`[installer] Zip bomb guard: skipped ${entry.entryName}`);
               continue;
@@ -823,8 +823,8 @@ export class MinecraftInstaller {
       });
     }
 
-    // Папки контента (mods/resourcepacks/…) создаются только для лоадерных
-    // версий — см. loaders.ensureContentFolders. Ванили они не нужны.
+    // Content folders (mods/resourcepacks/…) are created only for loader
+    // versions — see loaders.ensureContentFolders. Vanilla does not need them.
 
     this.report(win, { stage: 'Установка завершена', current: 1, total: 1, percent: 100, bytesDownloaded: totalBytes, bytesTotal: totalBytes });
     return ver;

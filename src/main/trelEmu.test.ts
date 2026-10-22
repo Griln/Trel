@@ -5,12 +5,12 @@ import * as path from 'node:path';
 import { TrelEmuService } from './trelEmu';
 
 describe('TrelEmuService', () => {
-  // Подменяем process.resourcesPath на временную папку с подложенной структурой.
-  // Без этого find() ходит в реальный resources/ и тесты становятся зависимыми
-  // от содержимого (если qemu есть — find() вернёт truthy, иначе null).
-  // Также подменяем APPDATA на ту же папку — иначе getSearchDirs() найдёт
-  // реально установленный TrelEmu в %APPDATA%\Trel\trel-emu\ (если он есть
-  // на машине разработчика) и вернёт его до того, как дойдёт до resourcesPath.
+  // We replace process.resourcesPath with a temporary folder holding a fake structure.
+  // Without this find() goes into the real resources/ and the tests become dependent
+  // on its contents (if qemu is present — find() returns truthy, otherwise null).
+  // We also replace APPDATA with the same folder — otherwise getSearchDirs() finds
+  // a really installed TrelEmu in %APPDATA%\Trel\trel-emu\ (if it exists on the
+  // developer machine) and returns it before it even gets to resourcesPath.
   let tmpRoot: string;
   let origAppData: string | undefined;
   let origXdgConfig: string | undefined;
@@ -22,9 +22,9 @@ describe('TrelEmuService', () => {
     });
     origAppData = process.env.APPDATA;
     process.env.APPDATA = tmpRoot;
-    // На Linux TrelEmuDownloader использует XDG_CONFIG_HOME (default ~/.config).
-    // Без изоляции тесты находят реальный ~/.config/Trel/trel-emu на машине
-    // разработчика и падают. Подменяем на tmpRoot — там нет Trel/trel-emu.
+    // On Linux TrelEmuDownloader uses XDG_CONFIG_HOME (default ~/.config).
+    // Without isolation the tests find the real ~/.config/Trel/trel-emu on the
+    // developer machine and fail. We replace it with tmpRoot — there is no Trel/trel-emu there.
     origXdgConfig = process.env.XDG_CONFIG_HOME;
     process.env.XDG_CONFIG_HOME = tmpRoot;
   });
@@ -38,7 +38,7 @@ describe('TrelEmuService', () => {
 
   describe('find()', () => {
     it('returns null when qemu-system-x86_64.exe is missing', () => {
-      // Ничего не создавали в tmpRoot
+      // We created nothing in tmpRoot
       const svc = new TrelEmuService();
       expect(svc.find(true)).toBeNull();
     });
@@ -56,8 +56,8 @@ describe('TrelEmuService', () => {
       fs.mkdirSync(path.join(base, 'image'), { recursive: true });
       fs.writeFileSync(path.join(base, 'qemu', 'qemu-system-x86_64.exe'), '');
       fs.writeFileSync(path.join(base, 'image', 'android-9.0.qcow2'), '');
-      // Дефолтный config.json создаётся при первом запуске и подхватывается.
-      // Тест не обязан его создавать — loadConfig() вернёт defaults.
+      // The default config.json is created on the first launch and is picked up.
+      // The test does not have to create it — loadConfig() returns the defaults.
       const svc = new TrelEmuService();
       const info = svc.find(true);
       expect(info).not.toBeNull();
@@ -111,7 +111,7 @@ describe('TrelEmuService', () => {
         JSON.stringify({ memory_mb: 4096, someUnknownKey: 'foo' }));
       const svc = new TrelEmuService();
       const info = svc.find(true);
-      // memory_mb переопределён, остальные дефолты
+      // memory_mb is overridden, the rest are defaults
       expect(info!.memoryMb).toBe(4096);
       expect(info!.cpuCores).toBe(2);
     });
@@ -124,8 +124,8 @@ describe('TrelEmuService', () => {
       fs.writeFileSync(path.join(base, 'image', 'android-9.0.qcow2'), '');
       const svc = new TrelEmuService();
       const a = svc.find(true);
-      // Удалим файлы после первого find — если сервис кэширует, второй
-      // вызов должен всё равно вернуть тот же объект.
+      // We delete the files after the first find — if the service caches, the second
+      // call must still return the same object.
       fs.unlinkSync(path.join(base, 'image', 'android-9.0.qcow2'));
       const b = svc.find(true);
       expect(b).toBe(a);
@@ -144,7 +144,7 @@ describe('TrelEmuService', () => {
       const args = (svc as any).qemuArgs(info) as string[];
       const accelIdx = args.indexOf('-accel');
       expect(accelIdx).toBeGreaterThan(-1);
-      // WHPX — аппаратное ускорение. TCG не используем.
+      // WHPX — hardware acceleration. We do not use TCG.
       expect(args[accelIdx + 1]).toMatch(/^whpx/);
     });
 
@@ -189,7 +189,7 @@ describe('TrelEmuService', () => {
       const svc = new TrelEmuService();
       const info = svc.find(true)!;
       const args = (svc as any).qemuArgs(info) as string[];
-      // Первый drive (template) должен иметь snapshot=on
+      // The first drive (template) must have snapshot=on
       const drives = args.filter((a, i) => a === '-drive' && i % 1 === args.indexOf(a));
       const templateDrive = args[args.indexOf('-drive') + 1];
       expect(templateDrive).toMatch(/snapshot=on/);
@@ -197,8 +197,8 @@ describe('TrelEmuService', () => {
     });
 
     it('does NOT use -daemonize (Windows QEMU does not support it)', () => {
-      // -daemonize поддерживается только в Linux-QEMU. На Windows QEMU мы
-      // отвязываемся через Node `detached: true, unref()` и пишем PID руками.
+      // -daemonize is supported only by Linux-QEMU. On Windows QEMU we
+      // detach via Node `detached: true, unref()` and write the PID by hand.
       const base = path.join(tmpRoot, 'trel-emu');
       fs.mkdirSync(path.join(base, 'qemu'), { recursive: true });
       fs.mkdirSync(path.join(base, 'image'), { recursive: true });
@@ -248,7 +248,7 @@ describe('TrelEmuService', () => {
       fs.mkdirSync(path.join(base, 'image'), { recursive: true });
       fs.writeFileSync(path.join(base, 'qemu', 'qemu-system-x86_64.exe'), '');
       fs.writeFileSync(path.join(base, 'image', 'android-9.0.qcow2'), '');
-      // qemu-img не положили
+      // we did not put qemu-img there
       const overlay = path.join(base, 'image', 'android-9.0.overlay.qcow2');
       fs.writeFileSync(overlay, 'fake qcow2 content');
       const svc = new TrelEmuService();
@@ -311,8 +311,8 @@ describe('TrelEmuService', () => {
   describe('stop()', () => {
     it('does not throw if QEMU is not running', () => {
       const svc = new TrelEmuService();
-      // Подложим минимальный бандл, чтобы find() не возвращал null — иначе
-      // stop() не сможет прочитать pidfile (но всё равно отработает на taskkill)
+      // We put a minimal bundle there, so that find() does not return null — otherwise
+      // stop() cannot read the pidfile (but it still works via taskkill)
       const base = path.join(tmpRoot, 'trel-emu');
       fs.mkdirSync(path.join(base, 'qemu'), { recursive: true });
       fs.mkdirSync(path.join(base, 'image'), { recursive: true });
@@ -334,7 +334,7 @@ describe('TrelEmuService', () => {
       fs.mkdirSync(path.join(base, 'image'), { recursive: true });
       fs.writeFileSync(path.join(base, 'qemu', 'qemu-system-x86_64.exe'), '');
       fs.writeFileSync(path.join(base, 'image', 'android-9.0.qcow2'), '');
-      // Старый pidfile (больше суток) — не должен влиять на taskkill
+      // An old pidfile (older than a day) — it must not affect the taskkill
       const pidfile = path.join(base, 'qemu.pid');
       fs.writeFileSync(pidfile, '99999');
       const past = Date.now() / 1000 - 25 * 60 * 60;
@@ -388,8 +388,8 @@ describe('TrelEmuService', () => {
     it('returns empty array on a clean system (no emulators running)', () => {
       const svc = new TrelEmuService();
       const found = svc.detectOtherEmulators();
-      // В тестовой среде могут крутиться наши процессы (vitest, node), но
-      // сигнатур эмуляторов там быть не должно.
+      // Our own processes (vitest, node) may be running in the test environment, but
+      // there should be no emulator signatures there.
       const emuNames = found.map(f => f.name.toLowerCase());
       expect(emuNames).not.toContain('mumuvmmheadless');
       expect(emuNames).not.toContain('bluestacks');
@@ -397,14 +397,14 @@ describe('TrelEmuService', () => {
     });
 
     it('returns a non-empty list of known emulator signatures', () => {
-      // Проверяем что таблица OTHER_EMULATOR_PROCESSES покрывает топовые эмуляторы.
-      // (Сами сигнатуры приватные, но функция возвращает найденные через tasklist.)
+      // We check that the OTHER_EMULATOR_PROCESSES table covers the top emulators.
+      // (The signatures themselves are private, but the function returns the ones found via tasklist.)
       const svc = new TrelEmuService();
       const all = (svc as any).OTHER_EMULATOR_PROCESSES ?? [];
-      // Доступ к приватной константе через any — это нормально для тестов.
+      // Access to a private constant via any — that is fine for tests.
       const names = (Array.isArray(all) ? all : []).map((e: any) => e.name.toLowerCase());
-      // Если константа стала приватной — фоллбэк: проверим что сигнатуры есть в выводе tasklist
-      // (косвенно, через наличие MuMuVMMHeadless в списке).
+      // If the constant became private — a fallback: we check that the signatures are
+      // present in the tasklist output (indirectly, via MuMuVMMHeadless being in the list).
       if (names.length > 0) {
         expect(names).toContain('mumuvmmheadless');
         expect(names).toContain('bluestacks');

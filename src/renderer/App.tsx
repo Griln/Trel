@@ -12,12 +12,12 @@ import type { DownloadProgress, LauncherSettings, MinecraftAccount, Page } from 
 import type { InstalledVersionDetail, ServerStatus, UpdaterState } from '../preload/preload';
 import { effectiveInstalledCount } from '../shared/installed';
 
-// Тяжёлые вкладки грузим по требованию. Три бенефита:
-//   1. Стартовый bundle меньше → быстрее старт и меньше памяти под код.
-//   2. SkinPage тянет three.js (~600 КБ) — без lazy он попадал в общий
-//      чанк и грузился на старте, хотя нужен только когда зашёл в скин.
-//   3. Каждая вкладка в своём JS-файле → проще освобождать память
-//      при переключении (V8 сможет выгрузить неиспользуемый код).
+// Heavy tabs are loaded on demand. Three benefits:
+//   1. Smaller startup bundle → faster start and less memory used by the code.
+//   2. SkinPage pulls in three.js (~600 KB) — without lazy loading it ended up in the shared
+//      chunk and was loaded at startup, although it is only needed once you open the skin.
+//   3. Each tab lives in its own JS file → easier to free memory
+//      when switching (V8 can unload unused code).
 const BrowsePage = lazy(() => import('./pages/BrowsePage').then(m => ({ default: m.BrowsePage })));
 const InstalledPage = lazy(() => import('./pages/InstalledPage').then(m => ({ default: m.InstalledPage })));
 const WorldsPage = lazy(() => import('./pages/WorldsPage').then(m => ({ default: m.WorldsPage })));
@@ -171,9 +171,9 @@ export const App: React.FC = () => {
   const [accountsReady, setAccountsReady] = useState(false);
   const [minLoadingDone, setMinLoadingDone] = useState(false);
   const loadStartTime = useMemo(() => Date.now(), []);
-  // Глобальные счётчики/индикаторы для sidebar — обновляются периодически
-  // и при ключевых событиях. Это даёт пользователю обзор «что у меня есть»
-  // без перехода на каждую вкладку.
+  // Global counters/indicators for the sidebar — refreshed periodically
+  // and on key events. This gives the user an overview of “what I have”
+  // without visiting every tab.
   const [installedDetails, setInstalledDetails] = useState<InstalledVersionDetail[]>([]);
   const [serverStatuses, setServerStatuses] = useState<Record<string, ServerStatus>>({});
   const [updaterState, setUpdaterState] = useState<UpdaterState | null>(null);
@@ -194,7 +194,7 @@ export const App: React.FC = () => {
       if (list.length > 0) setActiveUuid(list[0].uuid);
       setAccountsReady(true);
     });
-    // Подписываемся на глобальные сигналы для бейджей в sidebar
+    // Subscribe to the global signals behind the sidebar badges
     const refreshInstalled = () => {
       window.api.minecraft.installedDetailed().then(setInstalledDetails).catch(() => {});
     };
@@ -204,7 +204,7 @@ export const App: React.FC = () => {
     refreshInstalled();
     refreshServerStatuses();
     window.api.updater.state().then(setUpdaterState).catch(() => {});
-    // Регистрируем собственный глобальный хоткей скриншота при старте лаунчера
+    // Register our own global screenshot hotkey on launcher startup
     try {
       const savedKey = localStorage.getItem('trel.shots.hotkey') || 'F2';
       window.api.screenshots.setHotkey(savedKey).catch(() => {});
@@ -223,9 +223,9 @@ export const App: React.FC = () => {
       setMinecraftProgress(null);
       setBedrockProgress(null);
     });
-    // Manifest-update триггерит и реконсиляцию счётчиков (новая версия могла
-    // быть установлена через скрипт извне, и т.п.). Используем payload события
-    // напрямую чтобы не делать лишний IPC-вызов.
+    // The manifest update triggers a counter reconciliation (a new version may have been
+    // installed by an external script, etc.). We use the event payload
+    // directly to avoid an extra IPC call.
     const offManifest = window.api.minecraft.onManifestUpdated((details) => {
       setInstalledDetails(details);
       setMinecraftProgress(null);
@@ -235,8 +235,8 @@ export const App: React.FC = () => {
     return () => { offServerStatus(); offUpdater(); offMinecraftProgress(); offBedrockProgress(); offTrelEmuProgress(); offManifest(); offLaunchStart(); offExit(); };
   }, []);
 
-  // Адаптивный минимум: показываем анимацию минимум 2 секунды.
-  // Если загрузка дольше — не добавляем задержку.
+  // Adaptive minimum: we show the animation for at least 2 seconds.
+  // If the load takes longer — we do not add any delay.
   useEffect(() => {
     if (!settings || !accountsReady || minLoadingDone) return;
     if (settings.showIntro === false) { setMinLoadingDone(true); setIntroDone(true); return; }
@@ -247,11 +247,11 @@ export const App: React.FC = () => {
     else { const t = setTimeout(() => setMinLoadingDone(true), remaining); return () => clearTimeout(t); }
   }, [settings, accountsReady, minLoadingDone, loadStartTime]);
 
-  // Первый запуск: открываем обучение один раз после интро или сразу,
-  // если интро отключено. Ключ v5 специально новый, чтобы обновлённый тур
-  // (18 шагов по всем разделам) показался один раз после обновления.
-  // На WelcomePage (нет аккаунтов) тур не открываем — там свои шаги,
-  // а навигация по страницам недоступна; тур покажется после создания аккаунта.
+  // First run: we open the tour once after the intro, or right away,
+  // if the intro is disabled. The v5 key is deliberately new so that the updated tour
+  // (18 steps across all sections) is shown once after the update.
+  // On WelcomePage (no accounts) we do not open the tour — it has its own steps,
+  // and cross-page navigation is not available there; the tour appears after an account is created.
   useEffect(() => {
     if (!settings || !accountsReady || !minLoadingDone || onboardingChecked) return;
     if (settings.showIntro !== false && !introDone) return;
@@ -266,10 +266,10 @@ export const App: React.FC = () => {
     }
   }, [settings, accountsReady, minLoadingDone, introDone, onboardingChecked, accounts.length]);
 
-  // Автоскрытие левой панели: если пользователь находится на вкладке дольше
-  // 5 секунд и не наводит курсор на панель — она плавно сворачивается,
-  // отдавая место контенту. Наведение на левый край (полоску) возвращает её.
-  // При открытом онбординге не прячем — туры подсвечивают элементы панели.
+  // Auto-hide of the left panel: if the user stays on a tab for more than
+  // 5 seconds and does not hover the panel — it collapses smoothly,
+  // giving the space to the content. Hovering the left edge (the strip) brings it back.
+  // While the onboarding is open we do not hide it — tours highlight panel elements.
   const [sideHidden, setSideHidden] = useState(false);
   const [railCollapsed, setRailCollapsed] = useState(() => {
     try { return localStorage.getItem('trel-side-collapsed') === '1'; } catch { return false; }
@@ -295,7 +295,7 @@ export const App: React.FC = () => {
     if (sideTimer.current != null) window.clearTimeout(sideTimer.current);
     sideTimer.current = null;
     if (!autoHideSidebar || onboardingOpen) { setSideHidden(false); return; }
-    // Новая вкладка — панель видна, таймер 5 секунд стартует заново.
+    // New tab — the panel is visible, the 5 second timer starts over.
     setSideHidden(false);
     armSideHide();
     return () => { if (sideTimer.current != null) window.clearTimeout(sideTimer.current); };
@@ -326,14 +326,14 @@ export const App: React.FC = () => {
 
   const updateSettings = (s: LauncherSettings) => {
     setSettings(s);
-    // Fire-and-forget ронял unhandled rejection при ошибке IPC —
-    // UI думал что сохранилось, а settings.json — нет.
+    // Fire-and-forget used to produce an unhandled rejection on an IPC error —
+    // the UI thought it had been saved, while settings.json had not.
     window.api.settings.set(s).catch((e) => console.error('[app] settings.set failed:', e));
   };
 
-  // Применяем тему на корневой <html> при загрузке и каждой смене.
-  // Это даёт мгновенное переключение всех CSS-переменных через каскад,
-  // без перезагрузки или флеша. Дефолт — mono (тёмная без декора).
+  // We apply the theme on the root <html> on load and on every change.
+  // This gives an instant switch of all CSS variables through the cascade,
+  // without a reload or a flash. The default is mono (dark, no decoration).
   useEffect(() => {
     const theme = settings?.theme ?? 'mono';
     document.documentElement.setAttribute('data-theme', theme);

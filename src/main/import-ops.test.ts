@@ -40,7 +40,7 @@ describe('import-ops journal', () => {
     expect(removed).toBe(2);
     expect(fs.existsSync(f1)).toBe(false);
     expect(fs.existsSync(f2)).toBe(false);
-    // Повторный откат — ноль, а не ошибка.
+    // A repeated rollback returns zero, not an error.
     expect(await rollbackJournal(game, 'mods')).toBe(0);
   });
 

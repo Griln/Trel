@@ -1,4 +1,4 @@
-/* Проходит интро и открывает онбординг, логирует что на экране */
+/* Walks through the intro and opens the onboarding, logs what is on screen */
 const { chromium } = require('playwright');
 (async () => {
   const browser = await chromium.connectOverCDP('http://127.0.0.1:9333');
@@ -23,7 +23,7 @@ const { chromium } = require('playwright');
     });
     await page.waitForTimeout(1000);
   }
-  await page.waitForTimeout(2500); // интро-анимация + автопоказ онбординга
+  await page.waitForTimeout(2500); // intro animation + auto-show of the onboarding
   console.log('S1', JSON.stringify(await state()));
   process.exit(0);
 })().catch(e => { console.error('ERR', e.message.split('\n')[0]); process.exit(1); });

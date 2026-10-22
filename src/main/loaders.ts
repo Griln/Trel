@@ -141,8 +141,8 @@ export class LoaderService {
     loaderVersion: string,
     win: BrowserWindow,
   ): Promise<InstallLoaderResult> {
-    // mc/lv едут в maven-пути и имена файлов: строгая проверка на входе,
-    // иначе `../../` уезжает из библиотек.
+    // mc/lv end up in maven paths and file names: strict validation on input,
+    // otherwise `../../` escapes the libraries folder.
     if (!isSafeVersionId(mc)) throw new Error(`Unsafe MC version: ${mc}`);
     if (!/^[a-zA-Z0-9._-]+$/.test(loaderVersion)) throw new Error(`Unsafe loader version: ${loaderVersion}`);
     // Make sure base MC is installed first.
@@ -169,7 +169,7 @@ export class LoaderService {
     fs.writeFileSync(jsonPath, JSON.stringify(profile, null, 2), 'utf-8');
 
     this.report(win, { stage: 'Скачивание библиотек лоадера', current: 0, total: 1, percent: 50 });
-    // Кладём через стандартный installer (он умеет inheritsFrom и докачает либы)
+    // We put it in place via the standard installer (it handles inheritsFrom and downloads the libraries)
     await this.installer.install(versionId, win);
 
     this.flattenLoaderProfile(versionId);
@@ -187,12 +187,12 @@ export class LoaderService {
   }
 
   /**
-   * Запекает родителя (inheritsFrom) внутрь профиля лоадера и удаляет
-   * родительскую папку. После flatten профиль лоадера полностью самодостаточен:
-   * libraries/arguments/mainClass/assetIndex от родителя инлайнятся, а его
-   * клиентский jar копируется в папку лоадера под именем <loaderId>.jar.
+   * Bakes the parent (inheritsFrom) into the loader profile and removes the
+   * parent folder. After the flatten the loader profile is fully self-contained:
+   * libraries/arguments/mainClass/assetIndex of the parent are inlined, and its
+   * client jar is copied into the loader folder as <loaderId>.jar.
    *
-   * Идемпотентно: если inheritsFrom уже нет — ничего не делает.
+   * Idempotent: if inheritsFrom is already gone — it does nothing.
    */
   flattenLoaderProfile(loaderId: string): void {
     const loaderDir = path.join(this.gameDir, 'versions', loaderId);
@@ -216,11 +216,11 @@ export class LoaderService {
     try { parentJson = JSON.parse(fs.readFileSync(parentJsonPath, 'utf-8')); }
     catch { return; }
 
-    // Скаляры: сначала родитель, поверх ребёнок (mainClass/assetIndex/...)
+    // Scalars: the parent first, the child on top (mainClass/assetIndex/...)
     const merged: any = { ...parentJson, ...loaderJson };
     merged.id = loaderId;
 
-    // libraries: ребёнок впереди (его версии важнее), затем недостающие из родителя
+    // libraries: the child first (its versions matter more), then the missing ones from the parent
     const childLibs:  any[] = Array.isArray(loaderJson.libraries) ? loaderJson.libraries : [];
     const parentLibs: any[] = Array.isArray(parentJson.libraries) ? parentJson.libraries : [];
     const keyOf = (lib: any): string => {
@@ -242,7 +242,7 @@ export class LoaderService {
     }
     merged.libraries = finalLibs;
 
-    // arguments (modern format): конкатенация
+    // arguments (modern format): concatenation
     if (parentJson.arguments || loaderJson.arguments) {
       const pa = parentJson.arguments || {};
       const ca = loaderJson.arguments || {};
@@ -257,20 +257,20 @@ export class LoaderService {
         ],
       };
     }
-    // minecraftArguments (legacy): склейка через пробел
+    // minecraftArguments (legacy): joined with a space
     if (parentJson.minecraftArguments || loaderJson.minecraftArguments) {
       const parts = [parentJson.minecraftArguments, loaderJson.minecraftArguments].filter(Boolean);
       merged.minecraftArguments = parts.join(' ');
     }
 
-    // Больше не наследуемся; собственного "jar" override быть не должно
+    // We do not inherit anymore; there should be no custom "jar" override
     delete merged.inheritsFrom;
     delete merged.jar;
 
-    // Атомарность: сначала копируем JAR родителя в папку лоадера, и только
-    // потом перезаписываем JSON с удалением `inheritsFrom`. Если процесс
-    // упадёт между шагами, лоадер либо ещё имеет inheritsFrom (можно
-    // повторить flatten), либо уже имеет JAR (запускается).
+    // Atomicity: first copy the parent's JAR into the loader folder, and only
+    // then overwrite the JSON with `inheritsFrom` removed. If the process
+    // dies between the steps, the loader either still has inheritsFrom (the
+    // flatten can be repeated) or already has the JAR (it is launchable).
     if (fs.existsSync(parentJarPath)) {
       const newJarPath = path.join(loaderDir, loaderId + '.jar');
       try { fs.copyFileSync(parentJarPath, newJarPath); } catch {}
@@ -278,8 +278,8 @@ export class LoaderService {
 
     fs.writeFileSync(loaderJsonPath, JSON.stringify(merged, null, 2), 'utf-8');
 
-    // Если в родителе были content-папки (например, юзер ставил ваниль раньше) —
-    // переносим содержимое в папку лоадера, чтобы ничего не потерять.
+    // If the parent had content folders (e.g. the user installed vanilla
+    // earlier) — we move the contents into the loader folder so nothing is lost.
     for (const sub of ['mods', 'shaderpacks', 'resourcepacks', 'texturepacks', 'saves']) {
       const fromDir = path.join(parentDir, sub);
       if (!fs.existsSync(fromDir)) continue;
@@ -312,8 +312,8 @@ export class LoaderService {
       } catch {}
     }
 
-    // Проверяем, нужен ли родитель другим лоадерам (тот же inheritsFrom).
-    // Если да — оставляем, иначе при bulk-consolidate второй лоадер сломается.
+    // We check whether other loaders still need the parent (the same inheritsFrom).
+    // If so — we keep it, otherwise the second loader breaks during bulk-consolidate.
     let parentNeededByOthers = false;
     try {
       const versionsDir = path.join(this.gameDir, 'versions');
@@ -331,7 +331,7 @@ export class LoaderService {
     } catch {}
     if (parentNeededByOthers) return;
 
-    // Удаляем папку родителя только если весь её контент был перенесён.
+    // We remove the parent folder only if all of its content was moved over.
     let parentHasExtraFiles = false;
     try {
       for (const sub of ['mods', 'shaderpacks', 'resourcepacks', 'texturepacks', 'saves']) {
@@ -376,8 +376,8 @@ export class LoaderService {
     lv: string,
     win: BrowserWindow,
   ): Promise<InstallLoaderResult> {
-    // mkdtemp вместо предсказуемого имени: чужой процесс в /tmp иначе
-    // подкладывает свой jar между созданием и записью.
+    // mkdtemp instead of a predictable name: otherwise another process in /tmp
+    // could slip its own jar in between the creation and the write.
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), `${loader}-installer-`));
     const tmpFile = path.join(tmpDir, 'installer.jar');
     this.report(win, {
@@ -388,7 +388,7 @@ export class LoaderService {
 
     const resp = await axios.get(installerUrl, { responseType: 'stream', timeout: 120000, maxRedirects: 10 });
     const total = Number(resp.headers['content-length']) || 0;
-    // Инсталлеры Forge/NeoForge — десятки МБ; кап 512МБ против disk-fill.
+    // Forge/NeoForge installers — tens of MB; cap at 512MB against disk-fill.
     if (total > 512 * 1024 * 1024) throw new Error('Loader installer too large');
     let downloaded = 0;
     await new Promise<void>((resolve, reject) => {
@@ -412,7 +412,7 @@ export class LoaderService {
     });
 
     // Verify installer jar integrity (basic check: it's a real jar).
-    // Только первые байты и stat — грузить 30МБ в RAM ради магии не нужно.
+    // Only the first bytes and a stat — loading 30MB into RAM for magic is pointless.
     {
       const st = fs.statSync(tmpFile);
       const fd = fs.openSync(tmpFile, 'r');
@@ -427,8 +427,8 @@ export class LoaderService {
       } finally { fs.closeSync(fd); }
     }
 
-    // Need Java to run the installer. Подбираем под версию MC:
-    // 1.17+ → Java 17, иначе Java 8.
+    // Need Java to run the installer. We pick it according to the MC version:
+    // 1.17+ → Java 17, otherwise Java 8.
     this.report(win, { stage: 'Подготовка Java', current: 0, total: 1, percent: 60 });
     const requiredMajor = mcRequiredJavaMajor(mc);
     const java =
@@ -439,9 +439,9 @@ export class LoaderService {
     try {
       await this.runJar(java.path, tmpFile);
     } finally {
-      // tmpFile нужно удалить ВСЕГДА — даже если runJar бросил исключение.
-      // Раньше это делалось только при success, и ~30 МБ оставались в %TEMP%
-      // после каждой неудачной установки.
+      // tmpFile must be deleted ALWAYS — even if runJar threw an exception.
+      // Previously this only happened on success, and ~30 MB were left in
+      // %TEMP% after every failed installation.
       try { fs.unlinkSync(tmpFile); } catch {}
       try { fs.rmdirSync(tmpDir); } catch {}
     }
@@ -455,9 +455,9 @@ export class LoaderService {
   }
 
   private runJar(javaPath: string, jarFile: string): Promise<void> {
-    // Forge / NeoForge installer в режиме --installClient читает
-    // launcher_profiles.json и падает с кодом 1, если файла нет. Подсовываем
-    // минимальный валидный stub, чтобы пройти проверку.
+    // The Forge / NeoForge installer in --installClient mode reads
+    // launcher_profiles.json and fails with code 1 if the file is missing.
+    // We feed it a minimal valid stub to pass the check.
     const profilesFile = path.join(this.gameDir, 'launcher_profiles.json');
     if (!fs.existsSync(profilesFile)) {
       try {
@@ -471,9 +471,9 @@ export class LoaderService {
       } catch {}
     }
 
-    // На Windows JavaService возвращает javaw.exe (без консоли). Для
-    // инсталлеров переключаемся на java.exe — иначе stderr/stdout не
-    // прокидываются в spawn, и при ошибке у нас остаётся пустое сообщение.
+    // On Windows JavaService returns javaw.exe (no console). For the
+    // installers we switch to java.exe — otherwise stderr/stdout are not
+    // piped through spawn, and on failure we are left with an empty message.
     let exe = javaPath;
     if (process.platform === 'win32' && exe.toLowerCase().endsWith('javaw.exe')) {
       const consoleExe = exe.slice(0, -'javaw.exe'.length) + 'java.exe';
@@ -543,14 +543,14 @@ function mcToNeoForgePrefix(mc: string): string | null {
 }
 
 /**
- * Какая версия Java нужна для запуска Forge/NeoForge installer-а под данную
- * версию MC. 1.18+ — Java 17, всё что старше — Java 8.
+ * Which Java version is needed to run the Forge/NeoForge installer for a
+ * given MC version. 1.18+ — Java 17, anything older — Java 8.
  */
 /**
- * Требуемая Java для версии: сначала локальный json (без сети — мгновенно),
- * потом цепочка inheritsFrom, в конце эвристика по id. Раньше план всегда
- * ходил в сеть за манифестом и падал на 8 — старые кастомные json без
- * javaVersion получали неверную восьмёрку вместо 17/21.
+ * Required Java for a version: first the local json (no network — instant), then
+ * the inheritsFrom chain, and finally a heuristic based on the id. Previously the
+ * plan always went to the network for the manifest and fell back to 8 — old custom
+ * json files without javaVersion got the wrong eight instead of 17/21.
  */
 export function requiredJavaMajorForVersion(gameDir: string, versionId: string): number {
   try {
@@ -566,12 +566,12 @@ export function requiredJavaMajorForVersion(gameDir: string, versionId: string):
       if (typeof mj === 'number' && mj >= 8 && mj <= 30) return mj;
       current = typeof j.inheritsFrom === 'string' ? j.inheritsFrom : undefined;
     }
-  } catch { /* эвристика ниже */ }
+  } catch { /* heuristic below */ }
   return mcRequiredJavaMajor(versionId);
 }
 
 export function mcRequiredJavaMajor(mc: string): number {
-  // 1.20.5+ и 1.21+ требуют Java 21; будущие 2x (26.x) — тоже 21, а не 17.
+  // 1.20.5+ and 1.21+ require Java 21; future 2x (26.x) also need 21, not 17.
   const m = /^(\d+)\.(\d+)(?:\.(\d+))?/.exec(mc);
   if (!m) return 17;
   const major = parseInt(m[1], 10);

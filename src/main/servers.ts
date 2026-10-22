@@ -15,7 +15,7 @@ import { MinecraftAccount, ServerStatus, ServerInstance, ServerProperties } from
 interface RuntimeState {
   status: ServerStatus;
   proc?: ChildProcessWithoutNullStreams;
-  /** Кольцевой буфер последних строк — отправляется новому слушателю при подключении. */
+  /** A ring buffer of the last lines — sent to a new listener on connect. */
   logBuffer: string[];
 }
 
@@ -64,7 +64,7 @@ export class ServerService {
       if (!fs.existsSync(this.indexFile)) return [];
       const raw = JSON.parse(fs.readFileSync(this.indexFile, 'utf-8'));
       if (!Array.isArray(raw)) return [];
-      // Битые записи не роняют весь список: чистим по одной, мусор дропаем.
+      // Broken records do not take down the whole list: we clean them one by one, dropping the junk.
       const out: ServerInstance[] = [];
       for (const inst of raw) {
         try { out.push(this.sanitize(inst)); } catch { /* bad entry dropped */ }
@@ -76,15 +76,15 @@ export class ServerService {
   }
 
   private save(list: ServerInstance[]): void {
-    // Атомарно: краш посреди записи больше не оставляет пустой index.json
-    // (= потеря ВСЕХ серверов из UI).
+    // Atomic: a crash in the middle of the write no longer leaves an empty index.json
+    // (= the loss of ALL servers from the UI).
     const tmp = this.indexFile + '.trel_tmp';
     fs.writeFileSync(tmp, JSON.stringify(list, null, 2), 'utf-8');
     try { fs.renameSync(tmp, this.indexFile); }
     catch { fs.copyFileSync(tmp, this.indexFile); try { fs.unlinkSync(tmp); } catch {} }
   }
 
-  /** Чистит запись сервера: id/порт/motd/имя из недоверенного index.json. */
+  /** Sanitizes a server record: id/port/motd/name from an untrusted index.json. */
   private sanitize(inst: ServerInstance): ServerInstance {
     return sanitizeServerInstance(inst as unknown as Record<string, unknown>);
   }
@@ -99,7 +99,7 @@ export class ServerService {
     return path.join(this.root, id);
   }
 
-  /** Текущий статус (для одного или всех — UI запрашивает раз при загрузке). */
+  /** The current status (for one or for all — the UI requests it once on load). */
   status(id: string): ServerStatus {
     return this.runtimes.get(id)?.status ?? 'stopped';
   }
@@ -110,7 +110,7 @@ export class ServerService {
     return out;
   }
 
-  /** Возвращает буфер последних логов (для пере-открытия консоли в UI). */
+  /** Returns the buffer of the last logs (for reopening the console in the UI). */
   logBuffer(id: string): string[] {
     return this.runtimes.get(id)?.logBuffer.slice() ?? [];
   }
@@ -118,9 +118,9 @@ export class ServerService {
   // ─── CRUD ────────────────────────────────────────────────────────────────
 
   /**
-   * Создаёт новый сервер: качает server.jar для указанной версии (если
-   * Mojang её отдаёт — для очень старых её может не быть, тогда ошибка),
-   * пишет eula=true, server.properties с дефолтами, добавляет в index.json.
+   * Creates a new server: downloads server.jar for the given version (if
+   * Mojang provides it — for very old versions it may be missing, then it's an error),
+   * writes eula=true, server.properties with the defaults, adds it to index.json.
    */
   async create(input: {
     name: string;
@@ -134,13 +134,13 @@ export class ServerService {
     fs.mkdirSync(dir, { recursive: true });
 
     input.onProgress?.({ stage: 'Чтение метаданных версии', percent: 5 });
-    // Тянем version JSON через installer'овый кэш (gameDir/versions/<id>/<id>.json),
-    // чтобы не дублировать manifest-логику. Если JSON ещё не скачан — installer
-    // загрузит его в gameDir, без скачивания client.jar/ассетов.
+    // We pull the version JSON through the installer's cache (gameDir/versions/<id>/<id>.json),
+    // so that we don't duplicate the manifest logic. If the JSON is not downloaded yet — the installer
+    // will load it into gameDir, without downloading client.jar/assets.
     const verJson = await this.fetchVersionJson(input.versionId);
     const serverDownload = verJson.downloads?.server;
     if (!serverDownload?.url) {
-      // Удалим уже созданную папку, не оставляем мусор
+      // Remove the already created folder, we leave no junk behind
       try { fs.rmSync(dir, { recursive: true, force: true }); } catch {}
       throw new Error(`У версии ${input.versionId} нет официального server.jar (Mojang его не предоставляет).`);
     }
@@ -163,8 +163,8 @@ export class ServerService {
       throw new Error(`SHA-1 mismatch for server.jar: expected ${serverDownload.sha1}, got ${actual}`);
     }
 
-    // EULA — без неё сервер не стартует. Лаунчер автоматически принимает,
-    // потому что юзер уже согласился запуская клиент.
+    // EULA — without it the server does not start. The launcher accepts it automatically,
+    // because the user has already agreed by launching the client.
     fs.writeFileSync(path.join(dir, 'eula.txt'), 'eula=true\n', 'utf-8');
 
     const props = { ...defaultProperties(), ...input.properties };
@@ -202,8 +202,8 @@ export class ServerService {
     const list = this.list();
     const idx = list.findIndex((s) => s.id === id);
     if (idx < 0) throw new Error('Сервер не найден');
-    // Патч тоже чистим: порт в диапазон, motd без CRLF — иначе stored-XSS
-    // и роняющий бинд порт прилетали через «доверенный» вызов.
+    // The patch is sanitized too: the port within the range, the motd without CRLF — otherwise
+    // stored-XSS and a crashing port bind came in through the "trusted" call.
     const clean: Partial<ServerProperties> = { ...patch };
     if (clean.serverPort !== undefined) {
       const p = Number(clean.serverPort);
@@ -228,7 +228,7 @@ export class ServerService {
     };
     list[idx] = updated;
     this.save(list);
-    // Перезаписываем server.properties — изменения подхватятся при следующем запуске.
+    // We overwrite server.properties — the changes take effect on the next start.
     fs.writeFileSync(
       path.join(this.serverDir(id), 'server.properties'),
       this.encodeProperties(updated.properties),
@@ -241,7 +241,7 @@ export class ServerService {
     const list = this.list();
     const idx = list.findIndex((s) => s.id === id);
     if (idx < 0) throw new Error('Сервер не найден');
-    // Имя едет в UI и index.json: режем CRLF (stored-XSS) и длину.
+    // The name travels to the UI and index.json: we cut CRLF (stored-XSS) and the length.
     list[idx] = { ...list[idx], name: name.replace(/[\r\n]/g, ' ').trim().slice(0, 64) || list[idx].name };
     this.save(list);
     return list[idx];
@@ -270,17 +270,17 @@ export class ServerService {
     const jarPath = path.join(dir, 'server.jar');
     if (!fs.existsSync(jarPath)) throw new Error('server.jar не найден — пересоздайте сервер');
 
-    // Перезаписываем server.properties из текущих настроек инстанса. Это
-    // подтягивает свежие правки лаунчера (server-ip=0.0.0.0, новые ключи)
-    // даже на серверах, созданных в более старых версиях Trel.
+    // We overwrite server.properties from the current settings of the instance. This
+    // pulls in the fresh edits of the launcher (server-ip=0.0.0.0, new keys)
+    // even on servers created in older versions of Trel.
     fs.writeFileSync(
       path.join(dir, 'server.properties'),
       this.encodeProperties(inst.properties),
       'utf-8',
     );
 
-    // Проверяем что порт свободен заранее: иначе сервер запустится, упадёт с
-    // «Address already in use» и пользователь увидит лог только постфактум.
+    // We check that the port is free beforehand: otherwise the server will start and crash with
+    // "Address already in use" and the user will only see the log afterwards.
     const portFree = await this.isPortFree(inst.properties.serverPort);
     if (!portFree) {
       throw new Error(
@@ -289,17 +289,17 @@ export class ServerService {
       );
     }
 
-    // Java: версия требует ту же major, что и клиент. Берём из version JSON.
+    // Java: the version requires the same major as the client. We take it from the version JSON.
     const verJson = await this.fetchVersionJson(inst.versionId);
     let major = verJson.javaVersion?.majorVersion ?? 8;
     const javaInfo = await this.java.findBest(major) ?? await this.java.ensure(major, win);
     const javaPath = javaInfo.path;
 
-    // ─── authlib-injector для сервера ───────────────────────────────────────
-    // Без него offline-клиент с UUID, не известным Mojang, не сможет пройти
-    // server-side проверку «hasJoined» — клиент видит «Не удалось проверить
-    // имя пользователя». Подключаем тот же mock-сервер, что и для клиента —
-    // он отвечает, что игрок легит, и сервер пускает.
+    // ─── authlib-injector for the server ───────────────────────────────────────
+    // Without it an offline client with a UUID unknown to Mojang cannot pass
+    // the server-side "hasJoined" check — the client sees "Failed to verify
+    // username". We connect the same mock server as for the client —
+    // it answers that the player is legit, and the server lets it in.
     const accounts = this.getAccounts();
     let authlibServerArgs: string[] = [];
     try {
@@ -312,9 +312,9 @@ export class ServerService {
       this.broadcastLog(win, id, `[launcher] authlib-injector активен (${apiUrl})\n`);
     } catch (e) {
       this.broadcastLog(win, id, `[launcher] authlib-injector недоступен (${(e as Error).message}) — перевожу сервер в offline-mode на этот запуск\n`);
-      // Форсируем offline-mode только в server.properties на этот запуск,
-      // НЕ сохраняем в index.json — чтобы при следующем (успешном) запуске
-      // пользователь не удивлялся, что onlineMode «сам сбросился».
+      // We force offline-mode only in server.properties for this launch,
+      // we do NOT save it in index.json — so that on the next (successful) launch
+      // the user is not surprised that onlineMode "reset itself".
       if (inst.properties.onlineMode) {
         fs.writeFileSync(path.join(dir, 'server.properties'), this.encodeProperties({ ...inst.properties, onlineMode: false }), 'utf-8');
       }
@@ -324,8 +324,8 @@ export class ServerService {
       `-Xms${Math.max(256, Math.floor(inst.memoryMb / 2))}M`,
       `-Xmx${inst.memoryMb}M`,
       '-Dfile.encoding=UTF-8',
-      // Форсим IPv4: иначе на некоторых Windows-конфигах сокет биндится
-      // в IPv6, и клиент по IPv4 (включая 127.0.0.1) не доходит.
+      // We force IPv4: otherwise on some Windows configs the socket binds
+      // to IPv6, and the IPv4 client (including 127.0.0.1) does not reach it.
       '-Djava.net.preferIPv4Stack=true',
       ...authlibServerArgs,
       '-jar', jarPath,
@@ -350,11 +350,11 @@ export class ServerService {
     }
     state.proc = proc;
 
-    // На Windows пытаемся открыть порт в брандмауэре заранее. Без этого первый
-    // запуск показывает системный диалог, который пользователь может закрыть
-    // не глядя — после чего сервер «работает», но из LAN никто не подключится.
-    // netsh не требует UAC если правило уже создано юзером, либо добавит
-    // правило в профиль текущего пользователя. Молча игнорируем неудачу.
+    // On Windows we try to open the port in the firewall in advance. Without this the first
+    // launch shows a system dialog that the user may close without looking — after that
+    // the server "works", but nobody from the LAN can connect.
+    // netsh does not require UAC if the rule was already created by the user, or it will add
+    // the rule to the profile of the current user. We silently ignore a failure.
     if (process.platform === 'win32') {
       this.tryAddFirewallRule(inst.properties.serverPort).catch(() => {});
     }
@@ -363,7 +363,7 @@ export class ServerService {
     proc.stderr.setEncoding('utf-8');
 
     const onChunk = (chunk: string) => {
-      // Сервер пишет логи поблочно — перевод в строки для буфера/UI.
+      // The server writes logs in chunks — we convert them to lines for the buffer/UI.
       const lines = chunk.split(/(?<=\n)/);
       for (const line of lines) {
         if (!line) continue;
@@ -377,7 +377,7 @@ export class ServerService {
           this.broadcastLog(win, id, `[launcher] Port ${inst.properties.serverPort} занят другим процессом — сервер не смог стартовать.\n`);
         }
 
-        // Эвристика: «Done (… For help…»: сервер закончил старт.
+        // Heuristic: "Done (… For help…": the server has finished starting.
         if (state.status === 'starting' && /^\[.+?\] \[.+?\]: Done \(/m.test(line)) {
           state.status = 'running';
           this.broadcastStatus(win, id, 'running');
@@ -414,10 +414,10 @@ export class ServerService {
   }
 
   /**
-   * Грациозно останавливает сервер: пишет `stop` в stdin (это корректно
-   * сейвит мир и закрывает порт). Если процесс не отвечает в течение
-   * 30 секунд — kill -9. Для Windows используем taskkill /F /T чтобы
-   * убить дочерние JVM-процессы, иначе порт может остаться в TIME_WAIT.
+   * Gracefully stops the server: writes `stop` to stdin (this correctly
+   * saves the world and closes the port). If the process does not respond within
+   * 30 seconds — kill -9. On Windows we use taskkill /F /T to
+   * kill the child JVM processes, otherwise the port may stay in TIME_WAIT.
    */
   async stop(id: string, win: BrowserWindow): Promise<void> {
     const state = this.runtimes.get(id);
@@ -429,15 +429,15 @@ export class ServerService {
     try { state.proc.stdin.write('stop\n'); } catch {}
 
     const proc = state.proc;
-    // Сохраняем id таймера чтобы очистить его в случае нормального exit'а —
-    // иначе хэндл живёт в фоне 30с и при быстром повторном start таймер
-    // выстрелит на чужой процесс.
+    // We keep the id of the timer to clear it in case of a normal exit —
+    // otherwise the handle lives in the background for 30s and on a quick repeated start the timer
+    // fires at the wrong process.
     const killTimer = setTimeout(async () => {
       if (proc.exitCode !== null || proc.killed) return;
       if (process.platform === 'win32') {
-        // taskkill /F /T убивает процесс и всех его потомков. SIGKILL на
-        // Windows через node — это TerminateProcess только корня, но JVM
-        // часто плодит дочерние процессы.
+        // taskkill /F /T kills the process and all its descendants. SIGKILL on
+        // Windows through node — is TerminateProcess of the root only, but the JVM
+        // often spawns child processes.
         let killed = false;
         try {
           await new Promise<void>((resolve) => {
@@ -461,27 +461,27 @@ export class ServerService {
     });
   }
 
-  /** Отправляет произвольную команду в stdin сервера (без префикса слэша). */
+  /** Sends an arbitrary command to the server stdin (without the slash prefix). */
   sendCommand(id: string, command: string): void {
     const state = this.runtimes.get(id);
     if (!state?.proc) throw new Error('Сервер не запущен');
     if (!command.trim()) return;
-    // Защита от command injection: запрещаем перевод строки, \r и null-byte,
-    // чтобы нельзя было внедрить несколько команд за один вызов.
+    // Protection against command injection: we forbid the newline, \r and null-byte,
+    // so that several commands cannot be injected in a single call.
     if (/[\n\r\0]/.test(command)) {
       throw new Error('Command contains forbidden characters (newline or null)');
     }
-    // Лимит длины: флуд 10МБ строкой забивал stdin-буфер сервера (DoS).
+    // Length limit: a 10MB flood of a single string filled up the server stdin buffer (DoS).
     if (command.length > 512) throw new Error('Command too long (max 512 chars)');
-    // Команды Minecraft не требуют ведущий «/», stdin его не понимает —
-    // снимаем если пользователь его написал.
+    // Minecraft commands do not require a leading "/", stdin does not understand it —
+    // we strip it if the user typed it.
     const trimmed = command.replace(/^\/+/, '').trimEnd();
     state.proc.stdin.write(trimmed + '\n');
   }
 
-  /** Останавливает все запущенные серверы — вызывается при выходе из лаунчера.
-   *  Возвращает Promise, который resolve'ится когда все процессы завершились
-   *  или по таймауту (чтобы before-quit не висел вечно).
+  /** Stops all the running servers — called when quitting the launcher.
+   *  Returns a Promise that resolves when all the processes have finished
+   *  or on timeout (so that before-quit does not hang forever).
    */
   async shutdownAll(): Promise<void> {
     const procs: { proc: ChildProcessWithoutNullStreams; id: string }[] = [];
@@ -492,7 +492,7 @@ export class ServerService {
       }
     }
     if (!procs.length) return;
-    // Ждём завершения всех процессов, но не дольше 8 секунд.
+    // We wait for all the processes to finish, but no longer than 8 seconds.
     await Promise.race([
       Promise.all(
         procs.map(
@@ -508,16 +508,16 @@ export class ServerService {
   }
 
   /**
-   * Возвращает список доступных адресов подключения для сервера. Полезно
-   * показать пользователю в UI: «127.0.0.1:25565» + IP в LAN для друзей.
+   * Returns the list of available connection addresses for a server. Useful
+   * to show the user in the UI: "127.0.0.1:25565" + the LAN IP for friends.
    *
-   * Берём только IPv4, не loopback, не link-local, не виртуальные интерфейсы
-   * VirtualBox/VMware (они не дают игрокам реально подключиться).
+   * We take only IPv4, not loopback, not link-local, not the virtual interfaces
+   * of VirtualBox/VMware (they do not let the players really connect).
    *
-   * Используем именно 127.0.0.1, а не "localhost": в Minecraft 1.21+ имя
-   * "localhost" сначала резолвится в IPv6 ::1, и при разнице конфигурации
-   * IPv4/IPv6 серверного сокета и клиента это иногда даёт «не подключиться».
-   * 127.0.0.1 однозначно IPv4.
+   * We use exactly 127.0.0.1 and not "localhost": in Minecraft 1.21+ the name
+   * "localhost" is resolved to IPv6 ::1 first, and with a difference in the
+   * IPv4/IPv6 configuration of the server socket and the client this sometimes
+   * results in "cannot connect". 127.0.0.1 is unambiguously IPv4.
    */
   connectAddresses(id: string): { label: string; host: string; port: number }[] {
     const inst = this.list().find((s) => s.id === id);
@@ -529,12 +529,12 @@ export class ServerService {
     const ifaces = os.networkInterfaces();
     for (const [name, addrs] of Object.entries(ifaces)) {
       if (!addrs) continue;
-      // Пропускаем явные виртуалки/туннели — игроки в LAN их не видят.
+      // We skip the obvious VMs/tunnels — the players in the LAN do not see them.
       if (/virtualbox|vmware|hyper-?v|wsl|loopback|tap|tun/i.test(name)) continue;
       for (const a of addrs) {
         if (a.family !== 'IPv4') continue;
         if (a.internal) continue;
-        // Link-local (169.254.x.x) — обычно никого не подключает.
+        // Link-local (169.254.x.x) — usually nobody connects to it.
         if (a.address.startsWith('169.254.')) continue;
         out.push({ label: `Локальная сеть (${name})`, host: a.address, port });
       }
@@ -543,8 +543,8 @@ export class ServerService {
   }
 
   /**
-   * Проверяет: свободен ли TCP-порт. Возвращает true если можно занимать,
-   * false если уже кто-то слушает.
+   * Checks: is the TCP port free. Returns true if it can be taken,
+   * false if someone is already listening.
    */
   private async isPortFree(port: number): Promise<boolean> {
     return new Promise((resolve) => {
@@ -558,13 +558,13 @@ export class ServerService {
   }
 
   /**
-   * На Windows: добавляет inbound-правило брандмауэра для указанного TCP-порта
-   * (если его ещё нет). Без этого первый запуск сервера показывает системный
-   * диалог «Разрешить доступ», и если пользователь его проигнорирует — порт
-   * слышит только loopback.
+   * On Windows: adds an inbound firewall rule for the given TCP port
+   * (if it does not exist yet). Without this the first launch of the server shows a system
+   * dialog "Allow access", and if the user ignores it — only the loopback
+   * hears the port.
    *
-   * Использует netsh advfirewall. Без прав админа создастся правило для
-   * текущего профиля (Private) — этого достаточно для домашней Wi-Fi сети.
+   * Uses netsh advfirewall. Without admin rights a rule is created for the
+   * current profile (Private) — that is enough for a home Wi-Fi network.
    */
   private async tryAddFirewallRule(port: number): Promise<void> {
     if (process.platform !== 'win32') return;
@@ -579,8 +579,8 @@ export class ServerService {
         `localport=${port}`,
         'profile=private,domain',
       ], { windowsHide: true });
-      // Не ждём долго и игнорируем код выхода — netsh может вернуть ошибку
-      // если правило уже есть или если нет прав.
+      // We don't wait long and ignore the exit code — netsh may return an error
+      // if the rule already exists or if there are no rights.
       const t = setTimeout(() => { try { child.kill(); } catch {} ; resolve(); }, 3000);
       child.on('exit', () => { clearTimeout(t); resolve(); });
       child.on('error', () => { clearTimeout(t); resolve(); });
@@ -600,12 +600,12 @@ export class ServerService {
   }
 
   private encodeProperties(p: ServerProperties): string {
-    // Только базовые ключи — остальное Mojang заполнит дефолтами при первом запуске.
+    // Only the basic keys — Mojang fills the rest with defaults on the first start.
     const lines = [
       `# Generated by Trel Launcher at ${new Date().toISOString()}`,
       `motd=${escapePropValue(p.motd)}`,
-      // Явно биндим на все IPv4 — иначе сервер на некоторых системах
-      // слушает только IPv6 ::, и клиенты с локального IPv4 не достают.
+      // We explicitly bind to all IPv4 — otherwise on some systems the server
+      // listens only on IPv6 ::, and the clients on a local IPv4 cannot reach it.
       `server-ip=0.0.0.0`,
       `server-port=${p.serverPort}`,
       `query.port=${p.serverPort}`,
@@ -616,13 +616,13 @@ export class ServerService {
       `online-mode=${p.onlineMode}`,
       `white-list=${p.whiteList}`,
       `spawn-protection=${p.spawnProtection}`,
-      // Прямой вывод в консоль лаунчера, без ANSI
+      // Direct output to the launcher console, without ANSI
       `enable-jmx-monitoring=false`,
-      // 1.19+: enforce-secure-profile требует от клиента подписанных
-      // сертификатов от Mojang. У offline-аккаунтов их нет → сервер
-      // отвергает подключение с «Не удалось проверить имя пользователя».
-      // Отключаем — это совместимо со всеми клиентами (1.19+ просто не
-      // подписывают чат, а 1.21+ работают и без подписи).
+      // 1.19+: enforce-secure-profile requires the client to have signed
+      // certificates from Mojang. Offline accounts do not have them → the server
+      // rejects the connection with "Failed to verify username".
+      // We disable it — it is compatible with all clients (1.19+ simply does not
+      // sign the chat, and 1.21+ works even without the signature).
       `enforce-secure-profile=false`,
       `prevent-proxy-connections=false`,
     ];
@@ -631,9 +631,9 @@ export class ServerService {
   }
 
   /**
-   * Публикация одиночного мира как сервера: рядом с server.jar кладём копию
-   * мира и level-name в properties. Копия, а не перенос — мир остаётся играть
-   * и в одиночке. session.lock и прочие рантайм-файлы не копируем.
+   * Publishing a single-player world as a server: next to server.jar we put a copy
+   * of the world and the level-name in the properties. A copy, not a move — the world
+   * stays playable in single-player too. session.lock and the other runtime files are not copied.
    */
   async publishWorld(worldDir: string, worldName: string, versionId: string, memoryMb: number): Promise<ServerInstance> {
     const safeWorld = worldName.replace(/[^a-zA-Z0-9а-яА-Я_\- ]/g, '_').trim().slice(0, 64);
@@ -661,7 +661,7 @@ export class ServerService {
       const withLevel = await this.setProperties(inst.id, { levelName: safeWorld } as Partial<ServerProperties>);
       return withLevel;
     } catch (e) {
-      // Не вышло — сносим недосервер целиком, мусора не оставляем.
+      // It did not work out — we drop the half-made server entirely, leaving no junk behind.
       try { fs.rmSync(this.serverDir(inst.id), { recursive: true, force: true }); } catch { /* ignore */ }
       const list = this.list().filter((x) => x.id !== inst.id);
       this.save(list);
@@ -670,12 +670,12 @@ export class ServerService {
   }
 
   private async fetchVersionJson(versionId: string): Promise<any> {
-    // Ходим в gameDir/versions/<id>/<id>.json (если уже есть от установки клиента),
-    // иначе тянем напрямую из manifest и сохраняем туда же.
+    // We go to gameDir/versions/<id>/<id>.json (if it is already there from the client install),
+    // otherwise we pull it directly from the manifest and save it there as well.
     const jsonPath = path.join(this.gameDir, 'versions', versionId, versionId + '.json');
     if (fs.existsSync(jsonPath)) {
       const j = JSON.parse(fs.readFileSync(jsonPath, 'utf-8'));
-      // server.jar URL для лоадер-профилей берётся из родителя (inheritsFrom)
+      // The server.jar URL for the loader profiles is taken from the parent (inheritsFrom)
       if (j.inheritsFrom && !j.downloads?.server) {
         const parentPath = path.join(this.gameDir, 'versions', j.inheritsFrom, j.inheritsFrom + '.json');
         if (fs.existsSync(parentPath)) {
@@ -685,7 +685,7 @@ export class ServerService {
       }
       return j;
     }
-    // Нет на диске — тянем
+    // Not on disk — we pull it
     const { data: manifest } = await axios.get('https://launchermeta.mojang.com/mc/game/version_manifest_v2.json', { timeout: 15000 });
     const entry = (manifest.versions as any[]).find((v) => v.id === versionId);
     if (!entry) throw new Error(`Версия ${versionId} не найдена в манифесте Mojang`);
@@ -722,7 +722,7 @@ export class ServerService {
 }
 
 function escapePropValue(v: string): string {
-  // server.properties — Java-properties: backslash, =, : надо экранировать.
+  // server.properties — Java properties: backslash, =, : have to be escaped.
   return v
     .replace(/\\/g, '\\\\')
     .replace(/=/g, '\\=')
@@ -730,7 +730,7 @@ function escapePropValue(v: string): string {
     .replace(/\n/g, '\\n');
 }
 
-/** Чистит запись сервера из недоверенного index.json (экспорт для тестов). */
+/** Sanitizes a server record from an untrusted index.json (exported for tests). */
 export function sanitizeServerInstance(inst: Record<string, unknown>): ServerInstance {
   const id = typeof inst.id === 'string' && /^[a-zA-Z0-9_-]{1,64}$/.test(inst.id) ? inst.id : null;
   if (!id) throw new Error('Bad server id in index.json');

@@ -1,82 +1,83 @@
-# Выпуск релиза
+# Releasing
 
-Релизы публикуются автоматически: достаточно запушить тег — сборка в CI
-соберёт файлы под Windows и Linux и прикрепит их к релизу.
+Releases are published automatically: push a tag and the CI build produces the
+Windows and Linux files and attaches them to the release.
 
-## Как выпустить версию
+## How to release a version
 
-1. Обновить версию в `package.json` (поле `version`).
-2. Записать изменения в `RELEASE_NOTES.md` — отдельный раздел с заголовком
+1. Update the version in `package.json` (the `version` field).
+2. Write the changes in `RELEASE_NOTES.md` — a separate section titled
    `# Trel vX.Y.Z`.
-3. Закоммитить и запушить в `main`.
-4. Создать и запушить тег с тем же номером версии:
+3. Commit and push to `main`.
+4. Create and push a tag with the same version number:
 
 ```bash
 git tag vX.Y.Z
 git push origin vX.Y.Z
 ```
 
-5. Дождаться, пока отработает `.github/workflows/release.yml` — он создаст
-   релиз с файлами и текстом из `RELEASE_NOTES.md`.
+5. Wait for `.github/workflows/release.yml` to finish — it creates the release
+   with the files and the text from `RELEASE_NOTES.md`.
 
-## Что делает CI
+## What the release CI does
 
-`.github/workflows/release.yml` при пуше тега `v*`:
+`.github/workflows/release.yml` on pushing a `v*` tag:
 
-- собирает Windows: NSIS-инсталлятор и портативную сборку;
-- собирает Linux: AppImage, deb и rpm;
-- берёт описание релиза из секции `RELEASE_NOTES.md`, соответствующей версии;
-- создаёт релиз и прикрепляет к нему файлы вместе с `latest.yml`,
-  `latest-linux.yml` и файлами blockmap.
+- builds Windows: the NSIS installer and the portable build;
+- builds Linux: AppImage, deb and rpm;
+- takes the release description from the `RELEASE_NOTES.md` section matching
+  the version;
+- creates the release and attaches the files together with `latest.yml`,
+  `latest-linux.yml` and the blockmap files.
 
-Сборку можно запустить и вручную: **Actions → Release → Run workflow**,
-указав тег.
+You can also trigger the build manually: **Actions → Release → Run workflow**,
+specifying the tag.
 
-## Что собирает обычный CI
+## What the regular CI builds
 
-`.github/workflows/ci.yml` при каждом пуше в `main` и каждом запросе на
-слияние:
+`.github/workflows/ci.yml` on every push to `main` and every pull request:
 
 ```bash
 npm ci
 npm run build:renderer
 ```
 
-Плюс проверка типов, тесты и сборка под Windows и Linux.
+Plus type checking, tests, and a Windows and a Linux build.
 
-## Подготовка версии
+## Version preparation
 
-Версия берётся из `package.json`. Перед выпуском проверь, что номер
-совпадает в этих местах:
+The version comes from `package.json`. Before releasing, make sure the number
+matches in these places:
 
-- `package.json` — поле `version`;
-- `package-lock.json` — корневая запись `version`;
-- `src/main/modpacks.ts` — строка `TrelLauncher/X.Y.Z`.
+- `package.json` — the `version` field;
+- `package-lock.json` — the root `version` entry;
+- `src/main/modpacks.ts` — the `TrelLauncher/X.Y.Z` string.
 
-Имена артефактов собираются из `${version}` автоматически.
+Artifact names are generated from `${version}` automatically.
 
-## Особенности сборки
+## Build notes
 
-`@xmcl/core` закреплён на точной версии `2.15.1`: свежие пакеты `@xmcl`
-опубликованы с зависимостями вида `workspace:^*` и ломают `npm install`
-без локфайла.
+`@xmcl/core` is pinned to the exact version `2.15.1`: newer `@xmcl` packages
+are published with dependencies such as `workspace:^*` and break `npm install`
+without a lockfile.
 
-Для сборки rpm нужен `rpmbuild`; номер версии тоже берётся из `package.json`.
+Building the rpm requires `rpmbuild`; the version number is taken from
+`package.json` as well.
 
-## Если нужно опубликовать вручную
+## If you need to publish manually
 
-Иногда публикация вручную всё ещё нужна — например, для зеркала на archive.org
-или если сборка в CI упала.
+Manual publishing is still needed sometimes — for example, for a mirror on
+archive.org or when the CI build failed.
 
-1. Проверь, что в `package.json` в поле `build.publish` указан нужный
-   репозиторий, и что удалённый репозиторий совпадает с ним.
-2. Собери артефакты локально:
+1. Check that `package.json` has the right repository in the `build.publish`
+   field and that the remote repository matches it.
+2. Build the artifacts locally:
 
 ```bash
-npm run dist         # Windows: NSIS-инсталлятор + портативная сборка
+npm run dist         # Windows: NSIS installer + portable build
 npm run dist:linux   # Linux: AppImage + deb + rpm
 ```
 
-3. Создай релиз вручную и загрузи в него файлы из `release/`.
+3. Create the release manually and upload the files from `release/`.
 
-Токены в репозиторий не коммитить.
+Do not commit tokens to the repository.

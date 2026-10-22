@@ -2,7 +2,7 @@
   // App.tsx
   'app.loading': 'Загрузка...',
 
-  // Общие
+  // Common
   'common.noVersions': 'нет версий',
 
   // TitleBar.tsx
@@ -856,7 +856,7 @@
   'import.reloginNeeded': 'Для онлайн-аккаунтов нужен повторный вход через Microsoft',
   'import.moreWarnings': 'ещё {count} заметок',
 
-  // Жёсткие ссылки, предпросмотр, модпаки, метрики импорта
+  // Hard links, preview, modpacks, import metrics
   'import.hardlinks': 'Переносить ссылками, без копирования',
   'import.hardlinksHint': 'Мгновенно и не занимает места, но файлы остаются общими с исходным лаунчером: удаление или правка в одном месте видна в другом. Если папки на разных дисках, Trel скопирует обычным способом.',
   'import.previewBtn': 'Посчитать объём',
@@ -1047,7 +1047,7 @@
   'import.eta': 'осталось ~{seconds} с',
   'import.doneStats': '{size} за {seconds} с ({speed} МБ/с)',
 
-  // Отмена, кэш, повторный импорт
+  // Cancel, cache, re-import
   'import.cancelBtn': 'Остановить',
   'import.cancelling': 'Останавливаем…',
   'import.cancelledTitle': 'Импорт остановлен',

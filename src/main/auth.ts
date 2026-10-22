@@ -26,8 +26,8 @@ export class AuthService {
   }
 
   /**
-   * Создаёт онлайн-аккаунт с настоящим UUID/именем от Microsoft.
-   * accessToken генерится локально — skin-server сам выпускает токены.
+   * Creates an online account with a real Microsoft UUID/name.
+   * The accessToken is generated locally — the skin server issues tokens itself.
    */
   createMicrosoft(uuid: string, name: string, refreshToken?: string, owned?: boolean): MinecraftAccount {
     return {

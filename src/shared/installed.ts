@@ -1,14 +1,14 @@
 /**
- * Хелперы для отображения «эффективного» списка установленных версий в UI.
+ * Helpers for displaying the "effective" list of installed versions in the UI.
  *
- * На диске для каждого мод-лоадера (Forge/Fabric/Quilt/NeoForge) хранится
- * пара папок: сама ваниль (`1.21.11`) и профиль лоадера (`1.21.11-forge-…`).
- * Backend честно возвращает обе. Но в UI пользователь не должен видеть
- * «отдельную» ваниль рядом с её же лоадером — это путает счётчик
- * установленных версий.
+ * On disk, every mod loader (Forge/Fabric/Quilt/NeoForge) stores a pair of folders:
+ * the vanilla version itself (`1.21.11`) and the loader profile (`1.21.11-forge-…`).
+ * The backend honestly returns both. But in the UI the user must not see the
+ * "separate" vanilla next to its own loader — that confuses the counter of
+ * installed versions.
  *
- * Эти функции возвращают только «видимые в UI» инстансы: лоадер впитывает
- * базовую MC-версию, обычные ваниль-установки оставляем как есть.
+ * These functions return only the instances that are "visible in the UI": the loader
+ * absorbs the base MC version, while ordinary vanilla installations are left as is.
  */
 
 export interface InstalledDetailLike {
@@ -17,22 +17,22 @@ export interface InstalledDetailLike {
   loader: string | null;
 }
 
-/** Какие baseMc уже представлены лоадер-профилем. */
+/** Which baseMc are already represented by a loader profile. */
 export function moddedBaseSet(details: InstalledDetailLike[]): Set<string> {
   return new Set(details.filter((d) => d.loader).map((d) => d.baseMc));
 }
 
 /**
- * Возвращает только те инстансы, которые UI должен показывать как «версии
- * для запуска». Если для базовой MC есть лоадер — отдельную ванильную
- * запись скрываем (её jar и assets всё ещё на диске и используются лоадером).
+ * Returns only the instances that the UI should show as "versions
+ * to launch". If a loader exists for the base MC — we hide the separate vanilla
+ * entry (its jar and assets are still on disk and are used by the loader).
  */
 export function effectiveInstalled<T extends InstalledDetailLike>(details: T[]): T[] {
   const modded = moddedBaseSet(details);
   return details.filter((d) => d.loader || !modded.has(d.id));
 }
 
-/** Сколько версий показывать в любых счётчиках UI. */
+/** How many versions to show in any of the UI counters. */
 export function effectiveInstalledCount(details: InstalledDetailLike[]): number {
   return effectiveInstalled(details).length;
 }

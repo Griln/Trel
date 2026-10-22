@@ -12,7 +12,7 @@ describe('TrelEmuDownloader resume', () => {
 
   beforeEach(() => {
     tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'trel-emu-dl-'));
-    // Подменяем targetDir, чтобы не мусорить в %APPDATA%.
+    // Mock targetDir so that we do not litter %APPDATA%.
     vi.spyOn(TrelEmuDownloader.prototype, 'resolveTargetDir').mockReturnValue(path.join(tmpRoot, 'trel-emu'));
     dl = new TrelEmuDownloader();
   });
@@ -25,7 +25,7 @@ describe('TrelEmuDownloader resume', () => {
   it('writes .partial and .meta.json in <target>/downloads/', async () => {
     const partialPath = dl['getPartialPath'](dl.resolveTargetDir(), 'trel-emu-pack.zip');
     const metaPath = dl['getMetaPath'](dl.resolveTargetDir(), 'trel-emu-pack.zip');
-    // Проверяем пути
+    // Check the paths
     expect(partialPath).toContain('downloads');
     expect(partialPath.endsWith('.partial')).toBe(true);
     expect(metaPath.endsWith('.meta.json')).toBe(true);
@@ -110,7 +110,7 @@ describe('TrelEmuDownloader resume', () => {
       etag: null,
       lastModified: null,
       acceptsRanges: true,
-      startedAt: Date.now() - 8 * 24 * 60 * 60_000, // 8 дней назад
+      startedAt: Date.now() - 8 * 24 * 60 * 60_000, // 8 days ago
     }));
     const n = await dl.getResumableBytes(targetDir, baseName, 'http://x');
     expect(n).toBe(0);
@@ -132,7 +132,7 @@ describe('TrelEmuDownloader resume', () => {
     await fsp.mkdir(targetDir, { recursive: true });
     const p = path.join(targetDir, 'temp.partial');
     await fsp.writeFile(p, Buffer.from('hello world'));
-    // Берём SHA1 от других данных — он гарантированно не совпадёт.
+    // Take the SHA1 of different data — it is guaranteed not to match.
     const wrongSha1 = crypto.createHash('sha1').update(Buffer.from('different content')).digest('hex');
     const ok = await dl['verifyPartialSha1'](p, wrongSha1, 'http://x');
     expect(ok).toBe(false);

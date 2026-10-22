@@ -1,14 +1,15 @@
 /**
- * Глобальный HTTP-прокси для всех скачиваний лаунчера (axios defaults).
- * Для наших широт — must have: без прокси часть CDN просто не отвечает.
- * SOCKS не поддерживаем (axios из коробки — только http/https proxy);
- * сырые TCP (пинг серверов, game traffic) идут напрямую.
+ * Global HTTP proxy for all launcher downloads (axios defaults).
+ * For our latitudes this is a must have: without a proxy some CDNs simply
+ * do not respond.
+ * SOCKS is not supported (axios supports http/https proxies out of the box);
+ * raw TCP (server pings, game traffic) goes directly.
  */
 import axios from 'axios';
 
 export interface ParsedProxy { host: string; port: number; auth?: { username: string; password: string } }
 
-/** Строгая разборка proxyUrl: http(s)://[user:pass@]host:port, без путей. */
+/** Strict parsing of proxyUrl: http(s)://[user:pass@]host:port, no paths. */
 export function parseProxyUrl(raw: string): ParsedProxy | null {
   try {
     const u = new URL(raw.trim());
@@ -26,17 +27,18 @@ export function parseProxyUrl(raw: string): ParsedProxy | null {
 }
 
 let proxyActive = false;
-/** Включён ли сейчас прокси (кастомные агенты его игнорят — см. agentsForDownload). */
+/** Whether the proxy is currently enabled (custom agents ignore it — see agentsForDownload). */
 export function isProxyActive(): boolean { return proxyActive; }
 
 /**
- * Агенты для скачивания: keepalive-агенты axios НЕ умеют в прокси-туннель,
- * поэтому при включённом прокси отдаём пусто (дефолтные агенты + proxy-конфиг
- * axios разруливает сам). Без прокси — keepalive как раньше.
+ * Download agents: axios keepalive agents CANNOT tunnel through a proxy,
+ * so with the proxy enabled we return an empty object (default agents plus the
+ * proxy config, which axios handles on its own). Without a proxy — keepalive
+ * as before.
  */
 export function agentsForDownload(): { httpAgent?: unknown; httpsAgent?: unknown } {
   if (proxyActive) return {};
-  // Ленивый require чтобы не тянуть http/https в импортеры модуля.
+  // Lazy require so that http/https are not pulled into the module importers.
   const http = require('node:http') as typeof import('node:http');
   const https = require('node:https') as typeof import('node:https');
   return {
@@ -45,7 +47,7 @@ export function agentsForDownload(): { httpAgent?: unknown; httpsAgent?: unknown
   };
 }
 
-/** Применяет прокси ко всем axios-запросам процесса (или снимает). */
+/** Applies the proxy to all axios requests of the process (or clears it). */
 export function applyGlobalProxy(proxyUrl?: string): boolean {
   if (!proxyUrl || !proxyUrl.trim()) {
     axios.defaults.proxy = false;
@@ -59,7 +61,7 @@ export function applyGlobalProxy(proxyUrl?: string): boolean {
   return true;
 }
 
-/** Проверка прокси: быстрый GET манифеста Mojang через него. */
+/** Proxy check: a quick GET of the Mojang manifest through it. */
 export async function testProxy(proxyUrl: string, timeoutMs = 12000): Promise<{ ok: boolean; latencyMs?: number; error?: string }> {
   const p = parseProxyUrl(proxyUrl);
   if (!p) return { ok: false, error: 'Bad proxy URL (need http(s)://host:port)' };
@@ -76,7 +78,7 @@ export async function testProxy(proxyUrl: string, timeoutMs = 12000): Promise<{ 
   }
 }
 
-/* ─── Очередь скачиваний: слоты + пауза ─── */
+/* ─── Download queue: slots + pause ─── */
 
 const MAX_DOWNLOAD_SLOTS = 3;
 let activeSlots = 0;
@@ -101,7 +103,7 @@ export async function respectDownloadPause(): Promise<void> {
   }
 }
 
-/** Занимает слот очереди (макс. 3 параллельных скачивания на весь лаунчер). */
+/** Takes a queue slot (max. 3 parallel downloads for the whole launcher). */
 export async function acquireDownloadSlot(): Promise<() => void> {
   await respectDownloadPause();
   while (activeSlots >= MAX_DOWNLOAD_SLOTS) {
@@ -112,7 +114,7 @@ export async function acquireDownloadSlot(): Promise<() => void> {
     activeSlots--;
     const w = slotWaiters.shift();
     if (w) w();
-    // Пауза могла встать пока слоты заняты — будим очередь при снятии.
+    // The pause may have been set while the slots were busy — wake the queue on resume.
     if (!downloadsPaused) {
       for (const pw of [...pauseWaiters]) { pauseWaiters.delete(pw); pw(); }
     }

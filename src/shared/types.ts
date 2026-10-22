@@ -3,19 +3,19 @@ export interface MinecraftAccount {
   name: string;
   uuid: string;
   /**
-   * Кастомный скин в виде data-URL (PNG, 64×64 или 64×32 legacy).
-   * Используется для отображения аватара/превью внутри лаунчера.
-   * В offline-режиме сама игра свой скин в текстурах НЕ покажет —
-   * для этого нужен либо мод-скин-лоадер, либо локальный yggdrasil-сервер.
+   * A custom skin as a data-URL (PNG, 64×64 or legacy 64×32).
+   * Used to display the avatar/preview inside the launcher.
+   * In offline mode the game itself will NOT show its skin in the textures —
+   * for that you need either a skin loader mod or a local yggdrasil server.
    */
   skin?: string;
-  /** Модель скина: classic (Steve, 4px руки) или slim (Alex, 3px руки). */
+  /** Skin model: classic (Steve, 4px arms) or slim (Alex, 3px arms). */
   skinModel?: 'classic' | 'slim';
-  /** Для online-аккаунтов: accessToken для yggdrasil-аутентификации. */
+  /** For online accounts: the accessToken for yggdrasil authentication. */
   accessToken?: string;
-  /** Токен обновления Microsoft — чтобы переполучить профиль после покупки игры. */
+  /** Microsoft refresh token — to re-fetch the profile after buying the game. */
   msRefreshToken?: string;
-  /** Для Microsoft-аккаунтов: true если куплена лицензия Minecraft, false если нет. */
+  /** For Microsoft accounts: true if the Minecraft license was bought, false if not. */
   owned?: boolean;
 }
 
@@ -48,7 +48,7 @@ export interface LauncherSettings {
   javaPath?: string;
   lastVersionId?: string;
   lastVersionEdition?: 'java' | 'bedrock';
-  /** Активная тема UI. По умолчанию — 'mono'. */
+  /** The active UI theme. Defaults to 'mono'. */
   theme?: ThemeId;
   jvmArgs?: string;
   gameWidth?: number;
@@ -59,35 +59,35 @@ export interface LauncherSettings {
   lockOnLaunch?: boolean;
   prevGameDir?: string;
   showIntro?: boolean;
-  /** Автоскрытие левой панели через 5 секунд бездействия на вкладке. */
+  /** Auto-hide of the left panel after 5 seconds of inactivity on the tab. */
   autoHideSidebar?: boolean;
   locale?: 'ru' | 'en';
   showConsole?: boolean;
   preCommand?: string;
   postCommand?: string;
-  /** HTTP(S)-прокси для всех скачиваний: http(s)://[user:pass@]host:port. */
+  /** HTTP(S) proxy for all downloads: http(s)://[user:pass@]host:port. */
   proxyUrl?: string;
-  /** Пресет производительности, применённый последним (информация). */
+  /** The performance preset applied last (informational). */
   perfPreset?: 'potato' | 'balanced' | 'ultra';
-  /** Автобэкап миров перед запуском (не чаще раза в сутки). */
+  /** Auto-backup of the worlds before launching (no more than once a day). */
   autoBackup?: boolean;
-  /** Закреплённые сборки (id версий сверху списков). */
+  /** Pinned builds (version ids at the top of the lists). */
   pinnedVersions?: string[];
 }
 
-/** Список тем UI. Совпадает с data-theme атрибутами в styles.css. */
+/** The list of UI themes. Matches the data-theme attributes in styles.css. */
 export type ThemeId = 'mono' | 'eclipse' | 'voxel';
 
 export const THEME_IDS: ThemeId[] = ['mono', 'eclipse', 'voxel'];
 
-/** Дефолт для новых установок и для повреждённого settings.json. */
+/** The default for new installations and for a corrupted settings.json. */
 export const DEFAULT_THEME: ThemeId = 'mono';
 
 export type ServerStatus = 'stopped' | 'starting' | 'running' | 'stopping' | 'error';
 
 export interface ServerProperties {
   motd: string;
-  /** Имя папки мира (level-name). Пусто = vanilla-мир сервера. */
+  /** The world folder name (level-name). Empty = the vanilla world of the server. */
   levelName?: string;
   serverPort: number;
   maxPlayers: number;
@@ -143,11 +143,11 @@ export interface DownloadProgress {
   total: number;
   percent: number;
   /**
-   * Скачано байт на текущем этапе/общем процессе. Используется в UI для
-   * показа «56.4 / 312 МБ» вместе с процентом. Опционально — старые этапы
-   * без точного учёта байтов (типа «Extracting natives») оставляют пустым.
+   * The number of bytes downloaded in the current stage / the whole process. Used in the UI to
+   * show "56.4 / 312 MB" together with the percentage. Optional — the old stages
+   * without an exact byte count (like "Extracting natives") leave it empty.
    */
   bytesDownloaded?: number;
-  /** Общий ожидаемый объём в байтах. См. bytesDownloaded. */
+  /** The total expected size in bytes. See bytesDownloaded. */
   bytesTotal?: number;
 }

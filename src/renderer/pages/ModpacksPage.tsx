@@ -31,7 +31,7 @@ export const ModpacksPage: React.FC = () => {
     }
   }, [query]);
 
-  useEffect(() => { search(); /* первичная загрузка популярных */ }, []); // eslint-disable-line
+  useEffect(() => { search(); /* initial load of the popular ones */ }, []); // eslint-disable-line
 
   const openVersions = async (pack: ModpackSummary) => {
     setSelected(pack); setVersions([]); setView('versions'); setError(null); setDoneMsg(null);

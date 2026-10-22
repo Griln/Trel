@@ -1,8 +1,8 @@
 name: Release
 
-# Публикует релиз автоматически при пуше тега вида vX.Y.Z.
-# Собирает Windows (инсталлятор NSIS и портативная сборка) и Linux (AppImage, deb, rpm),
-# прикрепляет всё к релизу на GitHub.
+# Publishes a release automatically when a tag like vX.Y.Z is pushed.
+# Builds Windows (NSIS installer and portable build) and Linux (AppImage, deb, rpm)
+# and attaches everything to the release on GitHub.
 
 on:
   push:
@@ -50,9 +50,9 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path dist-artifacts | Out-Null
-          # Только верхний уровень папки release/: в подпапке win-unpacked лежат
-          # adb.exe и elevate.exe из resources/platform-tools — они уже внутри
-          # инсталлятора, в релиз не нужны.
+          # Only the top level of the release/ folder: the win-unpacked subfolder holds
+          # adb.exe and elevate.exe from resources/platform-tools — they are already
+          # inside the installer and are not needed in the release.
           Get-ChildItem -Path 'release\*' -File |
             Where-Object { $_.Extension -in '.exe', '.blockmap', '.yml' -and $_.Name -notin 'adb.exe', 'elevate.exe' } |
             Copy-Item -Destination dist-artifacts -Force

@@ -61,8 +61,8 @@ export class ScreenshotService {
 
   /** Guard: only allow operations on paths inside a known screenshots root. */
   private assertInside(p: string) {
-    // realpath, а не resolve: симлинк screenshots/evil -> / иначе даёт
-    // чтение/удаление любого файла через доверенный префикс.
+    // realpath, not resolve: a symlink screenshots/evil -> / would otherwise
+    // allow reading/deleting any file through the trusted prefix.
     let norm: string;
     try { norm = fs.realpathSync(p); } catch { norm = path.resolve(p); }
     const ok = this.roots().some((r) => {
@@ -76,7 +76,7 @@ export class ScreenshotService {
   read(p: string): string {
     this.assertInside(p);
     const st = fs.statSync(p);
-    // 25МБ кап: full-size PNG в base64 через IPC вешал рендер (OOM).
+    // 25MB cap: a full-size PNG in base64 over IPC hung the renderer (OOM).
     if (!st.isFile() || st.size > 25 * 1024 * 1024) throw new Error('Screenshot too large');
     const buf = fs.readFileSync(p);
     const ext = path.extname(p).toLowerCase();

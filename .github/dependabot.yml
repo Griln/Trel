@@ -14,17 +14,17 @@ updates:
     commit-message:
       prefix: "chore(deps)"
     groups:
-      # Минорные и патч-обновления — одной кучей, их не надо ревьюить поштучно
+      # Minor and patch updates — bundled together, they do not need to be reviewed one by one
       minor-patch:
         update-types:
           - minor
           - patch
-      # Мажорные — отдельными PR, их надо читать
+      # Major updates — separate PRs, they have to be read
       major:
         update-types:
           - major
     ignore:
-      # electron-builder тянет много транзитивных пакетов — их апдейты создают шум
+      # electron-builder pulls in a lot of transitive packages — their updates create noise
       - dependency-name: "@xmcl/*"
 
   - package-ecosystem: github-actions

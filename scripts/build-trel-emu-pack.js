@@ -1,34 +1,34 @@
 #!/usr/bin/env node
 /**
- * Собирает trel-emu-pack.zip — компактный zip-архив, который Trel скачивает
- * из GitHub Releases при первом запуске. Содержит:
- *   - qemu/qemu-system-x86_64.exe  (≈27 МБ)
- *   - qemu/qemu-img.exe            (≈2 МБ)
- *   - qemu/<все DLLки + утилиты>   (≈110 МБ, нужны для запуска QEMU)
- *   - image/android-x86.iso        (≈965 МБ)
- *   - config.json                  (дефолтный конфиг: память, ядра, порт)
+ * Builds trel-emu-pack.zip — a compact zip archive that Trel downloads from
+ * GitHub Releases on first run. It contains:
+ *   - qemu/qemu-system-x86_64.exe  (≈27 MB)
+ *   - qemu/qemu-img.exe            (≈2 MB)
+ *   - qemu/<all DLLs + utilities>   (≈110 MB, needed to run QEMU)
+ *   - image/android-x86.iso        (≈965 MB)
+ *   - config.json                  (default config: memory, cores, port)
  *
- * Зачем: вместо того чтобы бандлить 1 ГБ эмулятора в инсталлятор (NSIS
- * получается 1 ГБ, portable тоже 1 ГБ), оставляем маленький инсталлятор
- * (~80 МБ) и качаем TrelEmu отдельно. Пользователь жмёт одну кнопку
- * "Скачать TrelEmu" — и через 5-10 минут у него готовый эмулятор.
+ * Why: instead of bundling 1 GB of emulator into the installer (NSIS ends up
+ * at 1 GB, portable at 1 GB too), we keep a small installer (~80 MB) and
+ * download TrelEmu separately. The user clicks a single "Download TrelEmu"
+ * button — and 5-10 minutes later they have a ready emulator.
  *
- * Использование:
- *   1) Положи qemu-system-x86_64.exe, qemu-img.exe, android-x86.iso, config.json
- *      в build-trel-emu-cache/source/
- *   2) Запусти `node scripts/build-trel-emu-pack.js`
- *   3) Получишь dist/trel-emu-pack.zip + .sha1
- *   4) Загрузи на GitHub Releases в репозиторий Griln/Trel
- *      с тегом trel-emu-v0.3.0 и именем trel-emu-pack.zip
+ * Usage:
+ *   1) Put qemu-system-x86_64.exe, qemu-img.exe, android-x86.iso, config.json
+ *      into build-trel-emu-cache/source/
+ *   2) Run `node scripts/build-trel-emu-pack.js`
+ *   3) Get dist/trel-emu-pack.zip + .sha1
+ *   4) Upload it to GitHub Releases in the Griln/Trel repository
+ *      with the tag trel-emu-v0.3.0 and the name trel-emu-pack.zip
  *
- * Кэш распакованного QEMU должен лежать в build-trel-emu-cache/qemu/,
- * Android-x86 ISO в build-trel-emu-cache/android-x86_64-9.0-r2.iso,
- * а config.json — в resources/trel-emu/config.json.
+ * The unpacked QEMU cache must live in build-trel-emu-cache/qemu/,
+ * the Android-x86 ISO in build-trel-emu-cache/android-x86_64-9.0-r2.iso,
+ * and config.json in resources/trel-emu/config.json.
  *
- * ⚠️ ВАЖНО: бандлим ВСЕ DLL и вспомогательные бинари из qemu/. QEMU не
- * запустится без libstdc++-6.dll, libgcc_s_seh-1.dll, libwinpthread-1.dll,
- * SDL2.dll, libcrypto-3-x64.dll и ещё ~100 файлов. Размер pack'а
- * вырастает с 947 МБ до ~1.1 ГБ, но без этого TrelEmu вообще не стартует.
+ * ⚠️ IMPORTANT: we bundle ALL DLLs and helper binaries from qemu/. QEMU will
+ * not start without libstdc++-6.dll, libgcc_s_seh-1.dll, libwinpthread-1.dll,
+ * SDL2.dll, libcrypto-3-x64.dll and ~100 more files. The pack grows from
+ * 947 MB to ~1.1 GB, but without this TrelEmu simply will not start.
  */
 
 const fs = require('node:fs');
@@ -41,24 +41,30 @@ const CACHE = path.join(ROOT, 'build-trel-emu-cache');
 const QEMU_DIR = path.join(CACHE, 'qemu');
 const ISO_FILE = path.join(CACHE, 'android-x86_64-9.0-r2.iso');
 const CONFIG_FILE = path.join(ROOT, 'resources', 'trel-emu', 'config.json');
-// ВАЖНО: пишем в `dist-trel-emu/`, НЕ в `dist/`. Иначе glob `dist/**/*` в
-// package.json `build.files` подхватит 1 ГБ zip-файл и засунет его в asar,
-// превратив маленький инсталлятор в 1 ГБ дистрибутив. Это и был баг.
+// IMPORTANT: we write into `dist-trel-emu/`, NOT into `dist/`. Otherwise the
+// glob `dist/**/*` in
+// package.json `build.files` picks up the 1 GB zip file and packs it into the
+// asar,
+// turning the small installer into a 1 GB distribution. That was the bug.
 const OUT_DIR = path.join(ROOT, 'dist-trel-emu');
 const OUT_ZIP = path.join(OUT_DIR, 'trel-emu-pack.zip');
 const OUT_SHA1 = path.join(OUT_DIR, 'trel-emu-pack.zip.sha1');
 
-// Что НЕ бандлим из qemu/: другие архитектуры (aarch64, arm, mips, etc.) —
-// они не нужны для TrelEmu (только x86_64). Без них pack теряет ~700 МБ.
-// Также выкидываем прочую мелочь (NSIS installer leftovers).
+// What we do NOT bundle from qemu/: other architectures (aarch64, arm, mips,
+// etc.) —
+// they are not needed for TrelEmu (x86_64 only). Without them the pack loses
+// ~700 MB.
+// We also drop the other small stuff (NSIS installer leftovers).
 const QEMU_EXCLUDE_PATTERNS = [
   /^qemu-system-(aarch64|alpha|arm|avr|hppa|i386|loongarch64|m68k|microblaze|mips|mipsel|or1k|ppc|ppc64|riscv32|riscv64|rx|s390x|sh4|sh4eb|sparc|sparc64|tricore|xtensa|xtensaeb).*\.exe$/,
-  /^qemu-system-.*w\.exe$/,    // Windows-on-Windows варианты
+  /^qemu-system-.*w\.exe$/,    // Windows-on-Windows variants
   /^\$PLUGINSDIR\//,           // NSIS installer leftovers
-  // share/: оставляем только x86_64 bios/firmware (нужны для boot).
-  // Остальные архитектуры (aarch64, arm, loongarch, riscv, sparc, ppc, hppa, m68k, rx, s390x, etc.) выкидываем.
+  // share/: keep only the x86_64 bios/firmware (needed for boot).
+  // Drop the remaining architectures (aarch64, arm, loongarch, riscv, sparc, ppc,
+// hppa, m68k, rx, s390x, etc.).
   /^share\/(?!bios-256k\.bin|bios-microvm\.bin|bios\.bin|kvmvapic\.bin|vgabios-|edk2-x86_64-|linuxboot_dma\.bin|multiboot_dma\.bin|pvh\.bin|efi-|pxe-|qboot\.rom)/,
-  // Текстовые файлы, лицензии, переводы, иконки, keymaps, man-страницы, dtb — не нужны для запуска.
+  // Text files, licenses, translations, icons, keymaps, man pages, dtb — not needed
+// to run.
   /^share\/dtb\//,
   /^share\/icons\//,
   /^share\/keymaps\//,
@@ -70,9 +76,10 @@ const QEMU_EXCLUDE_PATTERNS = [
   /^share\/edk2-licenses\.txt$/,
 ];
 
-// scrcpy/ — TrelEmu автоматически запускает scrcpy.exe после того как ADB
-// подключился, чтобы увидеть экран Android. Бандлим всё, кроме мусорных
-// файлов (батники, иконка, vbs).
+// scrcpy/ — TrelEmu automatically launches scrcpy.exe once ADB
+// connects, so that the Android screen becomes visible. We bundle everything
+// except the junk
+// files (batch files, icon, vbs).
 const SCRCPY_EXCLUDE_PATTERNS = [
   /^open_a_terminal_here\.bat$/,
   /^scrcpy-console\.bat$/,
@@ -91,16 +98,18 @@ if (!fs.existsSync(SCRCPY_DIR)) { console.warn('WARNING: scrcpy/ not found at ' 
 
 fs.mkdirSync(OUT_DIR, { recursive: true });
 
-// Собираем список всех файлов из qemu/ кроме exclude.
+// Collect the list of all files from qemu/ except the excluded ones.
 const FILES = [];
 function walkQemuDir(dir, prefix) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const relName = prefix + entry.name;
     if (QEMU_EXCLUDE_PATTERNS.some(re => re.test(relName))) continue;
     if (entry.isDirectory()) {
-      // Не рекурсируем в $PLUGINSDIR, share, lib (lib пустая) — но $PLUGINSDIR
-      // и share уже отсеяли паттерном выше. Рекурсируем в lib (может быть что-то
-      // полезное, но на практике пустая).
+      // We do not recurse into $PLUGINSDIR, share, lib (lib is empty) — but
+// $PLUGINSDIR
+      // and share were already filtered out by the pattern above. We recurse into lib
+// (there may be
+      // something useful there, but in practice it is empty).
       if (entry.name === 'lib') continue;
       walkQemuDir(path.join(dir, entry.name), relName + '/');
     } else {
@@ -110,7 +119,7 @@ function walkQemuDir(dir, prefix) {
 }
 walkQemuDir(QEMU_DIR, '');
 
-// scrcpy/ — для показа экрана Android после старта TrelEmu.
+// scrcpy/ — to show the Android screen after TrelEmu starts.
 if (fs.existsSync(SCRCPY_DIR)) {
   for (const entry of fs.readdirSync(SCRCPY_DIR, { withFileTypes: true })) {
     if (!entry.isFile()) continue;
@@ -133,18 +142,19 @@ for (const f of FILES) {
 log(`Total: ${FILES.length} files, ${(totalSize / 1024 / 1024).toFixed(1)} МБ uncompressed`);
 
 /**
- * Минимальный zip-писатель (STORE — без сжатия, ISO уже сжатый).
- * Поддерживает только STORE (method=0) и DEFLATE (method=8).
+ * Minimal zip writer (STORE — no compression, the ISO is already compressed).
+ * Supports STORE (method=0) and DEFLATE (method=8) only.
  *
- * Структура:
+ * Structure:
  *   [Local file header + filename + extra + data] * N
  *   [Central directory header] * N
  *   [End of central directory record] (EOCD)
  *
- * Используем STORE для ISO (он уже не сжимается) и qemu (executable, плохо
- * жмётся). Это даёт +30% к размеру по сравнению с DEFLATE, но не грузит CPU
- * при сборке (важно — 1 ГБ ISO жать 5-10 минут смысла нет) и в 1000 раз
- * быстрее на распаковке у клиента.
+ * We use STORE for the ISO (it does not compress anyway) and for qemu (an
+ * executable, it compresses poorly). That costs +30% in size compared to
+ * DEFLATE, but it does not load the CPU during the build (compressing 1 GB of
+ * ISO for 5-10 minutes makes no sense) and it is 1000 times faster to unpack
+ * on the client side.
  */
 function buildZip(files) {
   const localHeaders = [];
@@ -220,7 +230,7 @@ function buildZip(files) {
   ]);
 }
 
-// CRC32 для zip
+// CRC32 for zip
 let crcTable = null;
 function crc32(buf) {
   if (!crcTable) {

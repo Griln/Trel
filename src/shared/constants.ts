@@ -1,6 +1,6 @@
 /**
- * Пресеты производительности: готовые связки память+флаги.
- * Флаги заведомо проходят DANGEROUS-фильтр (проверено тестом).
+ * Performance presets: ready-made memory + flag combinations.
+ * The flags are known to pass the DANGEROUS filter (verified by a test).
  */
 export const PERF_PRESETS = {
   potato: {
@@ -22,10 +22,10 @@ export type PerfPresetId = keyof typeof PERF_PRESETS;
 export const DANGEROUS_JVM_ARGS = /^-(agentlib|javaagent|Xbootcp|XX:-?UseSplitVerifier|XX:NativeMemoryTracking|XX:\+FlightRecorder|XX:StartFlightRecording)/i;
 
 /** Whitelist pattern for safe shell command characters. */
-// Whitelist символов для pre/post-команд. Запрещены: подстановка $(...),
-// обратные кавычки, Win-расширение %VAR% и escape ^. Абсолютные пути и аргументы
-// разрешены, поэтому whitelist — не панацея, а сетка от случайных инъекций;
-// команды выполняются от имени юзера.
+// Whitelist of characters for pre/post commands. Forbidden: $(...) substitution,
+// backticks, the Win expansion %VAR% and the escape ^. Absolute paths and arguments
+// are allowed, so the whitelist is not a panacea, but a grid against accidental injections;
+// the commands run as the user.
 export const SHELL_WHITELIST = /^[A-Za-z0-9\s\-_./\\:@=+,~()[\]"'!#?*{}]+$/;
 
 /** Bedrock version source — mcpehub.org (DLE-based). Mobile UA required to see download buttons. */

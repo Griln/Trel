@@ -5,17 +5,17 @@ import { DANGEROUS_JVM_ARGS } from '../shared/constants';
 
 const SHELL_META = /[;&|`$><\n\r]/;
 
-/** Путь, принадлежащий другой ОС (Windows-путь на Linux/macOS и наоборот).
- *  Такое случается, когда settings.json переносят между системами (общий
- *  NTFS-том, бэкап). Использовать чужой путь нельзя: на Linux `D:\dannie`
- *  превращается в мусорную относительную папку. Сбрасываем на дефолт платформы. */
+/** A path that belongs to another OS (a Windows path on Linux/macOS and vice versa).
+ *  This happens when settings.json is moved between systems (a shared
+ *  NTFS volume, a backup). A foreign path cannot be used: on Linux `D:\dannie`
+ *  turns into a junk relative folder. We fall back to the platform default. */
 function isForeignPlatformPath(p: string): boolean {
   const looksWin = /^[A-Za-z]:[\\/]/.test(p) || p.includes('\\');
   const looksPosix = p.startsWith('/');
   return process.platform === 'win32' ? looksPosix : looksWin;
 }
 
-/** Сохраняет тему в файл для NSIS-аннисталлера. */
+/** Saves the theme to a file for the NSIS installer. */
 function saveThemeFile(launcherDir: string, theme?: string) {
   try {
     const p = path.join(launcherDir, '.theme');
@@ -50,9 +50,10 @@ export class SettingsStore {
   }
 
   saveSettings(s: LauncherSettings): void {
-    // Defence in depth: IPC валидирует раньше, но прямой вызов с мусором
-    // (или правленый объект в памяти) иначе уехал бы на диск как есть —
-    // включая опасные jvmArgs и команды. Чистим тем же фильтром, что load.
+    // Defence in depth: IPC validates earlier, but a direct call with junk
+    // (or a patched object in memory) would otherwise hit the disk as is —
+    // including dangerous jvmArgs and commands. We clean it with the same
+    // filter used by load.
     const clean = sanitizeSettings(s, path.join(this.launcherDir, 'minecraft'));
     const tmp = this.settingsFile + '.trel_tmp';
     try {
@@ -73,7 +74,7 @@ export class SettingsStore {
       if (fs.existsSync(this.accountsFile)) {
         const raw = JSON.parse(fs.readFileSync(this.accountsFile, 'utf-8'));
         if (!Array.isArray(raw)) return [];
-        // Фильтруем мусорные записи: должны быть string uuid и string name.
+        // Filter out junk records: uuid and name must both be strings.
         return raw.filter((a): a is MinecraftAccount =>
           a && typeof a === 'object'
           && typeof a.uuid === 'string' && a.uuid.length > 0
@@ -88,13 +89,13 @@ export class SettingsStore {
   saveAccounts(accounts: MinecraftAccount[]): void {
     const tmp = this.accountsFile + '.trel_tmp';
     try {
-      // 0600: внутри refresh/access-токены Microsoft — другим юзерам системы
-      // их читать незачем. rename сохраняет биты tmp-файла.
+      // 0600: it holds Microsoft refresh/access tokens — other system users
+      // have no reason to read them. rename preserves the tmp file's bits.
       fs.writeFileSync(tmp, JSON.stringify(accounts, null, 2), { encoding: 'utf-8', mode: 0o600 });
       try { fs.renameSync(tmp, this.accountsFile); }
       catch { fs.copyFileSync(tmp, this.accountsFile); }
       try { fs.chmodSync(this.accountsFile, 0o600); } catch {}
-      // Старые установки могли оставить 0644: подтягиваем при каждой записи.
+      // Old installs may have left 0644: fix it on every write.
       try {
         if ((fs.statSync(this.accountsFile).mode & 0o777) !== 0o600) fs.chmodSync(this.accountsFile, 0o600);
       } catch {}
@@ -109,8 +110,8 @@ export class SettingsStore {
 
 function sanitizeSettings(raw: Record<string, unknown> | LauncherSettings, defaultGameDir: string): LauncherSettings {
   const defaults: LauncherSettings = { gameDir: defaultGameDir, memoryMb: 2048 };
-  // Защищаемся от мусора в полях — берём дефолты только если значение
-  // правильного типа.
+  // Guard against junk in the fields — we take the defaults only if the value
+  // is of the correct type.
   const out: LauncherSettings = { ...defaults };
   if (typeof raw.gameDir === 'string' && raw.gameDir.length > 0 && !isForeignPlatformPath(raw.gameDir)) out.gameDir = raw.gameDir;
   if (typeof raw.memoryMb === 'number' && raw.memoryMb >= 256 && raw.memoryMb <= 32768) out.memoryMb = raw.memoryMb;
@@ -144,7 +145,7 @@ function sanitizeSettings(raw: Record<string, unknown> | LauncherSettings, defau
   }
   if (raw.perfPreset === 'potato' || raw.perfPreset === 'balanced' || raw.perfPreset === 'ultra') out.perfPreset = raw.perfPreset;
   if (typeof raw.proxyUrl === 'string' && raw.proxyUrl.length > 0 && raw.proxyUrl.length <= 512) {
-    // Грубая форма; точную проверку делает validateSettings/IPC.
+    // Rough shape only; validateSettings/IPC does the exact check.
     if (/^https?:\/\/[^\s/]+(:\d+)?\/?$/.test(raw.proxyUrl.trim())) out.proxyUrl = raw.proxyUrl.trim();
   }
   return out;

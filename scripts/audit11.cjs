@@ -1,4 +1,4 @@
-/* Диагностика поиска: локаль, данные, haystack */
+/* Search diagnostics: local, data, haystack */
 const { chromium } = require('playwright-core');
 
 (async () => {

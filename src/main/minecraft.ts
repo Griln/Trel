@@ -1,11 +1,11 @@
 import { analyzeCrash } from './crashAnalyzer';
 
-// --- Crash Doctor: распознаёт причину краша Java-клиента и шлёт диагноз в UI ---
+// --- Crash Doctor: detects the cause of the Java client crash and sends the diagnosis to the UI ---
 function readRecentText(file: string, maxBytes: number): string | undefined {
   try {
     if (!fs.existsSync(file)) return undefined;
     const st = fs.statSync(file);
-    if (Date.now() - st.mtimeMs > 120_000) return undefined; // только свежее
+    if (Date.now() - st.mtimeMs > 120_000) return undefined; // only fresh files
     const buf = fs.readFileSync(file);
     return buf.subarray(Math.max(0, buf.length - maxBytes)).toString('utf8');
   } catch {
@@ -30,12 +30,12 @@ function latestCrashReport(gameDir: string): string | undefined {
 
 function emitCrashDiagnosis(win: BrowserWindow, gameDir: string, code: number | null): void {
   try {
-    if ((code ?? -1) === 0) return; // штатный выход — молчим
+    if ((code ?? -1) === 0) return; // normal exit — stay silent
     const logTail = readRecentText(path.join(gameDir, 'logs', 'latest.log'), 60_000) || '';
     const diagnosis = analyzeCrash({ exitCode: code ?? -1, logTail, crashReport: latestCrashReport(gameDir) });
     if (diagnosis && !win.isDestroyed()) win.webContents.send('minecraft:crash', diagnosis);
   } catch {
-    /* анализ крашей никогда не должен ломать поток выхода */
+    /* crash analysis must never break the exit flow */
   }
 }
 import * as fs from 'node:fs';
@@ -74,21 +74,21 @@ export interface InstalledVersionDetail {
 }
 
 /**
- * Pre-Classic / Classic / Indev / Infdev / ранний Alpha — версии, которые
- * вместо папки `saves/<world>` пишут одиночные world-файлы прямо в gameDir
- * (или в gameDir/.minecraft при системной подмене APPDATA):
+ * Pre-Classic / Classic / Indev / Infdev / early Alpha — versions that
+ * instead of a `saves/<world>` folder write single world files right into gameDir
+ * (or into gameDir/.minecraft when APPDATA is substituted system-wide):
  *   - rd-* / c0.*       → `level.dat`
  *   - in-* (Indev)      → `mclevel.dat`
- *   - inf-* (Infdev)    → `<имя>.mclevel` (в saves/) или `level.dat`
- *   - a1.0.*, a1.1.0    → `level.dat` (старый формат, до a1.1.1)
+ *   - inf-* (Infdev)    → `<name>.mclevel` (in saves/) or `level.dat`
+ *   - a1.0.*, a1.1.0    → `level.dat` (old format, before a1.1.1)
  *
- * При полном (deep) удалении такой версии нужно зачистить loose-файлы,
- * иначе при следующем запуске любой совместимой старой версии мир
- * «воскреснет» сам. WorldService.wipeAllLooseLevelDat() покрывает все
- * три формата.
+ * When such a version is fully (deep) removed, the loose files must be cleaned
+ * up, otherwise the world "resurrects" itself on the next launch of any
+ * compatible old version. WorldService.wipeAllLooseLevelDat() covers all
+ * three formats.
  *
- * Совпадает только с теми префиксами, у которых формат сохранения =
- * одиночный файл. С beta/release не пересекается.
+ * Matches only those prefixes whose save format is a single file.
+ * Does not overlap with beta/release.
  */
 function isPreClassicVersionId(id: string): boolean {
   return /^(rd-|c0\.|in-|inf-|a1\.0\.|a1\.1\.0)/.test(id);
@@ -140,24 +140,24 @@ export class MinecraftService {
   public loaders: LoaderService;
   public trelEmu: TrelEmuService;
   private worlds: WorldService;
-  /** Shared между клиентом и серверами — авторизация и скины через один mock. */
+  /** Shared between the client and the servers — auth and skins through a single mock. */
   private skinServer: SkinServer;
   private authlib: AuthlibInjector;
   private launcherDir: string;
-  /** Идентификаторы версий, для которых сейчас выполняется launch — защита от двойного клика. */
+  /** Version IDs currently being launched — protection against double clicks. */
   private launchingVersions = new Set<string>();
-  /** Версии, которые уже запущены и ещё не завершились. */
+  /** Versions that are already running and have not finished yet. */
   private runningVersions = new Set<string>();
 
-  /** Запущена ли сейчас хотя бы одна игра (для хоткея скриншотов и т.п.). */
+  /** Whether at least one game is currently running (for the screenshot hotkey, etc.). */
   get hasRunningGame(): boolean {
     return this.runningVersions.size > 0 || this.launchingVersions.size > 0;
   }
-  /** Mutex для revertToVanilla — предотвращает race condition при параллельных IPC-вызовах. */
+  /** Mutex for revertToVanilla — prevents a race condition on parallel IPC calls. */
   private revertLock: Promise<unknown> = Promise.resolve();
-  /** Учёт игрового времени по версиям. */
+  /** Play-time accounting per version. */
   readonly playtime!: PlaytimeService;
-  /** Кэш пути к ADB — один раз нашли и переиспользуем. */
+  /** Cache for the ADB path — find it once and reuse it. */
   private adbPath: string | null | undefined = undefined;
 
   constructor(
@@ -171,7 +171,7 @@ export class MinecraftService {
     this.installer = new MinecraftInstaller(gameDir);
     this.bedrock = new BedrockInstaller(gameDir);
     this.trelEmu = new TrelEmuService();
-    // launcherDir для authlib-injector кэша. Если не передан — кладём рядом с gameDir.
+    // launcherDir for the authlib-injector cache. If not passed — put it next to gameDir.
     this.launcherDir = launcherDir ?? path.dirname(gameDir);
     this.loaders = new LoaderService(gameDir, java, this.installer);
     this.worlds = worlds ?? new WorldService(gameDir);
@@ -196,7 +196,7 @@ export class MinecraftService {
   async fetchVersions(): Promise<VersionInfo[]> {
     const list = await this.installer.fetchVersions();
     // Append bundled legacy versions (not in Mojang manifest) AT THE END,
-    // т.к. список идёт от свежих к старым, а rd-131655 — самый древний.
+    // because the list goes from the newest to the oldest, and rd-131655 is the oldest.
     const legacy: VersionInfo[] = LEGACY_VERSIONS.map((v) => ({
       id: v.id,
       type: v.type,
@@ -232,7 +232,7 @@ export class MinecraftService {
     return this.bedrock.apkPath(versionId);
   }
 
-  /** Ищет adb.exe: сначала в bundled resources, потом PATH и SDK. */
+  /** Looks for adb.exe: first in bundled resources, then PATH and SDK. */
   private findAdb(): string | null {
     if (this.adbPath !== undefined) return this.adbPath;
     const candidates: string[] = [];
@@ -260,12 +260,12 @@ export class MinecraftService {
         'C:\\adb\\adb.exe',
       );
     } else if (process.platform === 'linux' || process.platform === 'darwin') {
-      // PATH (Unix). У нативных установок Android SDK adb лежит там.
+      // PATH (Unix). Native Android SDK installs keep adb there.
       const pathEnv = process.env.PATH || '';
       for (const dir of pathEnv.split(path.delimiter)) {
         candidates.push(path.join(dir, 'adb'));
       }
-      // Android SDK на Unix — обычно в ~/Android/Sdk/platform-tools/.
+      // Android SDK on Unix — usually in ~/Android/Sdk/platform-tools/.
       candidates.push(
         path.join(os.homedir(), 'Android', 'Sdk', 'platform-tools', 'adb'),
         path.join(os.homedir(), 'Android', 'Sdk', 'platform-tools', 'adb.exe'),
@@ -283,9 +283,9 @@ export class MinecraftService {
   }
 
   /**
-   * ADB для TrelEmu работает на изолированном server port 5038. Если вызвать
-   * обычный `adb -s 127.0.0.1:5555 ...`, adb пойдёт в server 5037 и выдаст
-   * `device '127.0.0.1:5555' not found`, хотя TrelEmu уже подключён.
+   * ADB for TrelEmu runs on an isolated server port 5038. If you call the
+   * regular `adb -s 127.0.0.1:5555 ...`, adb will talk to server 5037 and report
+   * `device '127.0.0.1:5555' not found`, even though TrelEmu is already connected.
    */
   private adbServerArgsForSerial(serial?: string): string {
     if (serial && /^(127\.0\.0\.1|localhost):5555$/i.test(serial)) return '-P 5038 ';
@@ -300,8 +300,8 @@ export class MinecraftService {
   }
 
   private adbCmd(adb: string, serial: string | undefined, args: string): string {
-    // Серийник едет в shell-строку: режем всё кроме легального алфавита.
-    // Злой серийник от чужого adb-девайса иначе даёт RCE (shell:true ниже).
+    // The serial travels inside a shell string: cut everything except the legal alphabet.
+    // A malicious serial from a foreign adb device would otherwise give RCE (shell:true below).
     if (serial && !/^[a-zA-Z0-9._:-]{1,64}$/.test(serial)) throw new Error(`Unsafe ADB serial: ${serial}`);
     return `"${adb}" ${this.adbServerArgsForSerial(serial)}${args}`;
   }
@@ -336,10 +336,10 @@ export class MinecraftService {
             try { execSync(`taskkill /F /T /PID ${pid}`, { stdio: 'ignore', windowsHide: true, timeout: 5000 }); }
             catch { try { child.kill('SIGKILL'); } catch {} }
           } else {
-            // На Linux/macOS SIGTERM даёт JVM шанс закрыть сокеты и нативные
-            // библиотеки, тогда как SIGKILL оставляет .so-файлы и orphan'ов.
+            // On Linux/macOS SIGTERM gives the JVM a chance to close sockets and native
+            // libraries, while SIGKILL leaves .so files and orphans behind.
             try { process.kill(pid, 'SIGTERM'); } catch {}
-            // Ждём 500ms, если не вышел — принудительно SIGKILL.
+            // Wait 500ms, and if it has not exited — force SIGKILL.
             setTimeout(() => { try { process.kill(pid, 'SIGKILL'); } catch {} }, 500);
           }
         }
@@ -618,7 +618,7 @@ export class MinecraftService {
     }
   }
 
-  /** Возвращает список serial подключённых устройств/эмуляторов через adb. */
+  /** Returns the list of serial numbers of connected devices/emulators via adb. */
   listAdbDevices(): { serial: string; state: string; model?: string }[] {
     const adb = this.findAdb();
     if (!adb) return [];
@@ -677,10 +677,10 @@ export class MinecraftService {
   async launchBedrock(versionId: string, serial: string, win: BrowserWindow): Promise<number> {
     if (this.launchingVersions.has(versionId)) throw new Error('Запуск уже идёт — подождите');
     if (this.runningVersions.has(versionId)) {
-      // Защита от дублей для Bedrock: Trel не получает событие выхода от
-      // Android-процесса внутри TrelEmu. Поэтому перед блокировкой обязательно
-      // проверяем реальность процесса. Если эмулятор уже закрыт или ADB не
-      // отвечает, блокировка считается устаревшей и снимается.
+      // Bedrock duplicate-launch protection: Trel does not receive an exit event
+      // from the Android process inside TrelEmu. So before blocking we must
+      // verify the actual process state. If the emulator is already closed or ADB
+      // does not answer, the lock is considered stale and is released.
       let stillRunning = false;
       const adb = this.findAdb();
       if (adb) {
@@ -701,15 +701,15 @@ export class MinecraftService {
     const apk = this.bedrockApkPath(versionId);
     if (!fs.existsSync(apk)) throw new Error(`APK не найден: ${apk}. Сначала установите версию.`);
 
-    // Если renderer передал валидный ADB-серийник (например, реальное устройство
-    // по USB или scrcpy) — используем его и идём по короткому пути install+launch.
+    // If the renderer passed a valid ADB serial (e.g. a real device
+    // over USB or scrcpy) — use it and take the short install+launch path.
     const useExternalDevice = serial && /^[a-zA-Z0-9._:-]+$/.test(serial);
     if (useExternalDevice) {
       return this.launchBedrockOnAdb(versionId, apk, serial, win);
     }
 
-    // Иначе — автоматически поднимаем TrelEmu, если пользователь уже скачал
-    // optional emulator pack через лаунчер или положил portable pack рядом с Trel.exe.
+    // Otherwise — automatically start TrelEmu if the user has already downloaded
+    // the optional emulator pack through the launcher or placed a portable pack next to Trel.exe.
     const trelEmuInfo = this.trelEmu.find();
     if (trelEmuInfo) {
       if (!win.isDestroyed()) win.webContents.send('minecraft:log', `[bedrock] Запускаю TrelEmu: ${trelEmuInfo.qemuExe}\n`);
@@ -722,9 +722,9 @@ export class MinecraftService {
   }
 
   /**
-   * Общая хвостовая часть: установить APK и запустить главный активити Bedrock
-   * на произвольном ADB-устройстве. Используется и для TrelEmu (bundled), и для
-   * внешних устройств (scrcpy, USB-телефон).
+   * Shared tail part: install the APK and launch the main Bedrock activity
+   * on an arbitrary ADB device. Used both for TrelEmu (bundled) and for
+   * external devices (scrcpy, USB phone).
    */
   private async launchBedrockOnAdb(versionId: string, apk: string, serial: string, win: BrowserWindow): Promise<number> {
     const adb = this.findAdb();
@@ -733,9 +733,9 @@ export class MinecraftService {
 
     if (!win.isDestroyed()) win.webContents.send('minecraft:log', `[bedrock] Устанавливаю APK: ${apk}\n`);
 
-    // Сначала проверяем, не установлен ли уже Bedrock на этом устройстве.
-    // Для ARM-only APK на TrelEmu важен ABI: без --abi armeabi-v7a Android
-    // запускает процесс как x86 и падает на lib/arm/*.so с EM_ARM.
+    // First check whether Bedrock is already installed on this device.
+    // For an ARM-only APK on TrelEmu the ABI matters: without --abi armeabi-v7a Android
+    // starts the process as x86 and crashes on lib/arm/*.so with EM_ARM.
     const installed = await this.bedrockInstalledOnDevice(adb, serial);
     const needsArmAbi = this.bedrockNeedsArmAbiInstall(apk, serial);
     const installedAbiOk = !needsArmAbi || await this.bedrockInstalledWithArmAbi(adb, serial);
@@ -766,23 +766,23 @@ export class MinecraftService {
 
     this.runningVersions.add(versionId);
     this.playtime.recordStart(versionId);
-    // Трекаем выход — TrelEmu продолжает работать, но Bedrock выйдет, когда
-    // пользователь нажмёт «Назад» в эмуляторе. Тут только чистим Set, чтобы
-    // повторный запуск не ругался «уже запущено».
+    // Track the exit — TrelEmu keeps running, but Bedrock exits when the
+    // user presses "Back" in the emulator. Here we only clean the Set, so that
+    // a repeated launch does not complain "already running".
     const cleanup = () => { this.runningVersions.delete(versionId);
       this.playtime.recordEnd(versionId); };
-    // Через 30 секунд снимаем блокировку — это страховка от случая, когда
-    // процесс не сообщил о выходе (а он и не сообщит, потому что это Android
-    // внутри TrelEmu, а не дочерний процесс Trel). Плюс выше добавлена проверка
-    // через `pidof` в launchBedrock — она снимет блокировку сразу же, как
-    // пользователь закроет Bedrock.
+    // After 30 seconds we release the lock — this is a safeguard for the case when
+    // the process did not report an exit (and it will not, because this is Android
+    // inside TrelEmu, not a child process of Trel). On top of that, the check
+    // via `pidof` added above in launchBedrock releases the lock as soon as
+    // the user closes Bedrock.
     setTimeout(cleanup, 30_000);
 
     if (!win.isDestroyed()) win.webContents.send('minecraft:launchStart', versionId);
     return 0;
   }
 
-  /** Проверяет, установлен ли Bedrock на ADB-устройстве (по пакету). */
+  /** Checks whether Bedrock is installed on the ADB device (by package). */
   private async bedrockInstalledOnDevice(adb: string, serial: string): Promise<boolean> {
     try {
       const out = await this.adbExecAsync(adb, serial, 'shell pm list packages com.mojang.minecraftpe', 10_000);
@@ -793,10 +793,10 @@ export class MinecraftService {
   }
 
   /**
-   * Проверяет, реально ли запущен процесс com.mojang.minecraftpe на устройстве.
-   * Используется для снятия «защиты от дублей», когда пользователь уже
-   * закрыл Bedrock через кнопку «Назад» в TrelEmu — Trel об этом никак не узнает,
-   * но `pidof` честно вернёт пустую строку.
+   * Checks whether the com.mojang.minecraftpe process is really running on the device.
+   * Used to release the duplicate-launch protection when the user has already
+   * closed Bedrock via the "Back" button in TrelEmu — Trel learns nothing about it,
+   * but `pidof` honestly returns an empty string.
    */
   private async isBedrockProcessAlive(adb: string, serial: string): Promise<boolean> {
     try {
@@ -809,19 +809,19 @@ export class MinecraftService {
   }
 
   /**
-   * Возвращает ID установленных версий: тех, у которых на диске есть
-   * собственный клиентский jar в `versions/<id>/<id>.jar`.
+   * Returns the IDs of installed versions: those that have their own
+   * client jar on disk at `versions/<id>/<id>.jar`.
    *
-   * Раньше считали «jar или json» — это давало false positives после
-   * установки лоадеров: parent ваниль (`1.21.11`) хранится как одна
-   * папка с одним только JSON (для inheritsFrom-резолва), без jar.
-   * После flatten она удаляется, но fetchVersionJson может пересоздать
-   * JSON-файл при любом обращении к Forge-профилю — и в списке вылазит
-   * «третья версия», которой реально нет.
+   * Previously it counted "jar or json" — that produced false positives after
+   * installing loaders: the vanilla parent (`1.21.11`) is stored as a single
+   * folder with only a JSON file (for inheritsFrom resolution) and no jar.
+   * After flatten it is removed, but fetchVersionJson can recreate the
+   * JSON file on any access to a Forge profile — and then a
+   * "third version" appears in the list that does not really exist.
    *
-   * Для loader-профилей `flattenLoaderProfile()` копирует jar в их папку,
-   * так что и Fabric/Quilt-инстансы (которые исходно идут как inherits-only)
-   * после flatten корректно проходят эту проверку.
+   * For loader profiles `flattenLoaderProfile()` copies the jar into their folder,
+   * so Fabric/Quilt instances (which originally come as inherits-only)
+   * also pass this check correctly after flatten.
    */
   installedVersionIds(): string[] {
     const versionsDir = path.join(this.gameDir, 'versions');
@@ -878,10 +878,10 @@ export class MinecraftService {
   }
 
   /**
-   * Аккуратная чистка: старые сборки создавали папки контента
-   * (mods/shaderpacks/resourcepacks/texturepacks) даже для ванильных версий.
-   * Удаляем их ТОЛЬКО если они пустые и версия без лоадера — пользовательские
-   * файлы никогда не трогаем. Лоадерные и Bedrock-версии не затрагиваем.
+   * Careful cleanup: old builds created content folders
+   * (mods/shaderpacks/resourcepacks/texturepacks) even for vanilla versions.
+   * We delete them ONLY if they are empty and the version has no loader — user
+   * files are never touched. Loader and Bedrock versions are not affected.
    */
   cleanupVanillaContentFolders(): void {
     try {
@@ -900,16 +900,16 @@ export class MinecraftService {
   }
 
   /**
-   * Проходится по установленным лоадер-профилям и для каждого вызывает
-   * flatten — это убирает «двойные» папки (lоадер + родительская ваниль),
-   * сохраняя содержимое (mods/saves/...) внутри лоадера.
-   * Идемпотентно — после первого прохода ничего не делает.
+   * Iterates over installed loader profiles and calls flatten for each —
+   * this removes the "double" folders (loader + vanilla parent),
+   * keeping the content (mods/saves/...) inside the loader.
+   * Idempotent — after the first pass it does nothing.
    *
-   * Дополнительно подчищает orphan-папки ванили: папки в `versions/<id>/`
-   * с одним JSON и без JAR, которые соответствуют base-MC уже-установленного
-   * лоадера. Такие «призраки» появлялись когда installer резолвил inheritsFrom
-   * и создавал JSON-файл, но flatten их не успевал убрать. UI их видел как
-   * отдельную «третью» версию.
+   * Additionally cleans up orphan vanilla folders: folders in `versions/<id>/`
+   * with a single JSON and no JAR that match the base MC of an already installed
+   * loader. Such "ghosts" appeared when the installer resolved inheritsFrom
+   * and created a JSON file, but flatten did not remove them in time. The UI
+   * saw them as a separate "third" version.
    */
   consolidateInstalls(): void {
     for (const d of this.installedDetailed()) {
@@ -919,15 +919,15 @@ export class MinecraftService {
   }
 
   /**
-   * Удаляет папки `versions/<id>/` где:
-   *  - нет собственного JAR
-   *  - и есть установленный лоадер с baseMc === id
-   * Это и есть «призрак» родительской ванили после flatten.
+   * Deletes `versions/<id>/` folders where:
+   *  - there is no own JAR
+   *  - and there is an installed loader with baseMc === id
+   * This is exactly the "ghost" of the vanilla parent after flatten.
    */
   private cleanupOrphanedParents(): void {
     const versionsRoot = path.join(this.gameDir, 'versions');
     if (!fs.existsSync(versionsRoot)) return;
-    // Соберём базы тех версий, для которых есть установленный лоадер.
+    // Collect the bases of the versions that have an installed loader.
     const installedLoaders = this.installedVersionIds()
       .map((id) => this.detailFor(id))
       .filter((d) => d.loader);
@@ -937,8 +937,8 @@ export class MinecraftService {
       if (!moddedBases.has(entry)) continue;
       const dir = path.join(versionsRoot, entry);
       const jar = path.join(dir, entry + '.jar');
-      if (fs.existsSync(jar)) continue; // Это нормальная установка ванили — не трогаем.
-      // Папка есть, JAR нет, для этой базы есть лоадер → orphan.
+      if (fs.existsSync(jar)) continue; // This is a normal vanilla install — do not touch it.
+      // Folder present, no JAR, and this base has a loader → orphan.
       try { fs.rmSync(dir, { recursive: true, force: true }); } catch {}
     }
   }
@@ -950,9 +950,9 @@ export class MinecraftService {
   }
 
   /**
-   * Удаляет все профили лоадеров для baseMc, мигрируя их content (моды,
-   * шейдеры, ресурс-/текстур-паки, миры) в чистую ванильную установку.
-   * Если папки ванили нет (после flatten она была удалена), переустанавливает её.
+   * Removes all loader profiles for baseMc, migrating their content (mods,
+   * shaders, resource/texture packs, worlds) into a clean vanilla install.
+   * If the vanilla folder is missing (it was removed after flatten), it is reinstalled.
    */
   async revertToVanilla(baseMc: string, win: BrowserWindow): Promise<{ removed: string[]; reinstalledBase: boolean }> {
     return this.withRevertLock(async () => {
@@ -963,7 +963,7 @@ export class MinecraftService {
       const baseJsonPath = path.join(baseDir, baseMc + '.json');
       let reinstalledBase = false;
       if (!fs.existsSync(baseJsonPath)) {
-        // Ванилька была «впитана» в лоадер при flatten — поднимаем её обратно.
+        // The vanilla was "absorbed" into the loader during flatten — bring it back up.
         await this.installer.install(baseMc, win);
         reinstalledBase = true;
       }
@@ -973,7 +973,7 @@ export class MinecraftService {
         const loaderDir = path.join(this.gameDir, 'versions', d.id);
         let allMoved = 0;
         let totalFiles = 0;
-        // Migrate content из папки лоадера в свежую ваниль, ничего не теряем.
+        // Migrate content from the loader folder into the fresh vanilla, nothing is lost.
         for (const sub of ['mods', 'shaderpacks', 'resourcepacks', 'texturepacks', 'saves']) {
           const fromDir = path.join(loaderDir, sub);
           if (!fs.existsSync(fromDir)) continue;
@@ -985,12 +985,12 @@ export class MinecraftService {
               const from = path.join(fromDir, entry);
               totalFiles++;
 
-              // Симлинк — отсекаем первым делом
+              // Symlink — cut it off first
               let lSt: fs.Stats;
               try { lSt = fs.lstatSync(from); } catch { continue; }
               if (lSt.isSymbolicLink()) continue;
 
-              // Уникальное имя при конфликте (со счётчиком)
+              // Unique name on conflict (with a counter)
               let to = path.join(toDir, entry);
               if (fs.existsSync(to)) {
                 const ext = path.extname(entry);
@@ -1003,7 +1003,7 @@ export class MinecraftService {
                 } while (fs.existsSync(to));
               }
 
-              // Перенос с корректным fallback для папок (saves/ и т.п.)
+              // Move with a correct fallback for folders (saves/ etc.)
               try { fs.renameSync(from, to); allMoved++; }
               catch {
                 try {
@@ -1054,12 +1054,12 @@ export class MinecraftService {
         removed.push(p);
       }
     }
-    // Pre-Classic / Classic / Indev / rd-* пишут мир как одинокий level.dat
-    // в корень APPDATA/.minecraft (у нас → gameDir или gameDir/.minecraft).
-    // versions/<id>/saves для них не существует, поэтому без явной зачистки
-    // мир остаётся на диске и при следующем запуске старой версии
-    // «воскресает». Чистим только если других pre-classic версий не осталось,
-    // чтобы не задеть мир, общий между несколькими rd-*.
+    // Pre-Classic / Classic / Indev / rd-* write the world as a lone level.dat
+    // into the APPDATA/.minecraft root (for us → gameDir or gameDir/.minecraft).
+    // versions/<id>/saves does not exist for them, so without an explicit cleanup
+    // the world stays on disk and "resurrects" on the next launch of an old version.
+    // We clean it only if no other pre-classic versions are left,
+    // so that a world shared by several rd-* is not affected.
     if (isPreClassicVersionId(versionId) && !this.hasOtherPreClassicInstalled(versionId)) {
       try {
         for (const file of this.worlds.wipeAllLooseLevelDat()) removed.push(file);
@@ -1084,9 +1084,9 @@ export class MinecraftService {
   }
 
   /**
-   * Проверяет, остались ли установленные pre-classic версии помимо `excludeId`.
-   * Используется в uninstallDeep, чтобы не зачистить общий loose level.dat,
-   * если у пользователя установлено несколько rd-* / c0.* версий.
+   * Checks whether installed pre-classic versions besides `excludeId` are left.
+   * Used in uninstallDeep to avoid cleaning the shared loose level.dat
+   * when the user has several rd-* / c0.* versions installed.
    */
   private hasOtherPreClassicInstalled(excludeId: string): boolean {
     const versionsRoot = path.join(this.gameDir, 'versions');
@@ -1095,7 +1095,7 @@ export class MinecraftService {
       for (const entry of fs.readdirSync(versionsRoot)) {
         if (entry === excludeId) continue;
         if (!isPreClassicVersionId(entry)) continue;
-        // Должна быть реально установлена (jar или json)
+        // Must be really installed (jar or json)
         const dir = path.join(versionsRoot, entry);
         if (fs.existsSync(path.join(dir, entry + '.jar')) ||
             fs.existsSync(path.join(dir, entry + '.json'))) {
@@ -1132,13 +1132,13 @@ export class MinecraftService {
    * Wire up content folders for the given version so the game (which always
    * reads gameDir/<mods|shaderpacks|...>) actually sees this version's content.
    *
-   * Раньше использовали NTFS junction → gameDir/mods был линком. Forge на JDK 21
-   * при старте делает `Files.createDirectories(gameDir/mods)` и на junction
-   * валится `FileAlreadyExistsException` — поэтому теперь стратегия другая:
-   *   gameDir/<sub> — обычная папка (Forge её спокойно видит)
-   *   её содержимое — жёсткие ссылки на файлы из versions/<id>/<sub>
-   * Жёсткая ссылка на файл с точки зрения NTFS — это тот же inode, никакого
-   * дублирования места, и игра видит её как обычный файл.
+   * Previously an NTFS junction was used → gameDir/mods was a symlink. Forge on JDK 21
+   * does `Files.createDirectories(gameDir/mods)` on startup and fails on a junction
+   * with `FileAlreadyExistsException` — so the strategy is different now:
+   *   gameDir/<sub> — a regular folder (Forge sees it just fine)
+   *   its content — hard-links to the files from versions/<id>/<sub>
+   * A hard-link to a file from the NTFS point of view is the same inode, no
+   * duplication of space, and the game sees it as a regular file.
    */
   linkContentFolders(versionId: string): void {
     const versionDir = this.versionFolder(versionId);
@@ -1149,20 +1149,20 @@ export class MinecraftService {
   }
 
   /**
-   * Зеркалит содержимое versions/<id>/<sub> в gameDir/<sub> через hard-links.
-   * Если в gameDir/<sub> ранее был junction (от старой версии лаунчера) —
-   * аккуратно удаляем его (это «висячий» entry, не сама папка).
-   * Если в gameDir/<sub> уже лежат реальные файлы — миграция в version-folder.
+   * Mirrors the content of versions/<id>/<sub> into gameDir/<sub> via hard-links.
+   * If gameDir/<sub> previously held a junction (from an older launcher version) —
+   * we carefully remove it (it is a dangling entry, not the folder itself).
+   * If gameDir/<sub> already contains real files — migrate them to the version-folder.
    */
   private mirrorOneContentFolder(versionDir: string, sub: string): void {
     const target = path.join(this.gameDir, sub);
     const source = path.join(versionDir, sub);
 
-    // Per-version папка — всегда есть.
+    // Per-version folder — always present.
     try { fs.mkdirSync(source, { recursive: true }); } catch {}
 
-    // Если в gameDir/<sub> сейчас junction (legacy-режим) — снимаем его
-    // как linkfile. На NTFS junction отображается как symlink.
+    // If gameDir/<sub> is currently a junction (legacy mode) — remove it
+    // as a linkfile. On NTFS a junction shows up as a symlink.
     let isLink = false;
     try { isLink = fs.lstatSync(target).isSymbolicLink(); } catch {}
     if (isLink) {
@@ -1170,10 +1170,10 @@ export class MinecraftService {
       catch { try { fs.rmSync(target, { recursive: true, force: true }); } catch {} }
     }
 
-    // Переносим НЕ-зеркала из gameDir/<sub> в per-version папку, если они
-    // там ещё не лежат. Чтобы не «перетаскивать» моды от ПРЕДЫДУЩЕЙ версии
-    // (hardlinks остаются в target после игры), пропускаем файлы с nlink>1:
-    // у hardlink'а тот же inode что и в source предыдущей версии, и nlink>=2.
+    // Move NON-mirrored entries from gameDir/<sub> to the per-version folder if they
+    // are not there yet. To avoid "dragging" mods from the PREVIOUS version
+    // (hardlinks remain in target after the game), we skip files with nlink>1:
+    // a hardlink has the same inode as in the source of the previous version, and nlink>=2.
     if (fs.existsSync(target) && !isLink) {
       try {
         for (const entry of fs.readdirSync(target)) {
@@ -1192,12 +1192,12 @@ export class MinecraftService {
       } catch {}
     }
 
-    // Создаём gameDir/<sub> как обычную папку.
+    // Create gameDir/<sub> as a regular folder.
     try { fs.mkdirSync(target, { recursive: true }); } catch {}
 
-    // Чистим target от записей, которых уже нет в source (другие версии,
-    // удалённые моды и т.д.). Реальные файлы НЕ трогаем — только удаляем
-    // hard-links: если у файла больше 1 ссылки, безопасно удалить эту.
+    // Clean target from entries that are no longer in source (other versions,
+    // removed mods, etc.). Real files are NOT touched — we only delete
+    // hard-links: if a file has more than 1 link, it is safe to delete this one.
     try {
       const sourceEntries = new Set(fs.readdirSync(source));
       for (const entry of fs.readdirSync(target)) {
@@ -1206,33 +1206,33 @@ export class MinecraftService {
         try {
           const st = fs.lstatSync(tp);
           if (st.isFile() && st.nlink > 1) {
-            // Это hardlink — наш зеркальный артефакт. Удаляем.
+            // This is a hardlink — our mirror artifact. Delete it.
             fs.unlinkSync(tp);
           }
-          // Если nlink == 1 (единственная ссылка) или это директория —
-          // оставляем: пользователь мог положить что-то руками.
+          // If nlink == 1 (the only link) or it is a directory —
+          // keep it: the user may have put something there manually.
         } catch {}
       }
     } catch {}
 
-    // Зеркалим текущие файлы из version-folder в gameDir/<sub>.
+    // Mirror the current files from the version-folder into gameDir/<sub>.
     try {
       for (const entry of fs.readdirSync(source)) {
         const sp = path.join(source, entry);
         const tp = path.join(target, entry);
         let sStat: fs.Stats;
         try { sStat = fs.statSync(sp); } catch { continue; }
-        if (!sStat.isFile()) continue; // моды/паки — это файлы (.jar/.zip), вложенные папки игнорируем
+        if (!sStat.isFile()) continue; // mods/packs are files (.jar/.zip), nested folders are ignored
 
-        // Если target уже существует — проверяем что это та же ссылка.
+        // If target already exists — check that it is the same link.
         if (fs.existsSync(tp)) {
           try {
             const tStat = fs.statSync(tp);
-            // Один и тот же inode на NTFS = одинаковые ino. Если совпадает,
-            // ничего делать не надо.
+            // The same inode on NTFS = identical ino. If they match,
+            // nothing has to be done.
             if (tStat.ino && sStat.ino && tStat.ino === sStat.ino) continue;
-            // Иначе — пользовательский файл с тем же именем. Не перезаписываем,
-            // чтобы не потерять чужой.
+            // Otherwise — a user file with the same name. We do not overwrite it,
+            // so as not to lose someone else's file.
             continue;
           } catch {}
         }
@@ -1240,8 +1240,8 @@ export class MinecraftService {
         try {
           fs.linkSync(sp, tp);
         } catch {
-          // Если hard-link не получился (например, разные тома), копируем.
-          // Это допустимый fallback — лишь чуть-чуть места.
+          // If the hard-link failed (e.g. different volumes), we copy.
+          // This is an acceptable fallback — just a bit of extra space.
           try { fs.copyFileSync(sp, tp); } catch {}
         }
       }
@@ -1249,20 +1249,20 @@ export class MinecraftService {
   }
 
   async install(versionId: string, win: BrowserWindow) {
-    // Bundled legacy-версии устанавливаются мгновенно — просто копируем
-    // jar + natives из ресурсов рядом с .exe.
+    // Bundled legacy versions are installed instantly — we just copy
+    // jar + natives from the resources next to the .exe.
     if (isLegacyVersion(versionId)) {
       installLegacy(this.gameDir, versionId);
-      // VersionJson-совместимая заглушка: doLaunch для legacy сюда не зайдёт
-      // (есть ранний return в doLaunch), но тип должен совпадать.
+      // VersionJson-compatible stub: doLaunch never reaches this for legacy
+      // (there is an early return in doLaunch), but the type must match.
       return { id: versionId } as any;
     }
     const result = await this.installer.install(versionId, win);
     this.ensureContentFolders(versionId);
-    // Докачиваем нужную Java сразу при установке, чтобы версия была полностью
-    // готова к запуску (раньше Java качалась только в момент launch, из-за чего
-    // надпись «Java N скачается» оставалась после установки). Ошибку Java не
-    // пробрасываем: версия установлена, Java докачается при запуске.
+    // Download the required Java right at install time, so that the version is fully
+    // ready to launch (previously Java was downloaded only at launch time, which is why
+    // the "Java N will be downloaded" label stayed after installation). We do not
+    // propagate the Java error: the version is installed, Java will be downloaded at launch.
     const major = result?.javaVersion?.majorVersion;
     if (typeof major === 'number' && major > 0) {
       try {
@@ -1294,15 +1294,15 @@ export class MinecraftService {
     return { path: fresh.path, reason: `downloaded Java ${requiredMajor}` };
   }
 
-  /** Обновляет список аккаунтов в локальном skin-сервере. Вызывается из ipc после изменений в accounts.json. */
+  /** Updates the account list in the local skin-server. Called from ipc after changes in accounts.json. */
   updateSkinAccounts(list: import('../shared/types').MinecraftAccount[]): void {
     this.skinServer.setAccounts(list);
   }
 
   /**
-   * Поддерживает ли версия Minecraft authlib-injector. См. shared/skin-support.ts —
-   * предикат единый для main и renderer, чтобы UI и backend всегда были
-   * согласованы по списку версий «без скинов».
+   * Whether the Minecraft version supports authlib-injector. See shared/skin-support.ts —
+   * the predicate is shared by main and renderer, so that UI and backend always
+   * agree on the list of versions "without skins".
    */
   private supportsAuthlibInjector(versionId: string, baseMc: string | undefined): boolean {
     return supportsCustomSkin(versionId, baseMc);
@@ -1320,8 +1320,8 @@ export class MinecraftService {
     // the delete in exit handler fires before our add below.
     this.runningVersions.add(opts.versionId);
     this.playtime.recordStart(opts.versionId);
-    // Автобэкап миров перед запуском (не чаще раза в сутки, тихо в фоне).
-    // Падение бэкапа запуск не блокирует — игра важнее страховки.
+    // Auto-backup of worlds before launch (no more than once a day, silently in the background).
+    // A backup failure does not block the launch — the game matters more than the safety net.
     if (settings.autoBackup) {
       try {
         const marker = path.join(this.gameDir, '.trel_autobackup');
@@ -1353,14 +1353,14 @@ export class MinecraftService {
   }
 
   /**
-   * Запуск bundled legacy-версий (Cave Game Tech Test и т.п.):
-   * это applet-like jar'ы без официального version.json и записей в
-   * манифесте Mojang. Стартуем напрямую через `java -cp <jar>`.
+   * Launch of bundled legacy versions (Cave Game Tech Test and similar):
+   * these are applet-like jars without an official version.json and without entries in the
+   * Mojang manifest. We start them directly via `java -cp <jar>`.
    */
   private async launchLegacyPath(opts: LaunchOptions, win: BrowserWindow, settings: LauncherSettings): Promise<number> {
-    // Cave Game Tech Test и т.п. — это standalone-applet без LaunchWrapper.
-    // Прекрасно бежит на любой Java >= 8. Не привязываемся к мажору, чтобы
-    // пользователю с одной только Java 21 не пришлось ставить ещё и Java 8.
+    // Cave Game Tech Test and similar — this is a standalone applet without a LaunchWrapper.
+    // It runs fine on any Java >= 8. We do not tie ourselves to the major version, so that
+    // a user with only Java 21 does not have to install Java 8 as well.
     let javaPath: string;
     const j = await this.resolveJava(8, settings.javaPath, win);
     javaPath = j.path;
@@ -1402,9 +1402,9 @@ export class MinecraftService {
   }
 
   private async doLaunch(opts: LaunchOptions, win: BrowserWindow, settings: LauncherSettings): Promise<number> {
-    // ──── Legacy bundled versions (Cave Game Tech Test и т.п.) ───────────────
-    // У них нет ванильного version.json и нет записей в манифесте Mojang.
-    // Запускаем через прямой java-spawn, минуя @xmcl/core.
+    // ──── Legacy bundled versions (Cave Game Tech Test and similar) ───────────────
+    // They have no vanilla version.json and no entries in the Mojang manifest.
+    // We launch them via a direct java-spawn, bypassing @xmcl/core.
     if (isLegacyVersion(opts.versionId)) {
       return this.launchLegacyPath(opts, win, settings);
     }
@@ -1413,14 +1413,14 @@ export class MinecraftService {
     const clientJar = path.join(versionDir, opts.versionId + '.jar');
     const jsonPath = path.join(versionDir, opts.versionId + '.json');
 
-    // Читаем version-JSON один раз — раньше парсили дважды (под Java и под inheritsFrom).
+    // Read the version-JSON once — previously it was parsed twice (for Java and for inheritsFrom).
     let versionJson: any = null;
     let requiredMajor: number;
     if (fs.existsSync(clientJar) && fs.existsSync(jsonPath)) {
       try {
         versionJson = JSON.parse(fs.readFileSync(jsonPath, 'utf-8'));
       } catch {}
-      // Локальный json + цепочка наследования + эвристика по id — без сети.
+      // Local json + inheritance chain + id heuristic — no network.
       const { requiredJavaMajorForVersion } = await import('./loaders');
       requiredMajor = requiredJavaMajorForVersion(this.gameDir, opts.versionId);
     } else {
@@ -1429,26 +1429,26 @@ export class MinecraftService {
       try { versionJson = JSON.parse(fs.readFileSync(jsonPath, 'utf-8')); } catch {}
     }
 
-    // Java-резолв и подготовка content-папок никак не связаны — пусть бегут
-    // параллельно. На горячем пути (кэш Java тёплый) выигрыш ~10-30ms.
+    // Java resolution and content-folder preparation are not related at all — let them run
+    // in parallel. On the hot path (warm Java cache) the gain is ~10-30ms.
     const javaPromise = this.resolveJava(requiredMajor, settings.javaPath, win);
 
-    // Параллельно с резолвом Java/authlib подцепляем content-папки.
+    // In parallel with the Java/authlib resolution we hook up the content-folders.
     const contentPromise = Promise.resolve().then(() => {
       this.ensureContentFolders(opts.versionId);
       this.linkContentFolders(opts.versionId);
     });
 
-    // ─── authlib-injector: online-mode и кастомные скины ────────────────
-    // Для online-аккаунтов authlib-injector нужен ВСЕГДА — он перехватывает
-    // yggdrasil-аутентификацию и направляет её на наш локальный auth-сервер.
-    // Для offline-аккаунтов — только если задан кастомный скин.
+    // ─── authlib-injector: online-mode and custom skins ────────────────
+    // For online accounts authlib-injector is ALWAYS needed — it intercepts
+    // yggdrasil authentication and redirects it to our local auth-server.
+    // For offline accounts — only if a custom skin is set.
     let authlibArgs: string[] = [];
     const baseMc: string | undefined = versionJson?.inheritsFrom ?? undefined;
     const isOnline = opts.account.type === 'online' && opts.account.owned !== false;
-    // Authlib-injector нужен для online-аккаунтов (yggdrauth), для offline с
-    // кастомным скином, и для гостевых (offline) чтобы они могли заходить на
-    // локальные серверы с online-mode=true через наш локальный auth-сервер.
+    // Authlib-injector is needed for online accounts (yggdrauth), for offline with a
+    // custom skin, and for guests (offline) so that they can join
+    // local servers with online-mode=true through our local auth-server.
     const needsAuthlib = isOnline || !!opts.account.skin || opts.account.type === 'offline';
     const useAuthlib = needsAuthlib && this.supportsAuthlibInjector(opts.versionId, baseMc);
     if (useAuthlib) {
@@ -1489,9 +1489,9 @@ export class MinecraftService {
     }
     win.webContents.send('minecraft:log', `[launcher] Preflight OK. Using Java: ${javaPath} (${reason})\n`);
 
-    // Pre-Classic (rd-*, c0.*) и Indev/Infdev/ранний Alpha игнорируют gamePath
-    // и пишут мир в %APPDATA%\.minecraft. Подменяем env ТОЛЬКО для них —
-    // современные версии используют user.home для кэшей/конфигов и ломаются при подмене.
+    // Pre-Classic (rd-*, c0.*) and Indev/Infdev/early Alpha ignore gamePath
+    // and write the world into %APPDATA%\.minecraft. We substitute env ONLY for them —
+    // modern versions use user.home for caches/configs and break when it is substituted.
     const isPreClassic = isPreClassicVersionId(opts.versionId) || isLegacyVersion(opts.versionId);
     const childEnv: NodeJS.ProcessEnv = isPreClassic ? { ...process.env } : process.env;
     if (isPreClassic) {
@@ -1515,12 +1515,12 @@ export class MinecraftService {
       launcherBrand: 'Trel',
       minMemory: Math.floor(opts.memoryMb / 2),
       maxMemory: opts.memoryMb,
-      // JVM-флаги: дублируем path overrides на случай если Java читает их из properties
+      // JVM flags: duplicate the path overrides in case Java reads them from properties
       extraJVMArgs: [
         `-Duser.home=${this.gameDir}`,
         `-Duser.dir=${this.gameDir}`,
-        // Безопасные на любом JDK (8/11/17/21). Аггрессивный G1-тюнинг убран:
-        // на Java 8 он валил JVM с "JNI error / check your installation".
+        // Safe on any JDK (8/11/17/21). Aggressive G1 tuning removed:
+        // on Java 8 it killed the JVM with "JNI error / check your installation".
         '-Dlog4j2.formatMsgNoLookups=true',
         '-Dfml.readTimeout=300',
         '-Dfml.queryResult=confirm',
@@ -1532,7 +1532,7 @@ export class MinecraftService {
         height: settings.gameHeight || 480,
         fullscreen: !!settings.fullscreen,
       },
-      // Главное: подменяем переменные окружения, которые читают legacy-версии
+      // Main thing: substitute the environment variables that legacy versions read
       extraExecOption: {
         env: childEnv,
         cwd: this.gameDir,

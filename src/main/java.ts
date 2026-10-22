@@ -124,9 +124,9 @@ function listDirSafe(dir: string): string[] {
   }
 }
 
-/** Версия формата java-cache.json. Меняется при breaking-change структуры. */
+/** Format version of java-cache.json. Bumped on structural breaking changes. */
 const JAVA_CACHE_VERSION = 1;
-/** Сколько времени трастим persistent-кэш без фонового re-scan. 7 дней. */
+/** How long we trust the persistent cache without a background re-scan. 7 days. */
 const JAVA_CACHE_FRESH_MS = 7 * 24 * 60 * 60 * 1000;
 
 interface JavaCacheFile {
@@ -138,9 +138,9 @@ interface JavaCacheFile {
 
 export class JavaService {
   private cache: JavaInstall[] | null = null;
-  /** Промис текущего scan(), чтобы параллельные вызовы шарили один обход. */
+  /** Promise of the current scan(), so that parallel calls share one traversal. */
   private scanInFlight: Promise<JavaInstall[]> | null = null;
-  /** Был ли persistent-кэш загружен в this.cache (а не результат scan). */
+  /** Whether the persistent cache was loaded into this.cache (not a scan result). */
   private cacheLoadedFromDisk = false;
 
   constructor(private launcherDir: string) {}
@@ -155,7 +155,7 @@ export class JavaService {
     return path.join(this.launcherDir, 'java-cache.json');
   }
 
-  /** Грузит persistent-кэш с диска, фильтруя несуществующие пути. Null если кэш отсутствует/повреждён/устарел по платформе. */
+  /** Loads the persistent cache from disk, filtering out missing paths. Null if the cache is absent/corrupt/stale for the platform. */
   private loadCacheFromDisk(): { installs: JavaInstall[]; scannedAt: number } | null {
     try {
       const file = this.cacheFile();
@@ -165,7 +165,7 @@ export class JavaService {
       const platform = `${process.platform}-${process.arch}`;
       if (raw.platform !== platform) return null;
       if (!Array.isArray(raw.installs)) return null;
-      // Отсеиваем невалидные пути: нет на диске, null bytes, symlink, wrong owner
+      // Filter out invalid paths: missing on disk, null bytes, symlink, wrong owner
       const valid = raw.installs.filter((i) => {
         if (!i || typeof i.path !== 'string' || i.path.length > 1024 || i.path.includes('\0')) return false;
         try {
@@ -203,9 +203,9 @@ export class JavaService {
   }
 
   /**
-   * Прогревает кэш Java в фоне, не блокируя caller. Безопасно вызывать
-   * многократно: повторные вызовы просто await'ят уже идущий scan.
-   * Используется при старте лаунчера, чтобы первый клик «Играть» не ждал.
+   * Warms up the Java cache in the background without blocking the caller.
+   * Safe to call repeatedly: repeat calls just await the scan already in flight.
+   * Used at launcher startup so the first "Play" click does not have to wait.
    */
   prewarm(): Promise<JavaInstall[]> {
     return this.list();
@@ -297,13 +297,13 @@ export class JavaService {
   }
 
   /**
-   * Полное сканирование системы. Параллельно проверяет все кандидатные
-   * директории + JAVA_HOME + первый `java` из PATH. На холодном диске
-   * занимает ~200-500ms, на тёплом ~50-150ms.
+   * Full system scan. Checks all candidate directories + JAVA_HOME + the
+   * first `java` from PATH in parallel. On a cold disk it takes
+   * ~200-500ms, on a warm one ~50-150ms.
    */
   async scan(): Promise<JavaInstall[]> {
-    // Дедуплицируем параллельные вызовы — несколько подсистем могут
-    // одновременно запросить scan на старте, нет смысла обходить FS дважды.
+    // Deduplicate parallel calls — several subsystems may request a scan
+    // at startup at the same time, there is no point walking the FS twice.
     if (this.scanInFlight) return this.scanInFlight;
     this.scanInFlight = this.doScan();
     try {
@@ -322,8 +322,8 @@ export class JavaService {
       tasks.push(this.inspect(process.env.JAVA_HOME, false, knownRoots));
     }
 
-    // 2) PATH — первый `java`. Запускаем параллельно с обходом папок,
-    // чтобы 50-200ms на spawn `where` не блокировали остальное.
+    // 2) PATH — the first `java`. Started in parallel with the folder walk
+    // so that the 50-200ms spent spawning `where` does not block the rest.
     tasks.push((async () => {
       try {
         const { stdout } = await pExecFile(
@@ -347,9 +347,9 @@ export class JavaService {
       return null;
     })());
 
-    // 3) Известные корневые директории — одно- и двухуровневая глубина.
-    // Раньше это был последовательный двойной for; теперь все inspect()
-    // запускаются параллельно через Promise.all.
+    // 3) Known root directories — one and two levels deep.
+    // This used to be a sequential double for-loop; now all inspect()
+    // calls run in parallel via Promise.all.
     const javaRoot = this.javaRoot();
     const javaRootKey = path.resolve(javaRoot).toLowerCase();
     for (const root of knownRoots) {
@@ -376,13 +376,13 @@ export class JavaService {
   }
 
   /**
-   * Возвращает список Java. Стратегия:
-   *   1. Если есть in-memory кэш — отдаём его (мгновенно).
-   *   2. Иначе пробуем persistent-кэш с диска (фильтруя удалённые пути).
-   *   3. Иначе делаем полный scan.
+   * Returns the list of Java installations. Strategy:
+   *   1. If there is an in-memory cache — return it (instant).
+   *   2. Otherwise try the persistent cache on disk (filtering removed paths).
+   *   3. Otherwise do a full scan.
    *
-   * Если persistent-кэш протух (старше 7 дней) — отдаём его сразу, но в
-   * фоне триггерим re-scan, чтобы данные подтянулись к следующему запуску.
+   * If the persistent cache is stale (older than 7 days) — return it right away,
+   * but trigger a re-scan in the background so the data catches up by the next launch.
    */
   async list(): Promise<JavaInstall[]> {
     if (this.cache) return this.cache;
@@ -392,7 +392,7 @@ export class JavaService {
       this.cache = fromDisk.installs;
       this.cacheLoadedFromDisk = true;
 
-      // Stale? — фоном пересканируем, пока пользователь играет.
+      // Stale? — rescan in the background while the user is playing.
       if (Date.now() - fromDisk.scannedAt > JAVA_CACHE_FRESH_MS) {
         this.scan().catch(() => {});
       }
@@ -422,15 +422,15 @@ export class JavaService {
    * Find the best java for the given required major. Prefers exact match,
    * then newer, then older.
    *
-   * Если результат поиска по persistent-кэшу пуст — делаем форс re-scan
-   * (вдруг пользователь поставил новую Java между сессиями). Это даёт
-   * правильное поведение без бесполезного скачивания.
+   * If the lookup in the persistent cache comes up empty — force a re-scan
+   * (the user may have installed a new Java between sessions). This gives
+   * correct behaviour without a pointless download.
    */
   async findBest(required: number): Promise<JavaInstall | null> {
     let result = this.findBestIn(await this.list(), required);
     if (result) return result;
     if (this.cacheLoadedFromDisk) {
-      // persistent-кэш мог быть неполным — пересканим и попробуем ещё раз.
+      // The persistent cache may be incomplete — rescan and try once more.
       const fresh = await this.scan();
       result = this.findBestIn(fresh, required);
       if (result) return result;
@@ -508,14 +508,14 @@ export class JavaService {
           throw new Error(`Symlink in JRE archive: ${entry.entryName}`);
         }
         totalUncompressed += entry.header.size;
-        // JRE — сотни МБ распакованного; гигабайты = бомба.
+        // JRE — hundreds of MB uncompressed; gigabytes = a bomb.
         if (totalUncompressed > 2 * 1024 * 1024 * 1024) throw new Error('JRE archive too large (zip bomb guard)');
       }
       zip.extractAllTo(slot, true);
     } else {
       const { execFileSync } = await import('node:child_process');
-      // tar из PATH — но сначала листинг: ни абсолютных путей, ни ../,
-      // ни симлинков наружу. Распаковка только после проверки всех записей.
+      // tar from PATH — but first a listing: no absolute paths, no ../,
+      // no symlinks pointing outside. Extraction only after checking all entries.
       const listing = execFileSync('tar', ['-tzvf', tmpFile], { windowsHide: true, encoding: 'utf-8', maxBuffer: 8 * 1024 * 1024 });
       for (const line of listing.split('\n')) {
         const m = line.match(/^([bcdlps-][rwxst-]{9})\s+\S+\s+(.+)$/);
@@ -530,9 +530,9 @@ export class JavaService {
     }
     try { fs.unlinkSync(tmpFile); } catch {}
 
-    // Сбрасываем кэш и находим свежераспакованную JRE через scan().
-    // scan() ВНУТРИ doScan() уже сохранит обновлённый кэш на диск, так что
-    // следующий запуск лаунчера не будет перекачивать Java заново.
+    // Reset the cache and find the freshly extracted JRE via scan().
+    // scan() inside doScan() will already save the updated cache to disk,
+    // so the next launcher start will not re-download Java.
     this.cache = null;
     this.cacheLoadedFromDisk = false;
     const fresh = await this.findBest(major);
@@ -540,15 +540,15 @@ export class JavaService {
     return fresh;
   }
 
-  /** Скачать файл Java. Если сервер поддерживает Range-запросы и файл крупный —
-   *  качаем параллельно несколькими кусками (в разы быстрее одиночного потока,
-   *  который упирается в лимит CDN на соединение). Иначе фолбэк на один stream. */
+  /** Downloads a Java file. If the server supports Range requests and the file is
+   *  large — we download it in parallel chunks (much faster than a single stream,
+   *  which hits the per-connection CDN limit). Otherwise we fall back to one stream. */
   private async downloadFile(url: string, dest: string, major: number, win?: BrowserWindow): Promise<void> {
     const CHUNKS = 8;
-    const MIN_PARALLEL = 8 * 1024 * 1024; // меньше 8 МБ дробить нет смысла
+    const MIN_PARALLEL = 8 * 1024 * 1024; // splitting below 8 MB makes no sense
 
-    // HEAD: размер + поддержка Range (с редиректами). HEAD может быть запрещён —
-    // тогда просто пойдём одиночным потоком.
+    // HEAD: size + Range support (with redirects). HEAD may be forbidden —
+    // then we simply go with a single stream.
     let total = 0;
     let acceptRanges = false;
     try {
@@ -575,7 +575,7 @@ export class JavaService {
       }
       try {
         const fd = fs.openSync(dest, 'w');
-        try { fs.ftruncateSync(fd, total); } catch { /* не все ФС умеют — не страшно */ }
+        try { fs.ftruncateSync(fd, total); } catch { /* not every FS supports it — harmless */ }
         let downloaded = 0;
         try {
           await Promise.all(ranges.map(async (r) => {
@@ -596,12 +596,12 @@ export class JavaService {
         }
         return;
       } catch {
-        // Range-загрузка не удалась (сервер не вернул 206 и т.п.) — фолбэк ниже.
+        // The Range download failed (the server did not return 206, etc.) — fallback below.
         try { fs.unlinkSync(dest); } catch {}
       }
     }
 
-    // Фолбэк: одиночный поток.
+    // Fallback: a single stream.
     const response = await axios.get(url, { responseType: 'stream', maxRedirects: 10, timeout: 120000 });
     const tot = Number(response.headers['content-length']) || total;
     let downloaded = 0;
@@ -616,9 +616,9 @@ export class JavaService {
   }
 
   private async fetchAdoptiumChecksum(major: number, osName: string, arch: string, imageType: 'jre' | 'jdk'): Promise<string | null> {
-    // Независимый источник: JSON-метаданные релиза, а НЕ заголовок ответа
-    // скачивания (тот же CDN, что отдаёт файл, — компрометация CDN подменяла
-    // бы файл и чексумму парой). Фолбэк на заголовок — только если API молчит.
+    // Independent source: JSON release metadata, and NOT the header of the download
+    // response (the same CDN serves the file — a compromised CDN could swap both the
+    // file and the checksum). Fallback to the header only if the API stays silent.
     try {
       const { data } = await axios.get(
         `https://api.adoptium.net/v3/assets/feature_releases/${major}/ga`,
@@ -632,7 +632,7 @@ export class JavaService {
           if (typeof sha === 'string' && /^[a-f0-9]{64}$/i.test(sha)) return sha;
         }
       }
-    } catch { /* фолбэк ниже */ }
+    } catch { /* fallback below */ }
     try {
       const url = (
         'https://api.adoptium.net/v3/binary/latest/' +
@@ -647,7 +647,7 @@ export class JavaService {
     }
   }
 
-  /** sha256 файла потоком: JRE весит сотни МБ, грузить целиком в RAM не нужно. */
+  /** sha256 of the file as a stream: a JRE weighs hundreds of MB, no need to load it into RAM entirely. */
   private async sha256File(filePath: string): Promise<string> {
     const hash = crypto.createHash('sha256');
     const stream = fs.createReadStream(filePath, { highWaterMark: 1024 * 1024 });

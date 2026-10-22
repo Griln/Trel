@@ -35,15 +35,15 @@ type Resolver = (value: string) => void;
 
 export const DialogProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [opts, setOpts] = useState<DialogOptions | null>(null);
-  // Очередь: повторный show() во время открытого диалога раньше затирал
-  // resolver — первый промис висел вечно, а вызывающий код ждал вечно.
+  // Queue: a repeated show() while a dialog is open used to overwrite the
+  // resolver — the first promise hung forever, and the calling code waited forever.
   const queue = useRef<Array<{ opts: DialogOptions; resolve: Resolver }>>([]);
   const currentResolve = useRef<Resolver | null>(null);
 
   const show = useCallback((next: DialogOptions): Promise<string> => {
     return new Promise<string>((resolve) => {
       queue.current.push({ opts: next, resolve });
-      // Если диалог уже открыт — встанем в очередь, иначе покажем сразу.
+      // If the dialog is already open — we join the queue, otherwise we show it right away.
       if (!currentResolve.current) {
         const first = queue.current.shift()!;
         currentResolve.current = first.resolve;
@@ -69,8 +69,8 @@ export const DialogProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') close(opts.cancelValue ?? 'cancel');
       if (e.key === 'Enter' && opts.defaultIndex !== undefined) {
-        // Enter в поле ввода — не confirm: иначе ввод имени мира/команды
-        // случайно жал «удалить/запустить» по дефолтной кнопке.
+        // Enter in an input field — not confirm: otherwise typing a world/command name
+        // would accidentally trigger “delete/launch” via the default button.
         const t = e.target as HTMLElement | null;
         if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
         const btn = opts.buttons[opts.defaultIndex];

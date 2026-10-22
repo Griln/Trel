@@ -1,7 +1,7 @@
 /**
- * Карта диска папки игры + безопасная чистка. Показывает, кто съел место,
- * и удаляет только заведомо мусорное (логи, краш-репорты, tmp-хвосты).
- * Миры/моды/версии — только руками пользователя, тут их не трогаем.
+ * Disk map of the game folder + safe cleanup. Shows who ate the space
+ * and deletes only known garbage (logs, crash reports, tmp leftovers).
+ * Worlds/mods/versions are only removed by the user manually — we never touch them.
  */
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -30,7 +30,7 @@ function walk(dir: string, depth: number, acc: { bytes: number; files: number },
   }
 }
 
-/** Размер одной папки с капами (глубина 12, 300к файлов — дальше оценка). */
+/** Size of a single folder with caps (depth 12, 300k files — beyond that it is an estimate). */
 export function dirUsage(dir: string): { bytes: number; files: number; truncated: boolean } {
   const acc = { bytes: 0, files: 0 };
   const budget = { n: 300_000 };
@@ -57,10 +57,10 @@ export function diskUsage(gameDir: string): DiskUsage {
   return { entries, total: entries.reduce((a, e) => a + e.bytes, 0), freeBytes };
 }
 
-/** Безопасные цели чистки: ключ → что удаляем. */
+/** Safe cleanup targets: key → what gets deleted. */
 export const CLEAN_TARGETS = {
   logs: ['logs', 'crash-reports'],
-  tmp: [] as string[], // .trel_tmp по всему gameDir (глубина 4)
+  tmp: [] as string[], // .trel_tmp across the whole gameDir (depth 4)
 } as const;
 
 export function cleanTarget(gameDir: string, target: 'logs' | 'tmp'): { removedFiles: number; freedBytes: number } {
@@ -83,7 +83,7 @@ export function cleanTarget(gameDir: string, target: 'logs' | 'tmp'): { removedF
       for (const n of names.slice(0, 5000)) rmFile(path.join(dir, n));
     }
   } else {
-    // .trel_tmp хвосты после обрывов (корень + 4 уровня).
+    // .trel_tmp leftovers after interruptions (root + 4 levels).
     const walkTmp = (dir: string, depth: number) => {
       if (depth < 0) return;
       let names: string[] = [];

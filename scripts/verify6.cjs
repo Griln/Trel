@@ -1,4 +1,4 @@
-/* Проверка скролла каталога + повторные скриншоты после правок */
+/* Browse scroll check + repeated screenshots after the fixes */
 const { chromium } = require('playwright');
 (async () => {
   const browser = await chromium.connectOverCDP('http://127.0.0.1:9333');
@@ -7,7 +7,7 @@ const { chromium } = require('playwright');
   await page.evaluate(() => window.resizeTo(1280, 800));
   await page.waitForTimeout(500);
 
-  // 1) колесо в каталоге
+  // 1) wheel in browse
   await page.evaluate(() => { const el = [...document.querySelectorAll('.nav-item')].find(x => x.textContent.trim().startsWith('Каталог')); if (el) el.click(); });
   await page.waitForTimeout(1500);
   const wheel = await page.evaluate(async () => {
@@ -17,7 +17,7 @@ const { chromium } = require('playwright');
     await new Promise(r => setTimeout(r, 400));
     return { before, after: c.scrollTop, oy: getComputedStyle(c).overflowY };
   });
-  // реальное колесо мыши через CDP
+  // real mouse wheel via CDP
   await page.mouse.move(700, 500);
   await page.mouse.wheel(0, 800);
   await page.waitForTimeout(500);

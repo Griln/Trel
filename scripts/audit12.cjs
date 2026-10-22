@@ -1,4 +1,4 @@
-/* Финал раунда 5: поиск по русским типам + автоскрытие + ошибки консоли */
+/* Round 5 finale: search by Russian type names + auto-hide + console errors */
 const { chromium } = require('playwright-core');
 
 (async () => {
@@ -12,7 +12,7 @@ const { chromium } = require('playwright-core');
 
   await sleep(5000);
 
-  // каталог
+  // browse
   await page.evaluate(() => {
     const els = Array.from(document.querySelectorAll('.nav-item, .nav-hero'));
     const b = els.find((el) => /Каталог|Browse/i.test(el.textContent));
@@ -22,7 +22,7 @@ const { chromium } = require('playwright-core');
   const input = await page.$('input[placeholder*="оиск"], input[placeholder*="earch"]');
   if (input) {
     const count = () => page.$$eval('.v-name', (e) => e.length);
-    // включим фильтр «все», если есть чипы
+    // enable the "all" filter if there are chips
     await page.evaluate(() => {
       const chips = Array.from(document.querySelectorAll('.chip, .filter-chip, button'));
       const all = chips.find((c) => /^(все|all)$/i.test((c.textContent || '').trim()));
@@ -39,7 +39,7 @@ const { chromium } = require('playwright-core');
     console.log(`SEARCH-RU: «бета»=${a} «альфа 1.2»=${b} «патч 26»=${c}`);
   } else console.log('SEARCH: input NOT FOUND');
 
-  // автоскрытие
+  // auto-hide
   await page.mouse.move(1100, 500);
   let hidden = false;
   for (let i = 0; i < 8; i++) {
@@ -55,7 +55,7 @@ const { chromium } = require('playwright-core');
     console.log('REVEAL:', cls.includes('side-hidden') ? 'FAIL (не вернулась)' : 'OK (вернулась)');
   }
 
-  // обход страниц на ошибки
+  // sweep all pages for errors
   const n = await page.$$eval('.nav-item, .nav-hero', (els) => els.length);
   for (let i = 0; i < n; i++) {
     const ok = await page.evaluate((idx) => {
