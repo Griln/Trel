@@ -1,3 +1,7 @@
+<p align="center">
+  <a href="CODE_OF_CONDUCT.md">English</a> | <strong>Русский</strong>
+</p>
+
 # Правила поведения
 
 ## Наш стандарт

@@ -1,3 +1,7 @@
+<p align="center">
+  <a href="CONTRIBUTING.md">English</a> | <strong>Русский</strong>
+</p>
+
 # Как помочь проекту Trel
 
 Спасибо, что хочешь помочь. Trel — лаунчер Minecraft, и любой вклад полезен:
