@@ -1,6 +1,5 @@
 <p align="center">
-  <a href="README.md"><img alt="English" src="https://img.shields.io/badge/English-0969da?style=for-the-badge"></a>
-  <a href="README.ru.md"><img alt="Русский" src="https://img.shields.io/badge/%D0%A0%D1%83%D1%81%D1%81%D0%BA%D0%B8%D0%B9-2ea44f?style=for-the-badge"></a>
+  <a href="README.md">English</a> | <strong>Русский</strong>
 </p>
 
 # Trel

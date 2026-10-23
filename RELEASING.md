@@ -1,3 +1,7 @@
+<p align="center">
+  <strong>English</strong> | <a href="RELEASING.ru.md">Русский</a>
+</p>
+
 # Releasing
 
 Releases are published automatically: push a tag and the CI build produces the

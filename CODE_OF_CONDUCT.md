@@ -1,3 +1,7 @@
+<p align="center">
+  <strong>English</strong> | <a href="CODE_OF_CONDUCT.ru.md">Русский</a>
+</p>
+
 # Code of Conduct
 
 ## Our Standard

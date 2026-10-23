@@ -1,3 +1,7 @@
+<p align="center">
+  <a href="TRELEMU_DOWNLOAD.md">English</a> | <strong>Русский</strong>
+</p>
+
 # Распространение эмулятора TrelEmu
 
 ## Что это такое

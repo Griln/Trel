@@ -1,3 +1,7 @@
+<p align="center">
+  <strong>English</strong> | <a href="SECURITY.ru.md">Русский</a>
+</p>
+
 # Security Policy
 
 ## Supported versions

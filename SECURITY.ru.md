@@ -1,3 +1,7 @@
+<p align="center">
+  <a href="SECURITY.md">English</a> | <strong>Русский</strong>
+</p>
+
 # Политика безопасности
 
 ## Поддерживаемые версии

@@ -1,3 +1,7 @@
+<p align="center">
+  <strong>English</strong> | <a href="CONTRIBUTING.ru.md">Русский</a>
+</p>
+
 # Contributing to Trel
 
 Thanks for wanting to help. Trel is a Minecraft launcher, and every contribution

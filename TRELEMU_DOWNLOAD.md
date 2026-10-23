@@ -1,3 +1,7 @@
+<p align="center">
+  <strong>English</strong> | <a href="TRELEMU_DOWNLOAD.ru.md">Русский</a>
+</p>
+
 # Distributing the TrelEmu Emulator
 
 ## What it is
