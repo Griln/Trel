@@ -1,3 +1,8 @@
+<p align="center">
+  <a href="README.md"><img alt="English" src="https://img.shields.io/badge/English-0969da?style=for-the-badge"></a>
+  <a href="README.ru.md"><img alt="Русский" src="https://img.shields.io/badge/%D0%A0%D1%83%D1%81%D1%81%D0%BA%D0%B8%D0%B9-2ea44f?style=for-the-badge"></a>
+</p>
+
 # Trel
 
 [![GitHub release](https://img.shields.io/github/v/release/Griln/Trel)](https://github.com/Griln/Trel/releases/latest)
@@ -6,8 +11,6 @@
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux-blue.svg)](https://github.com/Griln/Trel/releases/latest)
 
 Лаунчер Minecraft для Windows и Linux. Каталог Java- и Bedrock-версий, модлоадеры, моды, миры, серверы, скины и импорт из других лаунчеров. Без рекламы и регистрации: можно играть гостем или войти через Microsoft.
-
-> **English:** Trel is a free Minecraft launcher for Windows and Linux: Java & Bedrock versions, mod loaders, mods, worlds, servers, skins and one-click import from other launchers. No ads, guest or Microsoft login.
 
 ## Скриншоты
 
