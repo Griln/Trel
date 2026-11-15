@@ -31,8 +31,7 @@ patch*.js
 adb_proxy.js
 
 # Local conversation history and secrets
-chat_history/*
-!chat_history/unified_chat_history_complete.md
+chat_history/
 
 # Huge optional emulator pack, downloaded separately
 resources/trel-emu/
@@ -47,6 +46,19 @@ dist-trel-emu/
 
 # Собранный общий файл превью (генерируется скриптом, не исходник)
 previews/all.html
+
+# Локальные макеты дизайна (эксперименты, не часть исходников)
+previews/atelier-src/
+previews/.check/
+previews/preview-atelier.html
+previews/preview-graphite.html
+previews/preview-haven.html
+previews/preview-indigo.html
+previews/preview-minimal.html
+previews/preview-nightline.html
+previews/preview-quietdeck.html
+previews/preview-softlight.html
+trel-*-preview.html
 
 # --- Локальный мусор: чужие инструменты, бэкапы, одноразовые скрипты ---
 .freebuff/

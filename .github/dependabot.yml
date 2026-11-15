@@ -19,11 +19,12 @@ updates:
         update-types:
           - minor
           - patch
-      # Major updates — separate PRs, they have to be read
-      major:
-        update-types:
-          - major
     ignore:
+      # Major upgrades need coordinated code changes (electron, react, vite,
+      # typescript and friends) — they are done by hand, not through dependabot PRs.
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-major
       # electron-builder pulls in a lot of transitive packages — their updates create noise
       - dependency-name: "@xmcl/*"
 
