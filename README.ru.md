@@ -110,6 +110,7 @@ Minecraft — собственность Mojang/Microsoft. Trel не предо�
 - 🐛 [Нашёл баг](https://github.com/Griln/Trel/issues/new/choose) — приложи лог из «Настройки → Диагностика»
 - 💡 [Есть идея](https://github.com/Griln/Trel/issues/new/choose)
 - 💬 [Вопросы и обсуждения](https://github.com/Griln/Trel/discussions)
+- ✉️ [Почта](mailto:trel.support@gmail.com) — trel.support@gmail.com, если вопрос не для issue
 - 🧑‍💻 [Хочу контрибьютить](CONTRIBUTING.md) — как собрать и запустить тесты
 - 🔒 [Уязвимость](SECURITY.md) — не в issue, а по инструкции оттуда
 - 📜 [Правила поведения](CODE_OF_CONDUCT.md)

@@ -1,5 +1,8 @@
 blank_issues_enabled: true
 contact_links:
+  - name: Support email
+    url: mailto:trel.support@gmail.com
+    about: Prefer email? Write to us directly at trel.support@gmail.com
   - name: Usage question
     url: https://github.com/Griln/Trel/discussions
     about: Ask about the launcher here — faster than an issue

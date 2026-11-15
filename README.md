@@ -110,6 +110,7 @@ Minecraft is a trademark of Mojang/Microsoft. Trel does not provide the game and
 - 🐛 [Found a bug](https://github.com/Griln/Trel/issues/new/choose) — attach the log from Settings → Diagnostics
 - 💡 [Have an idea](https://github.com/Griln/Trel/issues/new/choose)
 - 💬 [Questions and discussions](https://github.com/Griln/Trel/discussions)
+- ✉️ [Email us](mailto:trel.support@gmail.com) — trel.support@gmail.com, if it does not fit an issue
 - 🧑‍💻 [Want to contribute](CONTRIBUTING.md) — how to build and run the tests
 - 🔒 [Security issue](SECURITY.md) — do not open a public issue, follow the instructions there
 - 📜 [Code of conduct](CODE_OF_CONDUCT.md)

@@ -15,6 +15,7 @@
 
 **Do not open a public issue for a vulnerability.** Contact us directly:
 
+- Email: **trel.support@gmail.com**
 - GitHub Security Advisories: https://github.com/Griln/Trel/security/advisories/new
 - or the repository security page: https://github.com/Griln/Trel/security
 

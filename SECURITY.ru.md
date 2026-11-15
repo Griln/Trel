@@ -15,6 +15,7 @@
 
 **Не создавай публичный issue для уязвимости.** Напиши напрямую:
 
+- Почта: **trel.support@gmail.com**
 - GitHub Security Advisories: https://github.com/Griln/Trel/security/advisories/new
 - или на страницу безопасности репозитория: https://github.com/Griln/Trel/security
 
